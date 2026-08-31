@@ -1,0 +1,6 @@
+{
+  "name": "RestaurantOS",
+  "description": "Local-first restaurant operating system with Menu Management, CSV Import, Waiter Ordering, Real-time Socket Sync, and QR Pairing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
