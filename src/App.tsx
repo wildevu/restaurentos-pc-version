@@ -4,9 +4,11 @@ import type { Table, MenuItem, Order } from './types';
 import { TableGrid } from './components/TableGrid';
 import { TableDetail } from './components/TableDetail';
 import { KitchenDisplay } from './components/KitchenDisplay';
+import { CashierDisplay } from './components/CashierDisplay';
 import { SetupScreen } from './components/SetupScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { PairingScreen } from './components/PairingScreen';
+import { I18nProvider, useI18n } from './i18n';
 import { 
   ChefHat, 
   LogOut, 
@@ -17,7 +19,9 @@ import {
   Settings, 
   UtensilsCrossed, 
   Flame,
-  QrCode
+  Receipt,
+  QrCode,
+  Globe
 } from 'lucide-react';
 
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
@@ -55,6 +59,7 @@ function AppContent({
   tables, 
   orders, 
   menu, 
+  restaurant,
   activeTableId, 
   setActiveTableId, 
   isConnected, 
@@ -65,13 +70,33 @@ function AppContent({
 }: any) {
   const [showRejectedModal, setShowRejectedModal] = useState(false);
   const location = useLocation();
+  const { t, language, setLanguage } = useI18n();
+
   const activeTable = tables.find((t: any) => t.id === activeTableId);
   const activeOrder = activeTable?.orderId 
     ? orders.find((o: any) => o.id === activeTable.orderId) 
     : null;
 
   const isKitchenUser = user?.role === 'KITCHEN';
+  const isCashierUser = user?.role === 'CASHIER';
+  const isWaiterUser = user?.role === 'WAITER';
   const isOwnerOrManager = user?.role === 'OWNER' || user?.role === 'MANAGER';
+
+  const getRoleBadgeStyle = (role: string) => {
+    switch (role) {
+      case 'OWNER':
+        return 'bg-purple-100 text-purple-800';
+      case 'MANAGER':
+        return 'bg-indigo-100 text-indigo-800';
+      case 'CASHIER':
+        return 'bg-teal-100 text-teal-800';
+      case 'KITCHEN':
+        return 'bg-orange-100 text-orange-800';
+      case 'WAITER':
+      default:
+        return 'bg-blue-100 text-blue-800';
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
@@ -81,43 +106,63 @@ function AppContent({
         onClose={() => setShowRejectedModal(false)} 
       />
 
-      <header className="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between shadow-xs z-20">
-        <div className="flex items-center gap-6">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs z-20">
+        <div className="flex items-center gap-4 sm:gap-6">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
               <ChefHat size={20} />
             </div>
             <div>
-              <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">RestaurantOS</h1>
+              <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">
+                {restaurant?.name || 'RestaurantOS'}
+              </h1>
               <span className="text-[10px] font-bold text-gray-400 tracking-wider uppercase">Local Hub</span>
             </div>
           </Link>
 
-          {/* Navigation Links */}
-          <nav className="hidden sm:flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
-            <Link
-              to="/"
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                location.pathname === '/' 
-                  ? 'bg-white text-gray-900 shadow-xs' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <UtensilsCrossed size={14} />
-              <span>Tables</span>
-            </Link>
+          {/* Role-Based Desktop Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+            {(isOwnerOrManager || isWaiterUser) && (
+              <Link
+                to="/"
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  location.pathname === '/' 
+                    ? 'bg-white text-gray-900 shadow-xs' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <UtensilsCrossed size={14} />
+                <span>{t('nav.tables')}</span>
+              </Link>
+            )}
 
-            <Link
-              to="/kitchen"
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                location.pathname === '/kitchen' 
-                  ? 'bg-orange-500 text-white shadow-xs' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <Flame size={14} />
-              <span>Kitchen Display</span>
-            </Link>
+            {(isOwnerOrManager || isKitchenUser) && (
+              <Link
+                to="/kitchen"
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  location.pathname === '/kitchen' 
+                    ? 'bg-orange-500 text-white shadow-xs' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Flame size={14} />
+                <span>{t('nav.kitchen')}</span>
+              </Link>
+            )}
+
+            {(isOwnerOrManager || isCashierUser) && (
+              <Link
+                to="/cashier"
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  location.pathname === '/cashier' 
+                    ? 'bg-teal-600 text-white shadow-xs' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Receipt size={14} />
+                <span>{t('nav.cashier')}</span>
+              </Link>
+            )}
 
             {isOwnerOrManager && (
               <Link
@@ -129,19 +174,39 @@ function AppContent({
                 }`}
               >
                 <Settings size={14} />
-                <span>Admin & Ops</span>
+                <span>{t('nav.admin')}</span>
               </Link>
             )}
           </nav>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-4">
+          {/* Language Switcher */}
+          <div className="flex items-center bg-gray-100 p-0.5 rounded-xl border border-gray-200 text-xs font-bold">
+            <button
+              onClick={() => setLanguage('en')}
+              className={`px-2 py-1 rounded-lg transition-all ${language === 'en' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-800'}`}
+              title="English"
+            >
+              EN
+            </button>
+            <button
+              onClick={() => setLanguage('fr')}
+              className={`px-2 py-1 rounded-lg transition-all ${language === 'fr' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-800'}`}
+              title="Français"
+            >
+              FR
+            </button>
+          </div>
+
           <div className="text-right">
-            <div className="text-xs font-bold text-gray-900">{user?.name}</div>
-            <div className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider">{user?.role}</div>
+            <div className="text-xs font-bold text-gray-900 truncate max-w-[120px]">{user?.name}</div>
+            <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${getRoleBadgeStyle(user?.role)}`}>
+              {user?.role}
+            </span>
           </div>
           
-          <div className="flex items-center gap-2 text-sm font-medium border-l pl-4 border-gray-200">
+          <div className="flex items-center gap-2 text-sm font-medium border-l pl-3 sm:pl-4 border-gray-200">
             {rejectedCommands.length > 0 && (
               <button 
                 className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-full border border-red-200 cursor-pointer transition-colors" 
@@ -149,54 +214,58 @@ function AppContent({
                 title="View rejected sync issues"
               >
                 <AlertCircle size={13} />
-                <span className="text-xs font-bold">{rejectedCommands.length} Issue{rejectedCommands.length === 1 ? '' : 's'}</span>
+                <span className="text-xs font-bold">{rejectedCommands.length}</span>
               </button>
             )}
 
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 rounded-full border border-gray-200">
+            <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-gray-100 rounded-full border border-gray-200">
               {isConnected ? (
                 pendingCommands > 0 ? (
                   <>
                     <RefreshCw size={13} className="text-blue-500 animate-spin" />
-                    <span className="text-xs font-bold text-gray-700">Syncing ({pendingCommands})</span>
+                    <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.syncing')} ({pendingCommands})</span>
                   </>
                 ) : (
                   <>
                     <Cloud size={13} className="text-emerald-500" />
-                    <span className="text-xs font-bold text-gray-700">Online</span>
+                    <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.online')}</span>
                   </>
                 )
               ) : (
                 <>
                   <CloudOff size={13} className="text-red-500" />
-                  <span className="text-xs font-bold text-gray-700">Offline {pendingCommands > 0 && `(${pendingCommands})`}</span>
+                  <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.offline')} {pendingCommands > 0 && `(${pendingCommands})`}</span>
                 </>
               )}
             </div>
             
             <button 
               onClick={handleLogout} 
-              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors" 
-              title="Sign Out"
+              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer" 
+              title={t('auth.signOut')}
             >
-              <LogOut size={18} />
+              <LogOut size={16} />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 w-full bg-gray-50 h-[calc(100vh-61px)] overflow-hidden">
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-h-0 bg-gray-50 overflow-y-auto">
         <Routes>
           <Route path="/" element={
             isKitchenUser ? (
               <Navigate to="/kitchen" replace />
+            ) : isCashierUser ? (
+              <Navigate to="/cashier" replace />
             ) : (
-              <div className="p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
-                {activeTableId && activeTable ? (
+              <div className="p-4 sm:p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
+                {activeTable ? (
                   <TableDetail 
                     table={activeTable} 
-                    order={activeOrder || null}
+                    order={activeOrder} 
                     menu={menu}
+                    currency={restaurant?.currency || 'USD'}
                     onBack={() => setActiveTableId(null)} 
                   />
                 ) : (
@@ -211,14 +280,25 @@ function AppContent({
           } />
 
           <Route path="/kitchen" element={
-            <div className="p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
+            <div className="p-4 sm:p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
               <KitchenDisplay orders={orders} />
+            </div>
+          } />
+
+          <Route path="/cashier" element={
+            <div className="p-4 sm:p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
+              <CashierDisplay 
+                tables={tables} 
+                orders={orders} 
+                restaurantName={restaurant?.name || 'RestaurantOS'}
+                currency={restaurant?.currency || 'USD'} 
+              />
             </div>
           } />
           
           <Route path="/pair" element={<PairingScreen onLogin={handleLogin} />} />
           <Route path="/hub" element={
-            <div className="p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
+            <div className="p-4 sm:p-6 max-w-7xl mx-auto w-full h-full overflow-y-auto">
               <LocalHubStatus authToken={authToken || undefined} />
             </div>
           } />
@@ -242,14 +322,68 @@ function AppContent({
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      {/* Role-Based Bottom Navigation for Mobile */}
+      <footer className="md:hidden bg-white border-t border-gray-200 px-3 py-2 flex items-center justify-around z-20 shadow-xs">
+        {(isOwnerOrManager || isWaiterUser) && (
+          <Link
+            to="/"
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all ${
+              location.pathname === '/' ? 'text-blue-600 font-bold' : 'text-gray-500'
+            }`}
+          >
+            <UtensilsCrossed size={18} />
+            <span className="text-[10px]">{t('nav.tables')}</span>
+          </Link>
+        )}
+
+        {(isOwnerOrManager || isKitchenUser) && (
+          <Link
+            to="/kitchen"
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all ${
+              location.pathname === '/kitchen' ? 'text-orange-600 font-bold' : 'text-gray-500'
+            }`}
+          >
+            <Flame size={18} />
+            <span className="text-[10px]">{t('nav.kitchen')}</span>
+          </Link>
+        )}
+
+        {(isOwnerOrManager || isCashierUser) && (
+          <Link
+            to="/cashier"
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all ${
+              location.pathname === '/cashier' ? 'text-teal-600 font-bold' : 'text-gray-500'
+            }`}
+          >
+            <Receipt size={18} />
+            <span className="text-[10px]">{t('nav.cashier')}</span>
+          </Link>
+        )}
+
+        {isOwnerOrManager && (
+          <Link
+            to="/admin"
+            className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all ${
+              location.pathname.startsWith('/admin') ? 'text-blue-600 font-bold' : 'text-gray-500'
+            }`}
+          >
+            <Settings size={18} />
+            <span className="text-[10px]">{t('nav.admin')}</span>
+          </Link>
+        )}
+      </footer>
     </div>
   );
 }
 
-function App() {
+export function App() {
   const [appState, setAppState] = useState<AppState>('LOADING');
-  const [authToken, setAuthToken] = useState<string | null>(localStorage.getItem('restaurantos_auth_token'));
   const [user, setUser] = useState<any>(null);
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    return localStorage.getItem('restaurantos_auth_token');
+  });
+  const [restaurant, setRestaurant] = useState<any>(null);
 
   const [tables, setTables] = useState<Table[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
@@ -300,6 +434,9 @@ function App() {
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
+          if (data.restaurant) {
+            setRestaurant(data.restaurant);
+          }
           setAppState('APP');
           initApp(token);
           return;
@@ -310,16 +447,29 @@ function App() {
         }
       }
 
-      // Check setup
-      const setupRes = await fetch('/api/auth/setup-status');
+      // Check setup status from authoritative API
+      const setupRes = await fetch('/api/auth/status');
       const setupData = await setupRes.json();
-      if (!setupData.isInitialized) {
+      if (setupData.restaurant) {
+        setRestaurant(setupData.restaurant);
+      }
+      if (!setupData.configured && !setupData.isInitialized) {
         setAppState('SETUP');
       } else {
         setAppState('LOGIN');
       }
     } catch (err) {
       console.error('Failed to check status', err);
+      // Fallback check to setup-status
+      try {
+        const fallbackRes = await fetch('/api/auth/setup-status');
+        const fallbackData = await fallbackRes.json();
+        if (!fallbackData.isInitialized && !fallbackData.configured) {
+          setAppState('SETUP');
+          return;
+        }
+      } catch (_) {}
+      setAppState('LOGIN');
     }
   };
 
@@ -334,6 +484,9 @@ function App() {
         setTables(data.tables);
         setMenu(data.menu);
         setOrders(data.orders);
+        if (data.restaurant) {
+          setRestaurant(data.restaurant);
+        }
       }
 
       connectSocket(token);
@@ -351,6 +504,7 @@ function App() {
             latestTables = res.state.tables;
             latestOrders = res.state.orders;
             if (res.state.menu) setMenu(res.state.menu);
+            if (res.state.restaurant) setRestaurant(res.state.restaurant);
           }
           
           try {
@@ -381,7 +535,7 @@ function App() {
         handleLogout();
       });
       
-      socket.on('STATE_UPDATE', (data: { tables: Table[], orders: Order[], menu?: MenuItem[], stateVersion?: number }) => {
+      socket.on('STATE_UPDATE', (data: { tables: Table[], orders: Order[], menu?: MenuItem[], stateVersion?: number, restaurant?: any }) => {
         if (data.stateVersion !== undefined) {
           stateVersionRef.current = data.stateVersion;
         }
@@ -389,6 +543,9 @@ function App() {
         setOrders(data.orders);
         if (data.menu) {
           setMenu(data.menu);
+        }
+        if (data.restaurant) {
+          setRestaurant(data.restaurant);
         }
       });
     } catch (err) {
@@ -416,38 +573,49 @@ function App() {
     socket.off('connect');
     socket.off('disconnect');
     socket.off('STATE_UPDATE');
-    setAppState('LOGIN');
+    checkStatus(null);
   };
 
   if (appState === 'LOADING') {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center font-bold text-gray-500">Loading RestaurantOS...</div>;
   }
 
   if (appState === 'SETUP') {
-    return <SetupScreen onComplete={() => checkStatus(null)} />;
+    return (
+      <I18nProvider restaurant={restaurant} initialLanguage={restaurant?.language || 'en'}>
+        <SetupScreen onComplete={(token?: string) => { if (token) handleLogin(token); else checkStatus(null); }} />
+      </I18nProvider>
+    );
   }
 
   if (appState === 'LOGIN') {
-    return <LoginScreen onLogin={handleLogin} />;
+    return (
+      <I18nProvider restaurant={restaurant} initialLanguage={restaurant?.language || 'en'}>
+        <LoginScreen onLogin={handleLogin} onReset={() => checkStatus(null)} />
+      </I18nProvider>
+    );
   }
 
   return (
-    <BrowserRouter>
-      <AppContent
-        user={user}
-        authToken={authToken}
-        tables={tables}
-        orders={orders}
-        menu={menu}
-        activeTableId={activeTableId}
-        setActiveTableId={setActiveTableId}
-        isConnected={isConnected}
-        pendingCommands={pendingCommands}
-        rejectedCommands={rejectedCommands}
-        handleLogout={handleLogout}
-        handleLogin={handleLogin}
-      />
-    </BrowserRouter>
+    <I18nProvider restaurant={restaurant} initialLanguage={restaurant?.language || 'en'}>
+      <BrowserRouter>
+        <AppContent
+          user={user}
+          authToken={authToken}
+          tables={tables}
+          orders={orders}
+          menu={menu}
+          restaurant={restaurant}
+          activeTableId={activeTableId}
+          setActiveTableId={setActiveTableId}
+          isConnected={isConnected}
+          pendingCommands={pendingCommands}
+          rejectedCommands={rejectedCommands}
+          handleLogout={handleLogout}
+          handleLogin={handleLogin}
+        />
+      </BrowserRouter>
+    </I18nProvider>
   );
 }
 

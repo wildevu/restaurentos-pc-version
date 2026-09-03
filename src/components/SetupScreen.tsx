@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { z } from 'zod';
-import { UtensilsCrossed, ShieldCheck, LayoutGrid, DollarSign, Clock, Store } from 'lucide-react';
+import { UtensilsCrossed, ShieldCheck, LayoutGrid, DollarSign, Clock, Store, Eye, EyeOff, Sparkles, Globe } from 'lucide-react';
 
 const setupSchema = z.object({
   restaurantName: z.string().min(2, 'Restaurant name must be at least 2 characters'),
+  language: z.enum(['en', 'fr']).default('en'),
   currency: z.string().length(3, 'Currency must be a 3-letter code (e.g. USD, EUR)').default('USD'),
-  timezone: z.string().default('UTC'),
+  timezone: z.string().min(1, 'Timezone is required').default('UTC'),
   logo: z.string().optional(),
   tableCount: z.number().int().min(1).max(100).default(10),
   sections: z.array(z.string()).min(1).default(['Main Dining', 'Patio', 'Bar']),
@@ -14,9 +15,10 @@ const setupSchema = z.object({
   ownerPassword: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
-export function SetupScreen({ onComplete }: { onComplete: () => void }) {
+export function SetupScreen({ onComplete }: { onComplete: (token?: string) => void }) {
   const [formData, setFormData] = useState({
     restaurantName: '',
+    language: 'en' as 'en' | 'fr',
     currency: 'USD',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     logo: '',
@@ -26,6 +28,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
     ownerUsername: '',
     ownerPassword: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [newSectionInput, setNewSectionInput] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -84,7 +87,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Setup failed');
       
-      onComplete();
+      onComplete(data.token);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -94,15 +97,18 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
 
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-2xl">
+      <div className="sm:mx-auto sm:w-full sm:max-w-2xl text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-xs font-semibold uppercase tracking-wider mb-3">
+          <Sparkles className="w-3.5 h-3.5" /> Initial First-Run Setup
+        </div>
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center text-neutral-950 font-bold shadow-lg shadow-amber-500/20">
+          <div className="w-11 h-11 rounded-xl bg-amber-500 flex items-center justify-center text-neutral-950 font-bold shadow-lg shadow-amber-500/20">
             <UtensilsCrossed className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">RestaurantOS</h1>
+          <h1 className="text-3xl font-black tracking-tight text-white">RestaurantOS</h1>
         </div>
-        <p className="mt-2 text-center text-sm text-neutral-400">
-          Local-First Authoritative Hub &bull; Initial Restaurant Setup
+        <p className="mt-2 text-sm text-neutral-400 max-w-md mx-auto">
+          Welcome to your local-first authoritative restaurant hub. Complete this initial one-time configuration to initialize your restaurant and primary Owner account.
         </p>
       </div>
 
@@ -110,7 +116,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
         <div className="bg-neutral-800/90 border border-neutral-700/80 backdrop-blur-sm py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-sm">
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-sm font-medium">
                 {error}
               </div>
             )}
@@ -135,14 +141,29 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
                   />
                 </div>
 
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5 text-neutral-400" /> Application Language *
+                  </label>
+                  <select
+                    value={formData.language}
+                    onChange={e => setFormData({ ...formData, language: e.target.value as 'en' | 'fr' })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 font-medium"
+                  >
+                    <option value="en">English (en)</option>
+                    <option value="fr">Français (fr)</option>
+                  </select>
+                  <p className="text-[11px] text-neutral-400 mt-1">Authoritative language used across all Waiter, Kitchen, Cashier, and Admin terminals.</p>
+                </div>
+
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5 text-neutral-400" /> Currency (3-Letter Code)
+                    <DollarSign className="w-3.5 h-3.5 text-neutral-400" /> Currency (3-Letter Code) *
                   </label>
                   <input
                     type="text"
                     required
-                    maxLength={3}
+                    maxLength={4}
                     placeholder="USD"
                     value={formData.currency}
                     onChange={e => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
@@ -152,7 +173,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
 
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-neutral-400" /> Timezone
+                    <Clock className="w-3.5 h-3.5 text-neutral-400" /> Timezone *
                   </label>
                   <input
                     type="text"
@@ -244,12 +265,12 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
                       placeholder="Add section (e.g. Upstairs, Terrace)"
                       value={newSectionInput}
                       onChange={e => setNewSectionInput(e.target.value)}
-                      className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                      className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
                     />
                     <button
                       type="button"
                       onClick={handleAddSection}
-                      className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-xs font-medium text-white transition-colors"
+                      className="px-3.5 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-xs font-medium text-white transition-colors"
                     >
                       Add
                     </button>
@@ -262,7 +283,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
             <div>
               <div className="flex items-center gap-2 border-b border-neutral-700 pb-2.5 mb-4">
                 <ShieldCheck className="w-5 h-5 text-amber-400" />
-                <h2 className="text-base font-semibold text-white">3. Owner Account Setup</h2>
+                <h2 className="text-base font-semibold text-white">3. Primary Owner Account</h2>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -279,7 +300,7 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">Username *</label>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1">Owner Username *</label>
                   <input
                     type="text"
                     required
@@ -291,15 +312,27 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">Password (min 6 chars) *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={formData.ownerPassword}
-                    onChange={e => setFormData({ ...formData, ownerPassword: e.target.value })}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
-                  />
+                  <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center justify-between">
+                    <span>Owner Password *</span>
+                    <span className="text-[11px] text-neutral-400">Min 6 characters</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      placeholder="••••••••"
+                      value={formData.ownerPassword}
+                      onChange={e => setFormData({ ...formData, ownerPassword: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -308,9 +341,9 @@ export function SetupScreen({ onComplete }: { onComplete: () => void }) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center py-3 px-4 rounded-xl font-semibold text-sm bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                className="w-full flex items-center justify-center py-3.5 px-4 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all cursor-pointer"
               >
-                {loading ? 'Configuring RestaurantOS Hub...' : 'Complete Hub Setup & Launch'}
+                {loading ? 'Initializing RestaurantOS Hub...' : 'Complete Hub Setup & Launch'}
               </button>
             </div>
           </form>

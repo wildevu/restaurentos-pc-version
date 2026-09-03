@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { CommandPayloadSchema } from './src/schemas';
 import { processCommand, getFrontendStateTx } from './src/db/queries';
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = 3000;
 
 function getLocalLanIps(): string[] {
   const interfaces = os.networkInterfaces();
@@ -93,14 +93,15 @@ async function startServer() {
     process.exit(1);
   }
 
-  if (config.SEED_DB === 'true' || (config.NODE_ENV !== 'production' && !fs.existsSync(DB_PATH))) {
+  if (config.SEED_DB === 'true') {
     await seedDb();
   }
 
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
-    cors: { origin: '*' }
+    cors: { origin: '*' },
+    maxHttpBufferSize: 5e7 // 50MB buffer limit
   });
   app.set('io', io);
 
@@ -140,7 +141,22 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json());
+  // Body parsers with generous limits for image uploads, database backups, and batch orders
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // Global Payload & JSON Parsing Error Handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (err.type === 'entity.too.large' || err.status === 413) {
+      logger.warn('Payload too large error intercepted', { path: req.path, ip: req.ip });
+      return res.status(413).json({ error: 'Request payload is too large (maximum 50MB supported).' });
+    }
+    if (err instanceof SyntaxError && 'body' in err) {
+      logger.warn('Malformed JSON body intercepted', { path: req.path });
+      return res.status(400).json({ error: 'Malformed JSON payload.' });
+    }
+    next(err);
+  });
 
   // Health / Liveness Check
   app.get(['/health', '/api/health'], (req, res) => {
@@ -340,9 +356,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Look for dist folder in current working directory or app directory
-    const distPath = fs.existsSync(path.join(process.cwd(), 'dist'))
-      ? path.join(process.cwd(), 'dist')
-      : path.join(__dirname, 'dist');
+    const distPath = path.join(process.cwd(), 'dist');
       
     app.use(express.static(distPath));
     app.get('*all', (req, res) => {

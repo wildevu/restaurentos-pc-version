@@ -1,6 +1,6 @@
 {
   "name": "pc version restaurantos",
-  "description": "Imported from GitHub: wildevu/restaurantos",
+  "description": "Local-first restaurant operating system with role-based experience, KDS, Cashier lookup, Waiter mobile ordering, and real-time offline sync.",
   "requestFramePermissions": [
     "camera"
   ],

@@ -50,6 +50,7 @@ export interface Order {
   tableLabel?: string | null;
   tableSection?: string | null;
   status: 'OPEN' | 'CLOSED';
+  currencySnapshot?: string | null;
   openedByUserId?: string | null;
   openedByUserName?: string | null;
   closedByUserId?: string | null;
@@ -62,6 +63,7 @@ export interface Order {
 export interface Restaurant {
   id: string;
   name: string;
+  language?: string;
   currency: string;
   timezone: string;
   logo?: string | null;

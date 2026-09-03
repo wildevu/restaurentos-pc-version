@@ -64,6 +64,13 @@
       "when": 1787950000000,
       "tag": "0008_production_indexes_and_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787960000000,
+      "tag": "0009_language_and_currency_snapshot",
+      "breakpoints": true
     }
   ]
 }

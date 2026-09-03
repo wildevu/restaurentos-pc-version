@@ -183,10 +183,12 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
                 </td>
                 <td className="px-6 py-4 text-gray-600">{member.username}</td>
                 <td className="px-6 py-4">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold
                     ${member.role === 'OWNER' ? 'bg-purple-100 text-purple-800' :
                       member.role === 'MANAGER' ? 'bg-indigo-100 text-indigo-800' :
-                      'bg-gray-100 text-gray-800'}`}>
+                      member.role === 'CASHIER' ? 'bg-teal-100 text-teal-800' :
+                      member.role === 'KITCHEN' ? 'bg-amber-100 text-amber-800' :
+                      'bg-blue-100 text-blue-800'}`}>
                     <Shield size={12} />
                     {member.role}
                   </span>
@@ -333,6 +335,7 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
                   {currentUser.role === 'OWNER' && <option value="MANAGER">MANAGER</option>}
                   <option value="WAITER">WAITER</option>
                   <option value="KITCHEN">KITCHEN</option>
+                  <option value="CASHIER">CASHIER (Read-Only Operational)</option>
                 </select>
               </div>
 

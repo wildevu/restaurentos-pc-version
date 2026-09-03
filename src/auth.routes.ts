@@ -1,6 +1,20 @@
 import { Router } from 'express';
 import { db } from './db/index';
-import { restaurants, users, sessions, devices, auditEvents, pairingTokens, tables, menuCategories, hubState } from './db/schema';
+import { 
+  restaurants, 
+  users, 
+  sessions, 
+  devices, 
+  auditEvents, 
+  pairingTokens, 
+  tables, 
+  menuCategories, 
+  menuItems,
+  orders,
+  orderItems,
+  idempotencyKeys,
+  hubState 
+} from './db/schema';
 import { eq, and, sql, gt } from 'drizzle-orm';
 import { hashPassword, verifyPassword, generateToken, hashToken } from './crypto';
 import { SetupPayloadSchema, LoginPayloadSchema } from './schemas';
@@ -11,16 +25,101 @@ import { authenticate } from './auth.middleware';
 
 export const authRouter = Router();
 
-// In-memory rate limiting logic duplicated here or we can extract it.
-// Let's just implement it locally for the login route.
+// In-memory rate limiting logic
 const loginAttempts = new Map<string, { count: number, resetAt: number }>();
 const pairAttempts = new Map<string, { count: number, resetAt: number }>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
-authRouter.get('/setup-status', async (req, res) => {
-  const rs = await db.select().from(restaurants).limit(1);
-  res.json({ isInitialized: rs.length > 0 });
+// Auth Status check - returns configured / unconfigured state
+authRouter.get(['/status', '/setup-status'], async (req, res) => {
+  try {
+    const rs = await db.select().from(restaurants).limit(1);
+    const configured = rs.length > 0;
+    res.json({
+      configured,
+      isInitialized: configured,
+      status: configured ? 'CONFIGURED' : 'UNCONFIGURED',
+      restaurantName: configured ? rs[0].name : null,
+      language: configured ? (rs[0].language || 'en') : 'en',
+      currency: configured ? rs[0].currency : null,
+      timezone: configured ? rs[0].timezone : null,
+    });
+  } catch (err: any) {
+    logger.error('Failed to get auth status', { error: err.message });
+    res.status(500).json({
+      error: err.message,
+      configured: false,
+      isInitialized: false,
+      status: 'UNCONFIGURED'
+    });
+  }
+});
+
+// DEVELOPMENT ONLY: Reset database to unconfigured state
+authRouter.post('/dev-reset-database', async (req: any, res: any) => {
+  // STRICT GUARD: Must only be accessible in development environments
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Database reset endpoint is strictly forbidden in production mode.' });
+  }
+
+  const { confirmation } = req.body || {};
+  if (confirmation !== 'RESET_LOCAL_DEVELOPMENT_DATABASE') {
+    return res.status(400).json({ 
+      error: 'Explicit confirmation required. Send { confirmation: "RESET_LOCAL_DEVELOPMENT_DATABASE" }' 
+    });
+  }
+
+  try {
+    logger.warn('[DEV ONLY] Resetting local development database to unconfigured state...');
+
+    // Disconnect and invalidate all connected socket sessions
+    const io = req.app?.get('io');
+    if (io) {
+      io.sockets.sockets.forEach((s: any) => {
+        s.emit('AUTH_REVOKED', { reason: 'Development database reset to unconfigured state' });
+        s.disconnect(true);
+      });
+    }
+
+    // Reset rate-limit maps
+    loginAttempts.clear();
+    pairAttempts.clear();
+
+    // Safely delete records in reverse foreign-key order
+    await db.transaction(async (tx) => {
+      await tx.delete(sessions);
+      await tx.delete(pairingTokens);
+      await tx.delete(idempotencyKeys);
+      await tx.delete(auditEvents);
+      await tx.delete(orderItems);
+      await tx.delete(orders);
+      await tx.delete(tables);
+      await tx.delete(menuItems);
+      await tx.delete(menuCategories);
+      await tx.delete(devices);
+      await tx.delete(users);
+      await tx.delete(hubState);
+      await tx.delete(restaurants);
+    });
+
+    try {
+      await db.run(sql.raw('PRAGMA wal_checkpoint(TRUNCATE);'));
+      await db.run(sql.raw('VACUUM;'));
+    } catch {}
+
+    logger.info('[DEV ONLY] Local development database reset successfully. Hub is now UNCONFIGURED.');
+    res.json({
+      success: true,
+      configured: false,
+      isInitialized: false,
+      status: 'UNCONFIGURED',
+      message: 'Local development database successfully reset to unconfigured state.'
+    });
+  } catch (err: any) {
+    logger.error('[DEV ONLY] Failed to reset development database', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 authRouter.post('/setup', async (req, res) => {
@@ -44,6 +143,7 @@ authRouter.post('/setup', async (req, res) => {
       await tx.insert(restaurants).values({
         id: restaurantId,
         name: payload.restaurantName.trim(),
+        language: payload.language || 'en',
         currency: payload.currency.toUpperCase(),
         timezone: payload.timezone,
         logo: payload.logo || null,
@@ -155,6 +255,7 @@ authRouter.post('/setup', async (req, res) => {
       restaurant: {
         id: restaurantId,
         name: payload.restaurantName,
+        language: payload.language || 'en',
         currency: payload.currency,
         timezone: payload.timezone,
         logo: payload.logo || null,
@@ -405,6 +506,7 @@ authRouter.get('/me', authenticate, async (req, res) => {
     restaurant: rs.length > 0 ? {
       id: rs[0].id,
       name: rs[0].name,
+      language: rs[0].language || 'en',
       currency: rs[0].currency,
       timezone: rs[0].timezone,
       logo: rs[0].logo || null,

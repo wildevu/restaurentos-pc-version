@@ -62,6 +62,7 @@ adminRouter.put('/restaurant', async (req: any, res) => {
     }
     const schema = z.object({
       name: z.string().min(1),
+      language: z.enum(['en', 'fr']).optional().default('en'),
       currency: z.string().min(1),
       timezone: z.string().min(1),
       logo: z.string().nullable().optional(),
@@ -77,11 +78,16 @@ adminRouter.put('/restaurant', async (req: any, res) => {
       restaurantId: req.user.restaurantId,
       actorUserId: req.user.id,
       action: 'RESTAURANT_UPDATED',
-      metadata: JSON.stringify({ name: parsed.name, currency: parsed.currency, timezone: parsed.timezone }),
+      metadata: JSON.stringify({ name: parsed.name, language: parsed.language, currency: parsed.currency, timezone: parsed.timezone }),
       createdAt: new Date(),
     });
+
+    const io = req.app?.get('io');
+    if (io) {
+      await emitStateUpdate(io, req.user.restaurantId);
+    }
     
-    res.json({ success: true });
+    res.json({ success: true, restaurant: parsed });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -110,7 +116,7 @@ adminRouter.post('/staff', async (req: any, res) => {
       name: z.string().min(1),
       username: z.string().min(1),
       password: z.string().min(6),
-      role: z.enum(['MANAGER', 'WAITER', 'KITCHEN']) // Cannot create OWNER
+      role: z.enum(['MANAGER', 'WAITER', 'KITCHEN', 'CASHIER']) // Cannot create OWNER
     });
     const parsed = schema.parse(req.body);
     
@@ -159,7 +165,7 @@ adminRouter.put('/staff/:id', async (req: any, res) => {
     const targetUserId = req.params.id;
     const schema = z.object({
       name: z.string().min(1),
-      role: z.enum(['MANAGER', 'WAITER', 'KITCHEN']),
+      role: z.enum(['MANAGER', 'WAITER', 'KITCHEN', 'CASHIER']),
       isActive: z.boolean(),
       password: z.string().optional()
     });
@@ -545,6 +551,25 @@ adminRouter.post('/devices/:id/revoke', async (req: any, res) => {
   }
 });
 
+adminRouter.get('/menu', async (req: any, res) => {
+  try {
+    const includeArchived = req.query.includeArchived === 'true';
+    const categories = await (includeArchived 
+      ? db.select().from(menuCategories).orderBy(asc(menuCategories.displayOrder))
+      : db.select().from(menuCategories).where(isNull(menuCategories.archivedAt)).orderBy(asc(menuCategories.displayOrder))
+    );
+    
+    const items = await (includeArchived
+      ? db.select().from(menuItems).orderBy(asc(menuItems.displayOrder))
+      : db.select().from(menuItems).where(isNull(menuItems.archivedAt)).orderBy(asc(menuItems.displayOrder))
+    );
+    
+    res.json({ categories, items });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 adminRouter.post('/menu/categories', async (req: any, res) => {
   try {
     const { name, displayOrder } = req.body;
@@ -575,29 +600,180 @@ adminRouter.post('/menu/categories', async (req: any, res) => {
   }
 });
 
+adminRouter.delete('/menu/categories/:id', async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const actionOnItems = req.query.actionOnItems || req.body?.actionOnItems || 'ARCHIVE_ITEMS';
+    const targetCategoryId = req.query.targetCategoryId || req.body?.targetCategoryId;
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      // Find active and all items in this category
+      const allCatItems = await tx.select().from(menuItems).where(eq(menuItems.categoryId, id));
+      const activeCatItems = allCatItems.filter((i: any) => !i.archivedAt);
+
+      if (allCatItems.length > 0) {
+        if (actionOnItems === 'MOVE_ITEMS' && targetCategoryId) {
+          // Reassign all items to the target category
+          await tx.update(menuItems)
+            .set({ categoryId: targetCategoryId, updatedAt: now })
+            .where(eq(menuItems.categoryId, id));
+
+          await tx.insert(auditEvents).values({
+            id: uuidv4(),
+            restaurantId: req.user.restaurantId,
+            actorUserId: req.user.id,
+            action: 'MENU_ITEMS_REASSIGNED',
+            entityType: 'MENU_ITEM',
+            entityId: targetCategoryId,
+            metadata: JSON.stringify({ 
+              sourceCategoryId: id, 
+              targetCategoryId, 
+              reassignedItemCount: allCatItems.length,
+              itemIds: allCatItems.map((i: any) => i.id)
+            }),
+            createdAt: now,
+          });
+        } else {
+          // Process deletion for each item in the category
+          for (const item of allCatItems) {
+            const orderRef = await tx.select({ count: sql`count(*)` }).from(orderItems).where(eq(orderItems.menuItemId, item.id)).get();
+            if (!orderRef || Number(orderRef.count) === 0) {
+              await tx.delete(menuItems).where(eq(menuItems.id, item.id));
+            } else {
+              await tx.update(menuItems)
+                .set({ archivedAt: now, isAvailable: false, updatedAt: now })
+                .where(eq(menuItems.id, item.id));
+            }
+          }
+
+          await tx.insert(auditEvents).values({
+            id: uuidv4(),
+            restaurantId: req.user.restaurantId,
+            actorUserId: req.user.id,
+            action: 'MENU_ITEMS_BULK_DELETED',
+            entityType: 'MENU_ITEM',
+            entityId: id,
+            metadata: JSON.stringify({ 
+              categoryId: id, 
+              itemCount: allCatItems.length,
+              itemIds: allCatItems.map((i: any) => i.id)
+            }),
+            createdAt: now,
+          });
+        }
+      }
+
+      // Check if any items still reference this category
+      const remainingItems = await tx.select().from(menuItems).where(eq(menuItems.categoryId, id));
+      if (remainingItems.length === 0) {
+        // Complete hard delete from menuCategories
+        await tx.delete(menuCategories).where(eq(menuCategories.id, id));
+      } else {
+        // Soft delete category if historical references exist
+        await tx.update(menuCategories).set({ archivedAt: now }).where(eq(menuCategories.id, id));
+      }
+
+      await tx.insert(auditEvents).values({
+        id: uuidv4(),
+        restaurantId: req.user.restaurantId,
+        actorUserId: req.user.id,
+        action: 'MENU_CATEGORY_DELETED',
+        entityType: 'MENU_CATEGORY',
+        entityId: id,
+        metadata: JSON.stringify({ actionOnItems, targetCategoryId }),
+        createdAt: now,
+      });
+    });
+
+    await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
+    res.json({ success: true, deleted: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 adminRouter.put('/menu/categories/:id', async (req: any, res) => {
   try {
-    const { name, displayOrder, archive } = req.body;
+    const { name, displayOrder, archive, actionOnItems, targetCategoryId } = req.body;
     const { id } = req.params;
+    const now = new Date();
     
-    const updateData: any = {};
-    if (name !== undefined) updateData.name = name;
-    if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
-    if (archive !== undefined) updateData.archivedAt = archive ? new Date() : null;
+    await db.transaction(async (tx) => {
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
+      
+      if (archive === true) {
+        updateData.archivedAt = now;
+        
+        // Find active items in this category
+        const activeCatItems = await tx.select().from(menuItems).where(
+          and(eq(menuItems.categoryId, id), sql`archived_at IS NULL`)
+        );
 
-    if (Object.keys(updateData).length > 0) {
-      await db.update(menuCategories).set(updateData).where(eq(menuCategories.id, id));
-    }
-    
-    await db.insert(auditEvents).values({
-      id: uuidv4(),
-      restaurantId: req.user.restaurantId,
-      actorUserId: req.user.id,
-      action: archive ? 'MENU_CATEGORY_ARCHIVED' : 'MENU_CATEGORY_UPDATED',
-      entityType: 'MENU_CATEGORY',
-      entityId: id,
-      metadata: JSON.stringify(updateData),
-      createdAt: new Date(),
+        if (activeCatItems.length > 0) {
+          if (actionOnItems === 'MOVE_ITEMS' && targetCategoryId) {
+            // Reassign active items to target category
+            await tx.update(menuItems)
+              .set({ categoryId: targetCategoryId, updatedAt: now })
+              .where(and(eq(menuItems.categoryId, id), sql`archived_at IS NULL`));
+
+            await tx.insert(auditEvents).values({
+              id: uuidv4(),
+              restaurantId: req.user.restaurantId,
+              actorUserId: req.user.id,
+              action: 'MENU_ITEMS_REASSIGNED',
+              entityType: 'MENU_ITEM',
+              entityId: targetCategoryId,
+              metadata: JSON.stringify({ 
+                sourceCategoryId: id, 
+                targetCategoryId, 
+                reassignedItemCount: activeCatItems.length,
+                itemIds: activeCatItems.map(i => i.id)
+              }),
+              createdAt: now,
+            });
+          } else {
+            // Bulk archive active items in this category
+            await tx.update(menuItems)
+              .set({ archivedAt: now, updatedAt: now })
+              .where(and(eq(menuItems.categoryId, id), sql`archived_at IS NULL`));
+
+            await tx.insert(auditEvents).values({
+              id: uuidv4(),
+              restaurantId: req.user.restaurantId,
+              actorUserId: req.user.id,
+              action: 'MENU_ITEMS_BULK_ARCHIVED',
+              entityType: 'MENU_ITEM',
+              entityId: id,
+              metadata: JSON.stringify({ 
+                categoryId: id, 
+                archivedItemCount: activeCatItems.length,
+                itemIds: activeCatItems.map(i => i.id)
+              }),
+              createdAt: now,
+            });
+          }
+        }
+      } else if (archive === false) {
+        updateData.archivedAt = null;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await tx.update(menuCategories).set(updateData).where(eq(menuCategories.id, id));
+      }
+      
+      await tx.insert(auditEvents).values({
+        id: uuidv4(),
+        restaurantId: req.user.restaurantId,
+        actorUserId: req.user.id,
+        action: archive ? 'MENU_CATEGORY_ARCHIVED' : (archive === false ? 'MENU_CATEGORY_RESTORED' : 'MENU_CATEGORY_UPDATED'),
+        entityType: 'MENU_CATEGORY',
+        entityId: id,
+        metadata: JSON.stringify({ updateData, actionOnItems, targetCategoryId }),
+        createdAt: now,
+      });
     });
 
     await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
@@ -680,6 +856,45 @@ adminRouter.put('/menu/items/:id', async (req: any, res) => {
 
     await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+adminRouter.delete('/menu/items/:id', async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const now = new Date();
+
+    const existingItem = await db.select().from(menuItems).where(eq(menuItems.id, id)).get();
+    if (!existingItem) {
+      return res.status(404).json({ error: 'Menu item not found' });
+    }
+
+    // Check if this item is referenced in historical order receipts
+    const orderRef = await db.select({ count: sql`count(*)` }).from(orderItems).where(eq(orderItems.menuItemId, id)).get();
+    
+    if (!orderRef || Number(orderRef.count) === 0) {
+      // Completely hard-delete the item from database
+      await db.delete(menuItems).where(eq(menuItems.id, id));
+    } else {
+      // Historical orders reference this item - archive & deactivate
+      await db.update(menuItems).set({ archivedAt: now, isAvailable: false, updatedAt: now }).where(eq(menuItems.id, id));
+    }
+
+    await db.insert(auditEvents).values({
+      id: uuidv4(),
+      restaurantId: req.user.restaurantId,
+      actorUserId: req.user.id,
+      action: 'MENU_ITEM_DELETED',
+      entityType: 'MENU_ITEM',
+      entityId: id,
+      metadata: JSON.stringify({ id, name: existingItem.name }),
+      createdAt: now,
+    });
+
+    await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
+    res.json({ success: true, deleted: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

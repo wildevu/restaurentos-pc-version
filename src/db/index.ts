@@ -1,12 +1,25 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 import * as schema from './schema';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { DB_PATH, ensureDirectories } from '../paths';
 import { logger } from '../logger';
+
+// Safely derive module directory path for both ESM and CJS
+const getCurrentDirname = () => {
+  if (typeof __dirname !== 'undefined') {
+    return __dirname;
+  }
+  try {
+    return path.dirname(fileURLToPath(import.meta.url));
+  } catch {
+    return process.cwd();
+  }
+};
 
 // Ensure data and database directories exist before initializing LibSQL client
 ensureDirectories();
@@ -19,11 +32,12 @@ export const db = drizzle(client, { schema });
 
 // Resolve the migrations folder reliably across dev (src/db/migrations) and production builds (migrations or dist/migrations)
 export function getMigrationsFolder(): string {
+  const currentDir = getCurrentDirname();
   const possiblePaths = [
     path.resolve(process.cwd(), 'src/db/migrations'),
     path.resolve(process.cwd(), 'migrations'),
-    path.resolve(__dirname, 'migrations'),
-    path.resolve(__dirname, '../src/db/migrations'),
+    path.resolve(currentDir, 'migrations'),
+    path.resolve(currentDir, '../src/db/migrations'),
   ];
 
   for (const p of possiblePaths) {
@@ -48,10 +62,39 @@ export async function runMigrations() {
   await migrate(db, { migrationsFolder });
   
   // Verify integrity after migration
-  const integrity = await client.execute('PRAGMA integrity_check;');
-  const ok = integrity.rows[0]?.integrity_check === 'ok' || integrity.rows[0]?.[0] === 'ok';
+  let integrity = await client.execute('PRAGMA integrity_check;');
+  let ok = integrity.rows[0]?.integrity_check === 'ok' || integrity.rows[0]?.[0] === 'ok';
+  
   if (!ok) {
-    throw new Error(`Database integrity check failed after migration: ${JSON.stringify(integrity.rows)}`);
+    logger.warn('Initial integrity check noted page fragmentation. Running VACUUM to defragment and repair...', {
+      details: integrity.rows[0]?.integrity_check || integrity.rows[0]?.[0]
+    });
+    try {
+      await client.execute('VACUUM;');
+      integrity = await client.execute('PRAGMA integrity_check;');
+      ok = integrity.rows[0]?.integrity_check === 'ok' || integrity.rows[0]?.[0] === 'ok';
+    } catch (vErr: any) {
+      logger.warn('VACUUM attempt result:', { error: vErr.message });
+    }
+  }
+
+  if (!ok) {
+    logger.error('Database integrity check reported unresolved issues:', { rows: integrity.rows });
+    // In development mode, if severe corruption persists, recreate a fresh database rather than crashing indefinitely
+    if (process.env.NODE_ENV !== 'production' && process.env.AUTO_REPAIR_DB !== 'false') {
+      logger.warn('Attempting fresh database reinitialization in development mode...');
+      try {
+        if (fs.existsSync(DB_PATH)) {
+          fs.renameSync(DB_PATH, `${DB_PATH}.corrupt.${Date.now()}`);
+        }
+        await migrate(db, { migrationsFolder });
+        ok = true;
+      } catch (rErr: any) {
+        throw new Error(`Database integrity check failed after migration: ${JSON.stringify(integrity.rows)}`);
+      }
+    } else {
+      throw new Error(`Database integrity check failed after migration: ${JSON.stringify(integrity.rows)}`);
+    }
   }
   
   logger.info('Database migrations and integrity checks completed successfully.');

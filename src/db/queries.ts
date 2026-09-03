@@ -1,5 +1,5 @@
 import { db } from './index';
-import { tables, menuCategories, menuItems, orders, orderItems, auditEvents, idempotencyKeys, hubState, users } from './schema';
+import { tables, menuCategories, menuItems, orders, orderItems, auditEvents, idempotencyKeys, hubState, users, restaurants } from './schema';
 import { eq, and, asc, sql, inArray, isNull } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
@@ -83,6 +83,7 @@ export async function getFrontendStateTx(tx: any, stateVersion?: number) {
         tableLabel: table?.label,
         tableSection: table?.section || 'Main Dining',
         status: o.status,
+        currencySnapshot: o.currencySnapshot || 'USD',
         openedByUserId: o.openedByUserId,
         openedByUserName: o.openedByUserId ? userMap.get(o.openedByUserId) || 'Staff' : null,
         createdAt: o.createdAt ? (o.createdAt instanceof Date ? o.createdAt.toISOString() : new Date(o.createdAt).toISOString()) : new Date().toISOString(),
@@ -102,7 +103,18 @@ export async function getFrontendStateTx(tx: any, stateVersion?: number) {
         description: i.description,
         isAvailable: i.isAvailable
       }))
-    }))
+    })),
+    restaurant: await (async () => {
+      const r = await tx.select().from(restaurants).get();
+      return r ? {
+        id: r.id,
+        name: r.name,
+        language: r.language || 'en',
+        currency: r.currency || 'USD',
+        timezone: r.timezone || 'UTC',
+        logo: r.logo || null
+      } : null;
+    })()
   };
 }
 
@@ -135,9 +147,21 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
     }
 
     // Role-based command access enforcement
+    if (dbUser.role === 'CASHIER') {
+      if (command.type !== 'CLOSE_TABLE') {
+        throw new CommandError('Cashiers are only permitted to perform operational table clearance / settlement (CLOSE_TABLE)', false);
+      }
+    }
+
     if (dbUser.role === 'KITCHEN') {
       if (command.type !== 'UPDATE_ITEM_KITCHEN_STATUS' && command.type !== 'BATCH_UPDATE_KITCHEN_STATUS') {
         throw new CommandError('Kitchen staff are only permitted to update kitchen preparation statuses', false);
+      }
+    }
+
+    if (dbUser.role === 'WAITER') {
+      if (command.type === 'UPDATE_ITEM_KITCHEN_STATUS' || command.type === 'BATCH_UPDATE_KITCHEN_STATUS') {
+        throw new CommandError('Waiters are not permitted to change kitchen preparation statuses', false);
       }
     }
     
@@ -178,11 +202,13 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         if (t.status !== 'EMPTY') throw new CommandError('Table is already active');
         
         await tx.update(tables).set({ status: 'ACTIVE', updatedAt: now }).where(eq(tables.id, tableId));
+        const rest = await tx.select().from(restaurants).get();
         const orderId = uuidv4();
         await tx.insert(orders).values({
           id: orderId,
           tableId,
           status: 'OPEN',
+          currencySnapshot: rest?.currency || 'USD',
           openedByUserId: user.id,
           createdAt: now,
           updatedAt: now

@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const SetupPayloadSchema = z.object({
   restaurantName: z.string().min(2, 'Restaurant name must be at least 2 characters'),
-  currency: z.string().length(3).default('USD'),
+  language: z.string().default('en'),
+  currency: z.string().min(1).default('USD'),
   timezone: z.string().default('UTC'),
   logo: z.string().optional(),
   tableCount: z.number().int().min(1).max(100).optional(),
@@ -28,12 +29,13 @@ export const AuthStateSchema = z.object({
     id: z.string(),
     name: z.string(),
     username: z.string(),
-    role: z.enum(['OWNER', 'MANAGER', 'WAITER', 'KITCHEN']),
+    role: z.enum(['OWNER', 'MANAGER', 'WAITER', 'KITCHEN', 'CASHIER']),
     restaurantId: z.string(),
   }).nullable(),
   restaurant: z.object({
     id: z.string(),
     name: z.string(),
+    language: z.string().optional(),
     currency: z.string(),
     timezone: z.string(),
     logo: z.string().nullable().optional(),

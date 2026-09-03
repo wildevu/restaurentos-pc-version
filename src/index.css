@@ -5,3 +5,26 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   background-color: #f9fafb;
 }
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #printable-receipt, #printable-receipt * {
+    visibility: visible !important;
+  }
+  #printable-receipt {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 8px !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    color: black !important;
+  }
+}
+
