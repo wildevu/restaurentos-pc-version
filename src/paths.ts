@@ -23,13 +23,11 @@ function resolveDataDir(): string {
 
 export const DATA_DIR = resolveDataDir();
 export const DB_DIR = path.join(DATA_DIR, 'data');
-export const DB_PATH = process.env.DB_PATH || (process.platform === 'win32' && !process.env.RESTAURANTOS_DATA_DIR && process.env.NODE_ENV === 'production'
-  ? path.join(DB_DIR, 'local_hub.db')
-  : path.resolve(DATA_DIR, 'local_hub.db'));
+export const DB_PATH = process.env.DB_PATH || path.join(DB_DIR, 'restaurantos.db');
 export const BACKUP_DIR = process.env.BACKUP_DIR || path.join(DATA_DIR, 'backups');
 export const LOG_DIR = process.env.LOG_DIR || path.join(DATA_DIR, 'logs');
 export const CONFIG_DIR = path.join(DATA_DIR, 'config');
-export const LOCK_FILE = path.join(DATA_DIR, 'local_hub.pid');
+export const LOCK_FILE = path.join(DATA_DIR, 'restaurantos.pid');
 
 export function ensureDirectories(): void {
   const dirs = [DATA_DIR, DB_DIR, BACKUP_DIR, LOG_DIR, CONFIG_DIR];

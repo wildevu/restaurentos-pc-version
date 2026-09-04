@@ -1,0 +1,26 @@
+# Dependency directories
+node_modules/
+dist/
+
+# Local databases & WAL files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+test_*.db
+
+# Runtime logs & PID files
+*.log
+*.pid
+logs/
+data/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.staging
+
+# OS metadata
+.DS_Store
+Thumbs.db

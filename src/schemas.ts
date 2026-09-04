@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const SetupPayloadSchema = z.object({
   restaurantName: z.string().min(2, 'Restaurant name must be at least 2 characters'),
   language: z.string().default('en'),
-  currency: z.string().min(1).default('USD'),
+  currency: z.string().length(3, 'Currency code must be exactly 3 characters (e.g. USD, EUR, GBP)').default('USD'),
   timezone: z.string().default('UTC'),
   logo: z.string().optional(),
   tableCount: z.number().int().min(1).max(100).optional(),

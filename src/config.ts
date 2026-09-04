@@ -3,7 +3,7 @@ import 'dotenv/config';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  DB_PATH: z.string().default('local_hub.db'),
+  DB_PATH: z.string().default('restaurantos.db'),
   SEED_DB: z.string().optional(),
 });
 

@@ -58,6 +58,12 @@ foreach ($sub in $subDirs) {
     }
 }
 
+# Grant minimum required permissions on DataPath (Modify for Users, Full for Administrators & SYSTEM)
+try {
+    icacls $DataPath /grant "BUILTIN\Users:(OI)(CI)M" /t /q 2>&1 | Out-Null
+    Write-Log "Configured secure application permissions on data storage directory." "Green"
+} catch {}
+
 # 5. Copy Application Files from Package Root to InstallPath
 $SourceDir = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path (Join-Path $SourceDir "server.cjs"))) {

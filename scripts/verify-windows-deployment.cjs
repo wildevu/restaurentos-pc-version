@@ -73,14 +73,14 @@ const innoSetupIss = fs.readFileSync(path.resolve(process.cwd(), 'windows/instal
 
 assert(!uninstallPs1.includes('Remove-Item -Path $DataPath'), 'Uninstaller NEVER executes recursive removal of DataPath');
 assert(uninstallPs1.includes('DELIBERATELY PRESERVED'), 'Uninstaller provides explicit notice that data was preserved');
-assert(innoSetupIss.includes('Permissions: users-full') && innoSetupIss.includes('{commonappdata}\\RestaurantOS'), 'Inno Setup provisions ProgramData with proper permissions without overwriting');
+assert((innoSetupIss.includes('Permissions: users-modify') || innoSetupIss.includes('Permissions: users-full')) && innoSetupIss.includes('{commonappdata}\\RestaurantOS'), 'Inno Setup provisions ProgramData with proper permissions without overwriting');
 
 // TEST 4: Path Resolution & Environment Fallbacks
 console.log('\n--- TEST 4: Directory Separation Logic ---');
 const pathsCode = fs.readFileSync(path.resolve(process.cwd(), 'src/paths.ts'), 'utf-8');
 assert(pathsCode.includes('ProgramData') || pathsCode.includes('ALLUSERSPROFILE'), 'Paths module references Windows ProgramData directory');
 assert(pathsCode.includes('RESTAURANTOS_DATA_DIR'), 'Paths module supports custom RESTAURANTOS_DATA_DIR override');
-assert(pathsCode.includes('local_hub.pid') || pathsCode.includes('LOCK_FILE'), 'Paths module defines instance lockfile');
+assert(pathsCode.includes('restaurantos.pid') || pathsCode.includes('local_hub.pid') || pathsCode.includes('LOCK_FILE'), 'Paths module defines instance lockfile');
 
 // TEST 5: Packaging Build Simulation
 console.log('\n--- TEST 5: Build Package Execution ---');

@@ -73,7 +73,7 @@ const configTemplate = `# RestaurantOS Local Hub Configuration
 # Placed in C:\\ProgramData\\RestaurantOS\\config\\restaurantos.env
 NODE_ENV=production
 PORT=3000
-# DB_PATH=C:\\ProgramData\\RestaurantOS\\data\\local_hub.db
+# DB_PATH=C:\\ProgramData\\RestaurantOS\\data\\restaurantos.db
 # BACKUP_DIR=C:\\ProgramData\\RestaurantOS\\backups
 # LOG_DIR=C:\\ProgramData\\RestaurantOS\\logs
 `;

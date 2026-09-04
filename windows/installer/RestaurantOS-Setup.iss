@@ -67,14 +67,14 @@ Source: "..\installer\*"; DestDir: "{app}\windows\installer"; Flags: ignoreversi
 ; NOTE ON DATA DIRECTORY ({commonappdata}\RestaurantOS):
 ; We deliberately DO NOT package any default database file here.
 ; When RestaurantOS Local Hub runs for the first time, it safely creates and migrates
-; {commonappdata}\RestaurantOS\data\local_hub.db, preserving all existing records across updates!
+; {commonappdata}\RestaurantOS\data\restaurantos.db, preserving all existing records across updates!
 
 [Dirs]
-Name: "{commonappdata}\RestaurantOS"; Permissions: users-full
-Name: "{commonappdata}\RestaurantOS\data"; Permissions: users-full
-Name: "{commonappdata}\RestaurantOS\backups"; Permissions: users-full
-Name: "{commonappdata}\RestaurantOS\logs"; Permissions: users-full
-Name: "{commonappdata}\RestaurantOS\config"; Permissions: users-full
+Name: "{commonappdata}\RestaurantOS"; Permissions: users-modify
+Name: "{commonappdata}\RestaurantOS\data"; Permissions: users-modify
+Name: "{commonappdata}\RestaurantOS\backups"; Permissions: users-modify
+Name: "{commonappdata}\RestaurantOS\logs"; Permissions: users-modify
+Name: "{commonappdata}\RestaurantOS\config"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\launch-hub.bat"; IconFilename: "{app}\public\favicon.ico"
