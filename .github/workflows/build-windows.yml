@@ -1,0 +1,77 @@
+name: Build RestaurantOS Windows Installer
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build & Package Windows Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Validate TypeScript Types
+        run: npm run lint
+
+      - name: Run Localization & Licensing Verification Suites
+        run: |
+          node scripts/audit-translations-and-ux.cjs
+          node scripts/verify-offline-licensing.cjs
+          npx tsx scripts/verify-setup-licensing-flow.cjs
+
+      - name: Build Production Bundles & Standalone Windows Package
+        run: npm run package:windows
+
+      - name: Run Windows Deployment & Self-Contained Runtime Verification
+        run: npm run verify:windows
+
+      - name: Install Inno Setup Compiler
+        run: |
+          choco install innosetup --no-progress
+          echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
+
+      - name: Compile Windows Installer Executable
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\RestaurantOS-Setup.iss
+
+      - name: Verify Installer Artifact
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "dist\installer" -Filter "RestaurantOS-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "Installer EXE was not generated in dist/installer!"
+            exit 1
+          }
+          Write-Host "Generated installer artifact: $($installer.FullName) (Size: $([math]::Round($installer.Length / 1MB, 2)) MB)"
+
+      - name: Upload Windows Installer (.EXE)
+        uses: actions/upload-artifact@v4
+        with:
+          name: RestaurantOS-Setup-Installer
+          path: dist/installer/RestaurantOS-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows Standalone Package (Diagnostic)
+        uses: actions/upload-artifact@v4
+        with:
+          name: RestaurantOS-Standalone-Windows-Package
+          path: dist/windows-package/
+          if-no-files-found: error
+          retention-days: 7

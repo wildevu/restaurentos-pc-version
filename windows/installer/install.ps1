@@ -65,15 +65,24 @@ try {
 } catch {}
 
 # 5. Copy Application Files from Package Root to InstallPath
-$SourceDir = Split-Path -Parent $PSScriptRoot
-if (-not (Test-Path (Join-Path $SourceDir "server.cjs"))) {
-    $SourceDir = Split-Path -Parent $SourceDir
+$AppSource = $PSScriptRoot
+if (Test-Path (Join-Path $PSScriptRoot "RestaurantOS\server.cjs")) {
+    $AppSource = Join-Path $PSScriptRoot "RestaurantOS"
+} elseif (Test-Path (Join-Path (Split-Path -Parent $PSScriptRoot) "RestaurantOS\server.cjs")) {
+    $AppSource = Join-Path (Split-Path -Parent $PSScriptRoot) "RestaurantOS"
+} elseif (Test-Path (Join-Path $PSScriptRoot "server.cjs")) {
+    $AppSource = $PSScriptRoot
+} else {
+    $ParentDir = Split-Path -Parent $PSScriptRoot
+    if (Test-Path (Join-Path $ParentDir "server.cjs")) {
+        $AppSource = $ParentDir
+    }
 }
 
-Write-Log "Copying core application binaries and built PWA assets..."
-$itemsToCopy = @("dist", "src", "public", "server.cjs", "package.json", "windows", "launch-hub.bat", "migrations")
+Write-Log "Copying core application binaries, runtime, and built PWA assets from $AppSource..."
+$itemsToCopy = @("dist", "src", "public", "server.cjs", "package.json", "windows", "launch-hub.bat", "migrations", "runtime", "node_modules", "restaurantos.env.template")
 foreach ($item in $itemsToCopy) {
-    $src = Join-Path $SourceDir $item
+    $src = Join-Path $AppSource $item
     if (Test-Path $src) {
         Copy-Item -Path $src -Destination $InstallPath -Recurse -Force | Out-Null
     }

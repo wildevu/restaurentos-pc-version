@@ -1,28 +1,18 @@
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
 import { execSync } from 'child_process';
 
 const ROOT_DIR = process.cwd();
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const PKG_DIR = path.join(DIST_DIR, 'windows-package');
 const APP_OUT = path.join(PKG_DIR, 'RestaurantOS');
+const RUNTIME_CACHE_DIR = path.join(ROOT_DIR, 'runtime');
+const NODE_EXE_CACHE = path.join(RUNTIME_CACHE_DIR, 'node.exe');
 
 console.log('====================================================');
 console.log('   RESTAURANTOS WINDOWS PACKAGE BUILD PIPELINE      ');
 console.log('====================================================');
-
-// 1. Clean previous package folder before building
-if (fs.existsSync(PKG_DIR)) {
-  fs.rmSync(PKG_DIR, { recursive: true, force: true });
-}
-
-// 2. Build Client and Server Bundles
-console.log('[1/5] Compiling production frontend and backend bundles...');
-execSync('npm run build', { stdio: 'inherit' });
-
-// 3. Prepare Package Directory Structure
-console.log('[2/5] Creating Windows deployment layout...');
-fs.mkdirSync(APP_OUT, { recursive: true });
 
 // Helper to copy recursive with exclusion
 function copyFolderSync(from, to, exclude = []) {
@@ -41,35 +31,126 @@ function copyFolderSync(from, to, exclude = []) {
   });
 }
 
-// 4. Copy Application Assets to Windows Bundle
-console.log('[3/5] Bundling server, PWA assets, and migration schemas...');
-fs.copyFileSync(path.join(DIST_DIR, 'server.cjs'), path.join(APP_OUT, 'server.cjs'));
-fs.copyFileSync(path.join(ROOT_DIR, 'package.json'), path.join(APP_OUT, 'package.json'));
+// Ensure official Windows Node.js runtime is available
+async function ensureWindowsNodeRuntime() {
+  if (!fs.existsSync(RUNTIME_CACHE_DIR)) {
+    fs.mkdirSync(RUNTIME_CACHE_DIR, { recursive: true });
+  }
 
-// Copy static PWA frontend (excluding windows-package)
-copyFolderSync(DIST_DIR, path.join(APP_OUT, 'dist'), ['windows-package', 'installer']);
+  if (fs.existsSync(NODE_EXE_CACHE) && fs.statSync(NODE_EXE_CACHE).size > 10000000) {
+    console.log('[Runtime] Found cached Windows x64 Node.js runtime binary (' + Math.round(fs.statSync(NODE_EXE_CACHE).size / 1024 / 1024) + ' MB)');
+    return;
+  }
 
-// Copy DB migrations
-copyFolderSync(path.join(ROOT_DIR, 'src', 'db', 'migrations'), path.join(APP_OUT, 'src', 'db', 'migrations'));
-copyFolderSync(path.join(ROOT_DIR, 'src', 'db', 'migrations'), path.join(APP_OUT, 'migrations'));
+  console.log('[Runtime] Downloading official standalone Windows x64 Node.js binary from nodejs.org...');
+  const url = 'https://nodejs.org/dist/v20.18.0/win-x64/node.exe';
+  
+  await new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(NODE_EXE_CACHE);
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        return reject(new Error('Failed to download node.exe, HTTP status: ' + response.statusCode));
+      }
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close(() => {
+          console.log('[Runtime] Downloaded Windows x64 Node.js runtime successfully (' + Math.round(fs.statSync(NODE_EXE_CACHE).size / 1024 / 1024) + ' MB)');
+          resolve();
+        });
+      });
+    }).on('error', (err) => {
+      fs.unlink(NODE_EXE_CACHE, () => {});
+      reject(err);
+    });
+  });
+}
 
-// Copy public assets & icons
-copyFolderSync(path.join(ROOT_DIR, 'public'), path.join(APP_OUT, 'public'));
+async function buildPackage() {
+  // 1. Clean previous package folder before building
+  if (fs.existsSync(PKG_DIR)) {
+    fs.rmSync(PKG_DIR, { recursive: true, force: true });
+  }
 
-// Copy Windows helpers (service, firewall, installer)
-copyFolderSync(path.join(ROOT_DIR, 'windows'), path.join(APP_OUT, 'windows'));
+  // 2. Build Client and Server Bundles
+  console.log('[1/6] Compiling production frontend and backend bundles...');
+  execSync('npm run build', { stdio: 'inherit' });
 
-// Copy top-level launcher and installers
-fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'launch-hub.bat'), path.join(APP_OUT, 'launch-hub.bat'));
-fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.bat'), path.join(PKG_DIR, 'Install-RestaurantOS.bat'));
-fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'uninstall.bat'), path.join(PKG_DIR, 'Uninstall-RestaurantOS.bat'));
-fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.ps1'), path.join(PKG_DIR, 'install.ps1'));
-fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'uninstall.ps1'), path.join(PKG_DIR, 'uninstall.ps1'));
-fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'RestaurantOS-Setup.iss'), path.join(PKG_DIR, 'RestaurantOS-Setup.iss'));
+  // 3. Ensure Windows Node.js Runtime is ready
+  console.log('[2/6] Verifying embedded Windows Node.js runtime...');
+  await ensureWindowsNodeRuntime();
 
-// 5. Generate Windows Configuration Template
-console.log('[4/5] Writing Windows deployment configuration template...');
-const configTemplate = `# RestaurantOS Local Hub Configuration
+  // 4. Prepare Package Directory Structure
+  console.log('[3/6] Creating Windows deployment layout...');
+  fs.mkdirSync(APP_OUT, { recursive: true });
+  const appRuntimeDir = path.join(APP_OUT, 'runtime');
+  fs.mkdirSync(appRuntimeDir, { recursive: true });
+  fs.copyFileSync(NODE_EXE_CACHE, path.join(appRuntimeDir, 'node.exe'));
+
+  // 5. Copy Application Assets to Windows Bundle
+  console.log('[4/6] Bundling server, PWA assets, migrations, and dependencies...');
+  fs.copyFileSync(path.join(DIST_DIR, 'server.cjs'), path.join(APP_OUT, 'server.cjs'));
+  if (fs.existsSync(path.join(DIST_DIR, 'server.cjs.map'))) {
+    fs.copyFileSync(path.join(DIST_DIR, 'server.cjs.map'), path.join(APP_OUT, 'server.cjs.map'));
+  }
+  fs.copyFileSync(path.join(ROOT_DIR, 'package.json'), path.join(APP_OUT, 'package.json'));
+
+  // Copy static PWA frontend
+  copyFolderSync(DIST_DIR, path.join(APP_OUT, 'dist'), ['windows-package', 'installer']);
+
+  // Copy DB migrations
+  copyFolderSync(path.join(ROOT_DIR, 'src', 'db', 'migrations'), path.join(APP_OUT, 'src', 'db', 'migrations'));
+  copyFolderSync(path.join(ROOT_DIR, 'src', 'db', 'migrations'), path.join(APP_OUT, 'migrations'));
+
+  // Copy public assets & icons
+  copyFolderSync(path.join(ROOT_DIR, 'public'), path.join(APP_OUT, 'public'));
+
+  // Copy Windows helpers (service, firewall, installer)
+  copyFolderSync(path.join(ROOT_DIR, 'windows'), path.join(APP_OUT, 'windows'));
+
+  // Copy top-level launcher and installers
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'launch-hub.bat'), path.join(APP_OUT, 'launch-hub.bat'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.bat'), path.join(PKG_DIR, 'Install-RestaurantOS.bat'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'uninstall.bat'), path.join(PKG_DIR, 'Uninstall-RestaurantOS.bat'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.ps1'), path.join(PKG_DIR, 'install.ps1'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'uninstall.ps1'), path.join(PKG_DIR, 'uninstall.ps1'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'RestaurantOS-Setup.iss'), path.join(PKG_DIR, 'RestaurantOS-Setup.iss'));
+
+  // Copy production node_modules into RestaurantOS/node_modules
+  console.log('[5/6] Packaging production runtime dependencies...');
+  const destModules = path.join(APP_OUT, 'node_modules');
+  fs.mkdirSync(destModules, { recursive: true });
+  
+  const devOnly = [
+    'typescript',
+    'vite',
+    '@tailwindcss',
+    'drizzle-kit',
+    'esbuild',
+    'tsx',
+    '@types',
+    'rollup',
+    'lightningcss',
+    'postcss',
+    'terser',
+    'tailwindcss'
+  ];
+
+  const srcModules = path.join(ROOT_DIR, 'node_modules');
+  if (fs.existsSync(srcModules)) {
+    const items = fs.readdirSync(srcModules);
+    for (const item of items) {
+      if (devOnly.includes(item)) continue;
+      const sPath = path.join(srcModules, item);
+      const dPath = path.join(destModules, item);
+      if (fs.existsSync(sPath)) {
+        fs.cpSync(sPath, dPath, { recursive: true });
+      }
+    }
+  }
+
+  // 6. Generate Windows Configuration Template & Readme
+  console.log('[6/6] Writing deployment config template and documentation...');
+  const configTemplate = `# RestaurantOS Local Hub Configuration
 # Placed in C:\\ProgramData\\RestaurantOS\\config\\restaurantos.env
 NODE_ENV=production
 PORT=3000
@@ -77,10 +158,17 @@ PORT=3000
 # BACKUP_DIR=C:\\ProgramData\\RestaurantOS\\backups
 # LOG_DIR=C:\\ProgramData\\RestaurantOS\\logs
 `;
-fs.writeFileSync(path.join(APP_OUT, 'restaurantos.env.template'), configTemplate, 'utf-8');
+  fs.writeFileSync(path.join(APP_OUT, 'restaurantos.env.template'), configTemplate, 'utf-8');
 
-// Write Windows README
-const windowsReadme = `# RestaurantOS Local Hub for Windows
+  const windowsReadme = `# RestaurantOS Local Hub for Windows
+
+## Truly Self-Contained Deployment
+RestaurantOS includes everything required to run out of the box:
+- Embedded Windows x64 Node.js runtime (RestaurantOS\\runtime\\node.exe)
+- Bundled server engine with pre-packaged runtime dependencies (RestaurantOS\\server.cjs)
+- Offline-first Progressive Web App (PWA) client (RestaurantOS\\dist)
+- Automated SQLite database schema migrations (RestaurantOS\\migrations)
+- Zero external runtime prerequisites (No Node.js, npm, Python, or Git required on customer PC)
 
 ## Quick Installation on Windows 10/11
 1. Extract or download this folder to the restaurant Windows PC.
@@ -101,8 +189,17 @@ const windowsReadme = `# RestaurantOS Local Hub for Windows
 ## Data Safety Guarantee
 - Upgrades and uninstalls NEVER delete your customer data or automated backups in C:\\ProgramData\\RestaurantOS.
 `;
-fs.writeFileSync(path.join(PKG_DIR, 'README-WINDOWS.txt'), windowsReadme, 'utf-8');
+  fs.writeFileSync(path.join(PKG_DIR, 'README-WINDOWS.txt'), windowsReadme, 'utf-8');
 
-console.log('[5/5] Packaging completed successfully!');
-console.log(`Package output located at: ${PKG_DIR}`);
-console.log('====================================================');
+  console.log('====================================================');
+  console.log('✓ WINDOWS PACKAGE SUCCESSFULLY BUILT & PACKAGED!');
+  console.log(`✓ Package Location: ${PKG_DIR}`);
+  console.log(`✓ Embedded Runtime: ${path.join(APP_OUT, 'runtime', 'node.exe')}`);
+  console.log(`✓ Runtime Modules:  ${destModules}`);
+  console.log('====================================================');
+}
+
+buildPackage().catch(err => {
+  console.error('[FATAL] Package build failed:', err);
+  process.exit(1);
+});

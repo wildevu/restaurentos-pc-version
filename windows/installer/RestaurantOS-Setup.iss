@@ -28,7 +28,6 @@ DisableProgramGroupPage=yes
 ; Output Executable
 OutputDir=..\..\dist\installer
 OutputBaseFilename=RestaurantOS-Setup-{#MyAppVersion}
-SetupIconFile=..\..\public\favicon.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -41,7 +40,6 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 
 ; Data Safety on Uninstall
-UninstallDisplayIcon={app}\public\favicon.ico
 UninstallDisplayName={#MyAppName}
 
 [Languages]
@@ -54,11 +52,15 @@ Name: "firewall"; Description: "Configure Windows Firewall rule for waiter & kit
 
 [Files]
 ; Application binaries and static PWA assets go to {app} (C:\Program Files\RestaurantOS)
-Source: "..\..\dist\server.cjs"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\dist\*"; DestDir: "{app}\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\src\db\migrations\*"; DestDir: "{app}\src\db\migrations"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\package.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\windows-package\RestaurantOS\server.cjs"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\windows-package\RestaurantOS\dist\*"; DestDir: "{app}\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\windows-package\RestaurantOS\runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\windows-package\RestaurantOS\node_modules\*"; DestDir: "{app}\node_modules"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\windows-package\RestaurantOS\migrations\*"; DestDir: "{app}\migrations"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\windows-package\RestaurantOS\src\db\migrations\*"; DestDir: "{app}\src\db\migrations"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\windows-package\RestaurantOS\public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\windows-package\RestaurantOS\package.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\windows-package\RestaurantOS\restaurantos.env.template"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launcher\launch-hub.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\firewall\*"; DestDir: "{app}\windows\firewall"; Flags: ignoreversion recursesubdirs
 Source: "..\service\*"; DestDir: "{app}\windows\service"; Flags: ignoreversion recursesubdirs
@@ -77,10 +79,10 @@ Name: "{commonappdata}\RestaurantOS\logs"; Permissions: users-modify
 Name: "{commonappdata}\RestaurantOS\config"; Permissions: users-modify
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\launch-hub.bat"; IconFilename: "{app}\public\favicon.ico"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\launch-hub.bat"
 Name: "{group}\Open Local Hub Status"; Filename: "http://localhost:3000/hub"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "http://localhost:3000/hub"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "http://localhost:3000/hub"; Tasks: desktopicon
 
 [Run]
 ; Firewall Rule Registration

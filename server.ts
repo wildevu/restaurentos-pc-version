@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { CommandPayloadSchema } from './src/schemas';
 import { processCommand, getFrontendStateTx } from './src/db/queries';
 
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
 function getLocalLanIps(): string[] {
   const interfaces = os.networkInterfaces();
