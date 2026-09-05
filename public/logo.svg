@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- RestaurantOS Official Brand Mark -->
+  <circle cx="256" cy="256" r="180" stroke="#FF3815" stroke-width="66" fill="none" stroke-linecap="round" />
+  <!-- Center Tines -->
+  <rect x="223" y="145" width="28" height="118" rx="14" fill="#FF3815" />
+  <rect x="261" y="145" width="28" height="118" rx="14" fill="#FF3815" />
+</svg>

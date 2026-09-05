@@ -128,9 +128,11 @@ function AppContent({
       <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs z-20">
         <div className="flex items-center gap-4 sm:gap-6">
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
-              <ChefHat size={20} />
-            </div>
+            {restaurant?.logo ? (
+              <img src={restaurant.logo} alt="Restaurant Logo" className="w-8 h-8 rounded-lg object-cover shadow-xs" />
+            ) : (
+              <img src="/logo.svg" alt="RestaurantOS Logo" className="w-8 h-8" />
+            )}
             <div>
               <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">
                 {restaurant?.name || 'RestaurantOS'}

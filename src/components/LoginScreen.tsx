@@ -117,8 +117,8 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
       )}
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex items-center justify-center p-3 bg-blue-600 text-white rounded-2xl shadow-md shadow-blue-500/20 mb-4">
-          <ChefHat className="w-8 h-8" />
+        <div className="inline-flex items-center justify-center mb-4">
+          <img src="/logo.svg" alt="RestaurantOS Logo" className="w-14 h-14 drop-shadow-xs" />
         </div>
         <h2 className="text-2xl font-black tracking-tight text-gray-900">
           RestaurantOS

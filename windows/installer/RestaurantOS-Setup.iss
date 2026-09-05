@@ -28,6 +28,7 @@ DisableProgramGroupPage=yes
 ; Output Executable
 OutputDir=..\..\dist\installer
 OutputBaseFilename=RestaurantOS-Setup-{#MyAppVersion}
+SetupIconFile=..\..\public\favicon.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -40,6 +41,7 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 
 ; Data Safety on Uninstall
+UninstallDisplayIcon={app}\public\favicon.ico
 UninstallDisplayName={#MyAppName}
 
 [Languages]

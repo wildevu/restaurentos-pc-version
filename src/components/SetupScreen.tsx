@@ -230,9 +230,7 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
           <Sparkles className="w-3.5 h-3.5" /> {t('setup.badge')}
         </div>
         <div className="flex items-center justify-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-amber-500 flex items-center justify-center text-neutral-950 font-bold shadow-lg shadow-amber-500/20">
-            <UtensilsCrossed className="w-6 h-6" />
-          </div>
+          <img src="/logo.svg" alt="RestaurantOS" className="w-11 h-11 drop-shadow-xs" />
           <h1 className="text-3xl font-black tracking-tight text-white">{t('setup.title')}</h1>
         </div>
         <p className="mt-2 text-sm text-neutral-400 max-w-md mx-auto">
