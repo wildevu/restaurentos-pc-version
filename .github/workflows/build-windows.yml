@@ -35,6 +35,37 @@ jobs:
           node scripts/verify-offline-licensing.cjs
           npx tsx scripts/verify-setup-licensing-flow.cjs
 
+      - name: Verify Windows Native Bindings (Rolldown & LibSQL)
+        shell: pwsh
+        run: |
+          node -e "
+            console.log('Verifying Windows native bindings in node_modules...');
+            try {
+              const fs = require('fs');
+              const path = require('path');
+              const rolldownPath = path.join(process.cwd(), 'node_modules', '@rolldown', 'binding-win32-x64-msvc');
+              if (!fs.existsSync(rolldownPath)) {
+                throw new Error('Directory node_modules/@rolldown/binding-win32-x64-msvc does not exist');
+              }
+              console.log('✓ @rolldown/binding-win32-x64-msvc is present');
+            } catch (e) {
+              console.error('CRITICAL: Rolldown Windows binding missing:', e.message);
+              process.exit(1);
+            }
+            try {
+              const fs = require('fs');
+              const path = require('path');
+              const libsqlPath = path.join(process.cwd(), 'node_modules', '@libsql', 'win32-x64-msvc');
+              if (!fs.existsSync(libsqlPath)) {
+                throw new Error('Directory node_modules/@libsql/win32-x64-msvc does not exist');
+              }
+              console.log('✓ @libsql/win32-x64-msvc is present');
+            } catch (e) {
+              console.error('CRITICAL: LibSQL Windows binding missing:', e.message);
+              process.exit(1);
+            }
+          "
+
       - name: Build Production Bundles & Standalone Windows Package
         run: npm run package:windows
 
