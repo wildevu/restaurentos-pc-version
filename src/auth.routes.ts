@@ -13,7 +13,9 @@ import {
   orders,
   orderItems,
   idempotencyKeys,
-  hubState 
+  hubState,
+  installations,
+  licenses
 } from './db/schema';
 import { eq, and, sql, gt } from 'drizzle-orm';
 import { hashPassword, verifyPassword, generateToken, hashToken } from './crypto';
@@ -22,6 +24,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { logger } from './logger';
 import { authenticate } from './auth.middleware';
+import { LicensingService } from './licensing/service';
 
 export const authRouter = Router();
 
@@ -100,6 +103,8 @@ authRouter.post('/dev-reset-database', async (req: any, res: any) => {
       await tx.delete(devices);
       await tx.delete(users);
       await tx.delete(hubState);
+      await tx.update(installations).set({ restaurantId: null });
+      await tx.delete(licenses);
       await tx.delete(restaurants);
     });
 
@@ -129,6 +134,15 @@ authRouter.post('/setup', async (req, res) => {
       return res.status(400).json({ error: 'Restaurant already initialized. Setup cannot be repeated.' });
     }
 
+    // Require active valid license to complete first-run setup
+    const licenseStatus = await LicensingService.getStatus();
+    if (!licenseStatus.isLicensed || !licenseStatus.canOperate) {
+      return res.status(402).json({ 
+        error: 'A valid active license is required to complete RestaurantOS setup. Please activate your license key.',
+        licenseStatus: licenseStatus.status 
+      });
+    }
+
     const payload = SetupPayloadSchema.parse(req.body);
     const restaurantId = uuidv4();
     const ownerId = uuidv4();
@@ -151,7 +165,17 @@ authRouter.post('/setup', async (req, res) => {
         updatedAt: now,
       });
 
-      // 2. Create Hub State tracking
+      // 2. Link Installation and Licenses to the Restaurant
+      const inst = await LicensingService.getOrCreateInstallation();
+      await tx.update(installations)
+        .set({ restaurantId })
+        .where(eq(installations.id, inst.id));
+
+      await tx.update(licenses)
+        .set({ restaurantId })
+        .where(eq(licenses.installationId, inst.id));
+
+      // 3. Create Hub State tracking
       await tx.insert(hubState).values({
         restaurantId,
         version: 1,

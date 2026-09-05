@@ -8,3 +8,4 @@ export * from './AuditLogs';
 export * from './Backups';
 export * from './SystemHealth';
 export * from './LocalHubStatus';
+export * from './LicenseManagement';

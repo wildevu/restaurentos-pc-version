@@ -201,3 +201,5 @@ export function useI18n(): I18nContextType {
   }
   return context;
 }
+
+export const useTranslation = useI18n;

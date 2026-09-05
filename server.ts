@@ -14,6 +14,7 @@ import { logger, cleanOldLogs } from './src/logger';
 import { ensureDirectories, LOCK_FILE, DB_PATH, DATA_DIR, BACKUP_DIR } from './src/paths';
 import { authRouter } from './src/auth.routes';
 import { adminRouter, startAutoBackupScheduler } from './src/api/admin';
+import { licensingRouter, licenseEnforcementMiddleware, LicensingService } from './src/licensing/index';
 import { hashToken } from './src/crypto';
 import { sessions, users, devices, hubState, restaurants } from './src/db/schema';
 import { eq, and, gt, isNull, sql } from 'drizzle-orm';
@@ -230,8 +231,12 @@ async function startServer() {
     }
   });
 
-  // Auth Routes
+  // Auth & Licensing Routes (Public / Unauthenticated Access)
   app.use('/api/auth', authRouter);
+  app.use('/api/licensing', licensingRouter);
+
+  // Authoritative Offline Licensing Enforcement Middleware
+  app.use(licenseEnforcementMiddleware);
   
   app.use('/api/admin', authenticate, adminRouter);
 
@@ -301,6 +306,22 @@ async function startServer() {
 
     socket.on('COMMAND', async (payload, callback) => {
       try {
+        const licenseCheck = await LicensingService.getStatus();
+        if (!licenseCheck.canOperate) {
+          logger.warn('Operational command blocked due to inactive/expired license', {
+            status: licenseCheck.status,
+            userId: user.id,
+          });
+          if (callback) callback({
+            success: false,
+            retryable: false,
+            error: licenseCheck.status === 'EXPIRED'
+              ? 'RestaurantOS license has expired. Please renew the license.'
+              : 'Active RestaurantOS license required to perform actions.',
+          });
+          return;
+        }
+
         const command = CommandPayloadSchema.parse(payload);
         const result = await processCommand(command, user, socket.handshake.auth?.clientInstallationId);
         

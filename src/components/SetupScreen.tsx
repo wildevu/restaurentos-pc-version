@@ -1,6 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { z } from 'zod';
-import { UtensilsCrossed, ShieldCheck, LayoutGrid, DollarSign, Clock, Store, Eye, EyeOff, Sparkles, Globe } from 'lucide-react';
+import { 
+  UtensilsCrossed, 
+  ShieldCheck, 
+  LayoutGrid, 
+  DollarSign, 
+  Clock, 
+  Store, 
+  Eye, 
+  EyeOff, 
+  Sparkles, 
+  Globe, 
+  Key, 
+  Copy, 
+  Check, 
+  AlertCircle, 
+  RefreshCw,
+  CheckCircle2,
+  Calendar,
+  Hourglass
+} from 'lucide-react';
+import { useI18n } from '../i18n';
 
 const setupSchema = z.object({
   restaurantName: z.string().min(2, 'Restaurant name must be at least 2 characters'),
@@ -15,7 +35,22 @@ const setupSchema = z.object({
   ownerPassword: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+const POPULAR_CURRENCIES = [
+  { code: 'USD', symbol: '$', label: 'USD ($) - US Dollar' },
+  { code: 'EUR', symbol: '€', label: 'EUR (€) - Euro' },
+  { code: 'GBP', symbol: '£', label: 'GBP (£) - British Pound' },
+  { code: 'CAD', symbol: '$', label: 'CAD ($) - Canadian Dollar' },
+  { code: 'AUD', symbol: '$', label: 'AUD ($) - Australian Dollar' },
+  { code: 'CHF', symbol: 'CHF', label: 'CHF (CHF) - Swiss Franc' },
+  { code: 'MAD', symbol: 'DH', label: 'MAD (DH) - Moroccan Dirham' },
+  { code: 'DZD', symbol: 'DA', label: 'DZD (DA) - Algerian Dinar' },
+  { code: 'TND', symbol: 'DT', label: 'TND (DT) - Tunisian Dinar' },
+  { code: 'XOF', symbol: 'CFA', label: 'XOF (CFA) - West African CFA' },
+];
+
 export function SetupScreen({ onComplete }: { onComplete: (token?: string) => void }) {
+  const { t, language, setLanguage, formatDate } = useI18n();
+
   const [formData, setFormData] = useState({
     restaurantName: '',
     language: 'en' as 'en' | 'fr',
@@ -28,10 +63,95 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
     ownerUsername: '',
     ownerPassword: ''
   });
+
+  const [customCurrency, setCustomCurrency] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [newSectionInput, setNewSectionInput] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Licensing state
+  const [installationId, setInstallationId] = useState<string>('');
+  const [licenseKeyInput, setLicenseKeyInput] = useState<string>('');
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const [activatingLicense, setActivatingLicense] = useState(false);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+  const [licenseSuccess, setLicenseSuccess] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
+
+  // Fetch installation ID and initial license state
+  useEffect(() => {
+    const fetchInstallationAndStatus = async () => {
+      try {
+        const res = await fetch('/api/licensing/status');
+        if (res.ok) {
+          const data = await res.json();
+          setInstallationId(data.installationId || '');
+          setLicenseStatus(data);
+        }
+      } catch (err) {
+        console.error('Failed to load installation identity', err);
+      }
+    };
+    fetchInstallationAndStatus();
+  }, []);
+
+  const handleLanguageChange = (lang: 'en' | 'fr') => {
+    setFormData(prev => ({ ...prev, language: lang }));
+    setLanguage(lang);
+  };
+
+  const handleCopyInstallationId = () => {
+    if (!installationId) return;
+    navigator.clipboard.writeText(installationId);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2500);
+  };
+
+  const mapLicenseErrorMessage = (serverError: string): string => {
+    if (!serverError) return t('licensing.invalidLicense');
+    const lower = serverError.toLowerCase();
+    if (lower.includes('expired')) return t('licensing.licenseExpired');
+    if (lower.includes('belongs to another installation') || lower.includes('installation mismatch')) {
+      return t('licensing.anotherInstallation');
+    }
+    if (lower.includes('signature') || lower.includes('tamper')) return t('licensing.signatureInvalid');
+    if (lower.includes('product')) return t('licensing.productInvalid');
+    if (lower.includes('format') || lower.includes('malformed') || lower.includes('header')) {
+      return t('licensing.codeMalformed');
+    }
+    return serverError;
+  };
+
+  const handleActivateLicense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!licenseKeyInput.trim()) return;
+
+    setActivatingLicense(true);
+    setLicenseError(null);
+    setLicenseSuccess(null);
+
+    try {
+      const res = await fetch('/api/licensing/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ licenseKey: licenseKeyInput.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'License activation failed');
+      }
+
+      setLicenseStatus(data.status);
+      setLicenseSuccess(t('licensing.licenseActivated'));
+      setLicenseKeyInput('');
+    } catch (err: any) {
+      setLicenseError(mapLicenseErrorMessage(err.message));
+    } finally {
+      setActivatingLicense(false);
+    }
+  };
 
   const handleAddSection = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +185,13 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
+    // Strict Production Constraint: License must be active
+    if (!licenseStatus || !licenseStatus.isLicensed || !licenseStatus.canOperate) {
+      setError(t('licensing.licenseRequired'));
+      return;
+    }
+
     try {
       setupSchema.parse(formData);
     } catch (err: any) {
@@ -83,10 +209,10 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Setup failed');
-      
+
       onComplete(data.token);
     } catch (err: any) {
       setError(err.message);
@@ -95,85 +221,110 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
     }
   };
 
+  const isLicenseActive = licenseStatus && licenseStatus.isLicensed && licenseStatus.canOperate;
+
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-2xl text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-xs font-semibold uppercase tracking-wider mb-3">
-          <Sparkles className="w-3.5 h-3.5" /> Initial First-Run Setup
+          <Sparkles className="w-3.5 h-3.5" /> {t('setup.badge')}
         </div>
         <div className="flex items-center justify-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-amber-500 flex items-center justify-center text-neutral-950 font-bold shadow-lg shadow-amber-500/20">
             <UtensilsCrossed className="w-6 h-6" />
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-white">RestaurantOS</h1>
+          <h1 className="text-3xl font-black tracking-tight text-white">{t('setup.title')}</h1>
         </div>
         <p className="mt-2 text-sm text-neutral-400 max-w-md mx-auto">
-          Welcome to your local-first authoritative restaurant hub. Complete this initial one-time configuration to initialize your restaurant and primary Owner account.
+          {t('setup.welcomeDesc')}
         </p>
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-2xl">
         <div className="bg-neutral-800/90 border border-neutral-700/80 backdrop-blur-sm py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-7" onSubmit={handleSubmit}>
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-sm font-medium">
-                {error}
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-sm font-medium flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
+                <span>{error}</span>
               </div>
             )}
-            
-            {/* Section 1: Restaurant Identity */}
+
+            {/* STEP 1: RESTAURANT IDENTITY */}
             <div>
               <div className="flex items-center gap-2 border-b border-neutral-700 pb-2.5 mb-4">
                 <Store className="w-5 h-5 text-amber-400" />
-                <h2 className="text-base font-semibold text-white">1. Restaurant Identity</h2>
+                <h2 className="text-base font-semibold text-white">{t('setup.restaurantDetails')}</h2>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">Restaurant Name *</label>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1">{t('setup.restaurantName')} *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Bistro Central"
+                    placeholder={t('setup.restaurantNamePlaceholder')}
                     value={formData.restaurantName}
                     onChange={e => setFormData({ ...formData, restaurantName: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
 
-                <div className="sm:col-span-2">
+                {/* LANGUAGE SELECTION */}
+                <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center gap-1">
-                    <Globe className="w-3.5 h-3.5 text-neutral-400" /> Application Language *
+                    <Globe className="w-3.5 h-3.5 text-neutral-400" /> {t('setup.languageLabel')} *
                   </label>
                   <select
                     value={formData.language}
-                    onChange={e => setFormData({ ...formData, language: e.target.value as 'en' | 'fr' })}
+                    onChange={e => handleLanguageChange(e.target.value as 'en' | 'fr')}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 font-medium"
                   >
                     <option value="en">English (en)</option>
                     <option value="fr">Français (fr)</option>
                   </select>
-                  <p className="text-[11px] text-neutral-400 mt-1">Authoritative language used across all Waiter, Kitchen, Cashier, and Admin terminals.</p>
                 </div>
 
+                {/* CURRENCY SELECTION */}
                 <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5 text-neutral-400" /> Currency (3-Letter Code) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={4}
-                    placeholder="USD"
-                    value={formData.currency}
-                    onChange={e => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono uppercase focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-medium text-neutral-300 flex items-center gap-1">
+                      <DollarSign className="w-3.5 h-3.5 text-neutral-400" /> {t('setup.currencyLabel')} *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCustomCurrency(!customCurrency)}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 font-medium cursor-pointer"
+                    >
+                      {customCurrency ? 'Presets' : 'Custom'}
+                    </button>
+                  </div>
+                  {customCurrency ? (
+                    <input
+                      type="text"
+                      required
+                      maxLength={4}
+                      placeholder="USD"
+                      value={formData.currency}
+                      onChange={e => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-mono uppercase focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    />
+                  ) : (
+                    <select
+                      value={formData.currency}
+                      onChange={e => setFormData({ ...formData, currency: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white font-medium focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    >
+                      {POPULAR_CURRENCIES.map(c => (
+                        <option key={c.code} value={c.code}>{c.label}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-neutral-400" /> Timezone *
+                    <Clock className="w-3.5 h-3.5 text-neutral-400" /> {t('setup.timezoneLabel')} *
                   </label>
                   <input
                     type="text"
@@ -183,116 +334,142 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
+              </div>
+            </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">Brand Logo / Icon (Optional)</label>
-                  <div className="flex items-center gap-4">
-                    {formData.logo ? (
-                      <div className="w-12 h-12 rounded-lg border border-neutral-700 overflow-hidden bg-neutral-900 flex items-center justify-center shrink-0">
-                        <img src={formData.logo} alt="Logo" className="w-full h-full object-cover" />
-                      </div>
+            {/* STEP 2: RESTAURANTOS LICENSE ACTIVATION */}
+            <div className="bg-neutral-900/80 border border-neutral-700/80 rounded-xl p-5">
+              <div className="flex items-center justify-between border-b border-neutral-700/60 pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <Key className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h2 className="text-base font-semibold text-white">{t('licensing.restaurantOSLicense')}</h2>
+                    <p className="text-xs text-neutral-400">{t('licensing.subtitle')}</p>
+                  </div>
+                </div>
+
+                {isLicenseActive ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-xs font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {t('licensing.licenseActive')}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-full text-xs font-bold">
+                    <AlertCircle className="w-3.5 h-3.5" /> Required
+                  </span>
+                )}
+              </div>
+
+              {/* INSTALLATION ID DISPLAY (No manual typing required by customer) */}
+              <div className="mb-4 bg-neutral-950 border border-neutral-800 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
+                      {t('licensing.installationId')}
+                    </span>
+                    <span className="font-mono text-sm text-amber-300 font-semibold tracking-wide">
+                      {installationId || 'Loading...'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyInstallationId}
+                    disabled={!installationId}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium rounded-md transition-colors cursor-pointer"
+                  >
+                    {copiedId ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">{t('licensing.copied')}</span>
+                      </>
                     ) : (
-                      <div className="w-12 h-12 rounded-lg border border-dashed border-neutral-700 bg-neutral-900 flex items-center justify-center text-neutral-500 text-xs shrink-0">
-                        No logo
-                      </div>
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{t('licensing.copyId')}</span>
+                      </>
                     )}
-                    <label className="cursor-pointer bg-neutral-700 hover:bg-neutral-600 text-neutral-200 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
-                      Choose File
-                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                  </button>
+                </div>
+              </div>
+
+              {/* ACTIVE LICENSE STATUS OR ACTIVATION FORM */}
+              {isLicenseActive ? (
+                <div className="bg-emerald-950/20 border border-emerald-800/40 rounded-lg p-4 text-xs space-y-2">
+                  <div className="flex items-center justify-between text-emerald-300 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-emerald-400" />
+                      <span>{t('licensing.expiresLabel')}: {formatDate(licenseStatus.expiresAt)}</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Hourglass className="w-4 h-4 text-emerald-400" />
+                      <span>{t('licensing.daysRemainingLabel')}: {licenseStatus.remainingDays} {t('licensing.days')}</span>
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {licenseError && (
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-lg text-xs font-medium flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{licenseError}</span>
+                    </div>
+                  )}
+
+                  {licenseSuccess && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-lg text-xs font-medium flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>{licenseSuccess}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-300 mb-1">
+                      {t('licensing.licenseCodeLabel')} *
                     </label>
-                    {formData.logo && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData(p => ({ ...p, logo: '' }))}
-                        className="text-xs text-red-400 hover:text-red-300"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Table & Section Layout */}
-            <div>
-              <div className="flex items-center gap-2 border-b border-neutral-700 pb-2.5 mb-4">
-                <LayoutGrid className="w-5 h-5 text-amber-400" />
-                <h2 className="text-base font-semibold text-white">2. Initial Tables & Dining Areas</h2>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">
-                    Initial Table Count (auto-created 1 to N)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={formData.tableCount}
-                    onChange={e => setFormData({ ...formData, tableCount: parseInt(e.target.value) || 1 })}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">
-                    Dining Sections / Areas
-                  </label>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {formData.sections.map(sec => (
-                      <span
-                        key={sec}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-full text-xs font-medium text-neutral-200"
-                      >
-                        {sec}
-                        {formData.sections.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSection(sec)}
-                            className="text-neutral-400 hover:text-red-400 ml-1 font-bold"
-                          >
-                            &times;
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Add section (e.g. Upstairs, Terrace)"
-                      value={newSectionInput}
-                      onChange={e => setNewSectionInput(e.target.value)}
-                      className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                    <textarea
+                      rows={2}
+                      placeholder={t('licensing.licenseCodePlaceholder')}
+                      value={licenseKeyInput}
+                      onChange={e => setLicenseKeyInput(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-neutral-600 focus:outline-none focus:border-amber-500"
                     />
-                    <button
-                      type="button"
-                      onClick={handleAddSection}
-                      className="px-3.5 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-xs font-medium text-white transition-colors"
-                    >
-                      Add
-                    </button>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={handleActivateLicense}
+                    disabled={activatingLicense || !licenseKeyInput.trim()}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-bold text-xs bg-neutral-700 hover:bg-neutral-600 text-white disabled:opacity-40 transition-colors cursor-pointer"
+                  >
+                    {activatingLicense ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>{t('licensing.activating')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Key className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{t('licensing.activateBtn')}</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Section 3: Owner Credentials */}
+            {/* STEP 3: PRIMARY OWNER ACCOUNT */}
             <div>
               <div className="flex items-center gap-2 border-b border-neutral-700 pb-2.5 mb-4">
                 <ShieldCheck className="w-5 h-5 text-amber-400" />
-                <h2 className="text-base font-semibold text-white">3. Primary Owner Account</h2>
+                <h2 className="text-base font-semibold text-white">{t('setup.adminAccount')}</h2>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">Owner Full Name *</label>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1">{t('setup.adminName')} *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Alex Miller"
+                    placeholder={t('setup.adminNamePlaceholder')}
                     value={formData.ownerName}
                     onChange={e => setFormData({ ...formData, ownerName: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
@@ -300,11 +477,11 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-neutral-300 mb-1">Owner Username *</label>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1">{t('setup.adminUsername')} *</label>
                   <input
                     type="text"
                     required
-                    placeholder="owner"
+                    placeholder={t('setup.adminUsernamePlaceholder')}
                     value={formData.ownerUsername}
                     onChange={e => setFormData({ ...formData, ownerUsername: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
@@ -313,14 +490,14 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
 
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1 flex items-center justify-between">
-                    <span>Owner Password *</span>
-                    <span className="text-[11px] text-neutral-400">Min 6 characters</span>
+                    <span>{t('setup.adminPassword')} *</span>
+                    <span className="text-[11px] text-neutral-400">{t('setup.minCharacters')}</span>
                   </label>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
-                      placeholder="••••••••"
+                      placeholder={t('setup.adminPasswordPlaceholder')}
                       value={formData.ownerPassword}
                       onChange={e => setFormData({ ...formData, ownerPassword: e.target.value })}
                       className="w-full bg-neutral-900 border border-neutral-700 rounded-lg pl-3.5 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
@@ -337,13 +514,83 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
               </div>
             </div>
 
+            {/* STEP 4: INITIAL TABLES & DINING AREAS */}
+            <div>
+              <div className="flex items-center gap-2 border-b border-neutral-700 pb-2.5 mb-4">
+                <LayoutGrid className="w-5 h-5 text-amber-400" />
+                <h2 className="text-base font-semibold text-white">{t('setup.diningLayout')}</h2>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1">
+                    {t('setup.tableCountLabel')}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={formData.tableCount}
+                    onChange={e => setFormData({ ...formData, tableCount: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1">
+                    {t('setup.sectionsLabel')}
+                  </label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {formData.sections.map(sec => (
+                      <span
+                        key={sec}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-neutral-900 border border-neutral-700 rounded-full text-xs font-medium text-neutral-200"
+                      >
+                        {sec}
+                        {formData.sections.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSection(sec)}
+                            className="text-neutral-400 hover:text-red-400 ml-1 font-bold cursor-pointer"
+                          >
+                            &times;
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder={t('setup.addSectionPlaceholder')}
+                      value={newSectionInput}
+                      onChange={e => setNewSectionInput(e.target.value)}
+                      className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddSection}
+                      className="px-3.5 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-xs font-medium text-white transition-colors cursor-pointer"
+                    >
+                      {t('setup.addSectionBtn')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SUBMIT BUTTON */}
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center py-3.5 px-4 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                disabled={loading || !isLicenseActive}
+                className="w-full flex items-center justify-center py-3.5 px-4 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-400 text-neutral-950 shadow-lg shadow-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
-                {loading ? 'Initializing RestaurantOS Hub...' : 'Complete Hub Setup & Launch'}
+                {loading 
+                  ? t('setup.initializing') 
+                  : !isLicenseActive 
+                  ? t('licensing.licenseRequired') 
+                  : t('setup.submitBtn')}
               </button>
             </div>
           </form>

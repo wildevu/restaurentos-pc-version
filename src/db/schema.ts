@@ -153,3 +153,25 @@ export const pairingTokens = sqliteTable('pairing_tokens', {
   usedAt: integer('used_at', { mode: 'timestamp' }),
   invalidatedAt: integer('invalidated_at', { mode: 'timestamp' }),
 });
+
+export const installations = sqliteTable('installations', {
+  id: text('id').primaryKey(),
+  restaurantId: text('restaurant_id').references(() => restaurants.id),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  lastSeenTime: integer('last_seen_time', { mode: 'timestamp' }).notNull(),
+});
+
+export const licenses = sqliteTable('licenses', {
+  id: text('id').primaryKey(),
+  rawLicenseKey: text('raw_license_key').notNull(),
+  product: text('product').notNull(),
+  version: integer('version').notNull(),
+  restaurantId: text('restaurant_id').notNull(),
+  installationId: text('installation_id').notNull(),
+  durationDays: integer('duration_days').notNull(),
+  issuedAt: integer('issued_at', { mode: 'timestamp' }).notNull(),
+  activatedAt: integer('activated_at', { mode: 'timestamp' }).notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  status: text('status', { enum: ['ACTIVE', 'EXPIRED', 'SUPERSEDED', 'REVOKED'] }).notNull().default('ACTIVE'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});

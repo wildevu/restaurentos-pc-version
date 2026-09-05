@@ -36,7 +36,8 @@ import {
   AuditLogs,
   Backups,
   SystemHealth,
-  LocalHubStatus
+  LocalHubStatus,
+  LicenseManagement
 } from './components/admin';
 
 import { 
@@ -69,8 +70,26 @@ function AppContent({
   handleLogin 
 }: any) {
   const [showRejectedModal, setShowRejectedModal] = useState(false);
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const location = useLocation();
   const { t, language, setLanguage } = useI18n();
+
+  useEffect(() => {
+    const checkLicense = async () => {
+      try {
+        const res = await fetch('/api/licensing/status');
+        if (res.ok) {
+          const data = await res.json();
+          setLicenseStatus(data);
+        }
+      } catch (err) {
+        console.error('License check error', err);
+      }
+    };
+    checkLicense();
+    const interval = setInterval(checkLicense, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const activeTable = tables.find((t: any) => t.id === activeTableId);
   const activeOrder = activeTable?.orderId 
@@ -250,6 +269,30 @@ function AppContent({
         </div>
       </header>
 
+      {/* License Warning Banner */}
+      {licenseStatus && !licenseStatus.canOperate && (
+        <div id="license-global-warning-banner" className="bg-amber-500 text-white px-4 py-2.5 flex items-center justify-between shadow-xs z-30">
+          <div className="flex items-center gap-2.5 text-xs sm:text-sm font-semibold">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>
+              {licenseStatus.status === 'EXPIRED'
+                ? t('licensing.expiredBannerMessage')
+                : licenseStatus.status === 'CLOCK_ROLLBACK_DETECTED'
+                ? t('licensing.clockRollbackMessage')
+                : t('licensing.unlicensedBannerMessage')}
+            </span>
+          </div>
+          {isOwnerOrManager && (
+            <Link
+              to="/admin/licensing"
+              className="ml-4 px-3 py-1 bg-white text-amber-900 hover:bg-amber-50 text-xs font-bold rounded-md shadow-xs transition-colors shrink-0"
+            >
+              {t('licensing.activateBtn')}
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-0 bg-gray-50 overflow-y-auto">
         <Routes>
@@ -306,6 +349,7 @@ function AppContent({
           {isOwnerOrManager && (
             <Route path="/admin" element={<AdminLayout />}>
               <Route path="hub" element={<LocalHubStatus authToken={authToken!} />} />
+              <Route path="licensing" element={<LicenseManagement />} />
               <Route path="settings" element={<RestaurantSettings authToken={authToken!} />} />
               <Route path="staff" element={<StaffManagement authToken={authToken!} currentUser={user} />} />
               <Route path="tables" element={<TableManagement authToken={authToken!} />} />
