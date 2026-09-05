@@ -120,32 +120,32 @@ async function buildPackage() {
   const destModules = path.join(APP_OUT, 'node_modules');
   fs.mkdirSync(destModules, { recursive: true });
   
-  const devOnly = [
-    'typescript',
-    'vite',
-    '@vitejs',
-    'vite-plugin-pwa',
-    'rolldown',
-    '@rolldown',
+  const devPrefixes = [
     '@tailwindcss',
-    'drizzle-kit',
-    'esbuild',
-    '@esbuild',
-    'tsx',
-    '@types',
-    'rollup',
-    '@rollup',
+    'tailwindcss',
     'lightningcss',
+    '@rolldown',
+    'rolldown',
+    '@rollup',
+    'rollup',
+    '@esbuild',
+    'esbuild',
+    '@vitejs',
+    'vite',
+    'vite-plugin-pwa',
+    'typescript',
+    '@types',
+    'drizzle-kit',
+    'tsx',
     'postcss',
-    'terser',
-    'tailwindcss'
+    'terser'
   ];
 
   const srcModules = path.join(ROOT_DIR, 'node_modules');
   if (fs.existsSync(srcModules)) {
     const items = fs.readdirSync(srcModules);
     for (const item of items) {
-      if (devOnly.includes(item)) continue;
+      if (devPrefixes.some(prefix => item === prefix || item.startsWith(prefix))) continue;
       const sPath = path.join(srcModules, item);
       const dPath = path.join(destModules, item);
       if (fs.existsSync(sPath)) {

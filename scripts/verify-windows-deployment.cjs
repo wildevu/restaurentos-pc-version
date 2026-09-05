@@ -91,12 +91,16 @@ assert(launcherBat.includes('runtime\\node.exe'), 'Launcher prioritizes bundled 
 assert(!launcherBat.includes('npm run') && !launcherBat.includes('npx') && !launcherBat.includes('git '), 'Launcher has ZERO reliance on npm, npx, git, or build tools');
 assert(launcherBat.includes('server.cjs'), 'Launcher launches compiled server.cjs directly');
 
-// TEST 6: Packaging Build Execution
+// TEST 6: Packaging Build Execution & Customer Package Structural Validation
 console.log('\n--- TEST 6: Build Package Execution & Structure Audit ---');
 try {
-  execSync('node scripts/build-windows-package.js', { stdio: 'pipe' });
   const pkgDir = path.resolve(process.cwd(), 'dist/windows-package');
   const appDir = path.join(pkgDir, 'RestaurantOS');
+
+  if (!fs.existsSync(path.join(appDir, 'server.cjs')) || !fs.existsSync(path.join(appDir, 'runtime/node.exe'))) {
+    console.log('Building Windows package for verification...');
+    execSync('node scripts/build-windows-package.js', { stdio: 'inherit' });
+  }
   
   assert(fs.existsSync(pkgDir), 'Windows package directory dist/windows-package exists');
   assert(fs.existsSync(appDir), 'Application directory dist/windows-package/RestaurantOS exists');
@@ -115,6 +119,12 @@ try {
     assert(fs.existsSync(path.join(nodeModulesDir, mod)), `Production dependency '${mod}' is packaged in node_modules`);
   }
   assert(fs.existsSync(path.join(nodeModulesDir, '@libsql', 'win32-x64-msvc', 'index.node')), 'Prebuilt Windows x64 LibSQL native binary index.node is packaged');
+
+  // Verify build tools are strictly excluded from customer payload
+  const excludedDevTools = ['vite', 'esbuild', 'rolldown', 'typescript', 'lightningcss', '@tailwindcss'];
+  for (const devTool of excludedDevTools) {
+    assert(!fs.existsSync(path.join(nodeModulesDir, devTool)), `Build-only tool '${devTool}' is NOT included in customer node_modules`);
+  }
   
   // Verify server bundle
   assert(fs.existsSync(path.join(appDir, 'server.cjs')), 'Bundled server.cjs exists in package');
@@ -123,13 +133,32 @@ try {
   assert(fs.existsSync(path.join(appDir, 'dist/index.html')), 'Production PWA static index.html exists in package dist');
   assert(fs.existsSync(path.join(appDir, 'dist/sw.js')), 'Production PWA service worker sw.js exists in package dist');
   assert(fs.existsSync(path.join(appDir, 'dist/manifest.webmanifest')), 'Production PWA manifest.webmanifest exists in package dist');
+
+  // Verify public assets & branding icons
+  assert(fs.existsSync(path.join(appDir, 'public/favicon.ico')), 'Branding asset favicon.ico exists in package');
+  assert(fs.existsSync(path.join(appDir, 'public/favicon.png')) || fs.existsSync(path.join(appDir, 'public/favicon.svg')), 'Branding favicon png/svg exists in package');
+  assert(fs.existsSync(path.join(appDir, 'public/pwa-192x192.png')) && fs.existsSync(path.join(appDir, 'public/pwa-512x512.png')), 'PWA icons exist in package');
   
-  // Verify DB migrations
+  // Verify DB migrations 0000 through 0010
   assert(fs.existsSync(path.join(appDir, 'migrations')), 'Database migrations folder exists in package');
   assert(fs.existsSync(path.join(appDir, 'src/db/migrations')), 'Database migrations folder exists in src/db/migrations');
-  assert(fs.existsSync(path.join(appDir, 'migrations/0000_flippant_alice.sql')), 'Initial schema migration SQL exists');
-  assert(fs.existsSync(path.join(appDir, 'migrations/0010_offline_licensing_and_installation.sql')), 'Latest schema migration SQL exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0000_flippant_alice.sql')), 'Initial schema migration 0000 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0001_cooing_johnny_blaze.sql')), 'Migration 0001 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0002_nostalgic_vector.sql')), 'Migration 0002 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0003_naive_iron_patriot.sql')), 'Migration 0003 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0004_slippery_proudstar.sql')), 'Migration 0004 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0005_broad_marvex.sql')), 'Migration 0005 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0006_fluffy_kitchen.sql')), 'Migration 0006 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0007_production_tables_and_restaurant.sql')), 'Migration 0007 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0008_production_indexes_and_integrity.sql')), 'Migration 0008 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0009_language_and_currency_snapshot.sql')), 'Migration 0009 exists');
+  assert(fs.existsSync(path.join(appDir, 'migrations/0010_offline_licensing_and_installation.sql')), 'Latest schema migration 0010 exists');
   assert(fs.existsSync(path.join(appDir, 'migrations/meta/_journal.json')), 'Schema journal meta file exists');
+
+  // Verify no secrets or private keys in customer package
+  assert(!fs.existsSync(path.join(appDir, '.env')), 'Customer package does NOT contain .env file');
+  assert(!fs.existsSync(path.join(pkgDir, '.env')), 'Top-level package does NOT contain .env file');
+  assert(fs.existsSync(path.join(appDir, 'restaurantos.env.template')), 'Customer package contains clean env template without secrets');
   
   // Verify installers
   assert(fs.existsSync(path.join(pkgDir, 'Install-RestaurantOS.bat')), 'Top-level Install-RestaurantOS.bat exists');

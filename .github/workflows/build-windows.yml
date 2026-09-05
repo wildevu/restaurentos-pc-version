@@ -17,16 +17,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js Runtime
+      - name: Setup Node.js Runtime (v20 LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: 'npm'
 
       - name: Install Dependencies
         run: npm ci --prefer-offline
 
-      - name: Validate TypeScript Types
+      - name: Dynamic Windows Native Dependency Audit & Verification
+        run: node scripts/audit-windows-native-deps.cjs
+
+      - name: Validate TypeScript Types & Code Quality
         run: npm run lint
 
       - name: Run Localization & Licensing Verification Suites
@@ -34,37 +37,6 @@ jobs:
           node scripts/audit-translations-and-ux.cjs
           node scripts/verify-offline-licensing.cjs
           npx tsx scripts/verify-setup-licensing-flow.cjs
-
-      - name: Verify Windows Native Bindings (Rolldown & LibSQL)
-        shell: pwsh
-        run: |
-          node -e "
-            console.log('Verifying Windows native bindings in node_modules...');
-            try {
-              const fs = require('fs');
-              const path = require('path');
-              const rolldownPath = path.join(process.cwd(), 'node_modules', '@rolldown', 'binding-win32-x64-msvc');
-              if (!fs.existsSync(rolldownPath)) {
-                throw new Error('Directory node_modules/@rolldown/binding-win32-x64-msvc does not exist');
-              }
-              console.log('✓ @rolldown/binding-win32-x64-msvc is present');
-            } catch (e) {
-              console.error('CRITICAL: Rolldown Windows binding missing:', e.message);
-              process.exit(1);
-            }
-            try {
-              const fs = require('fs');
-              const path = require('path');
-              const libsqlPath = path.join(process.cwd(), 'node_modules', '@libsql', 'win32-x64-msvc');
-              if (!fs.existsSync(libsqlPath)) {
-                throw new Error('Directory node_modules/@libsql/win32-x64-msvc does not exist');
-              }
-              console.log('✓ @libsql/win32-x64-msvc is present');
-            } catch (e) {
-              console.error('CRITICAL: LibSQL Windows binding missing:', e.message);
-              process.exit(1);
-            }
-          "
 
       - name: Build Production Bundles & Standalone Windows Package
         run: npm run package:windows
@@ -75,11 +47,36 @@ jobs:
       - name: Install Inno Setup Compiler
         run: |
           choco install innosetup --no-progress
-          echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
 
       - name: Compile Windows Installer Executable
+        shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\RestaurantOS-Setup.iss
+          # Dynamically locate ISCC.exe across PATH and standard installation directories
+          $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $possiblePaths = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+              "C:\Program Files\Inno Setup 6\ISCC.exe"
+            )
+            foreach ($p in $possiblePaths) {
+              if (Test-Path $p) {
+                $iscc = $p
+                break
+              }
+            }
+          } else {
+            $iscc = $iscc.Source
+          }
+
+          if (-not $iscc -or -not (Test-Path $iscc)) {
+            Write-Error "Could not locate Inno Setup compiler (ISCC.exe)!"
+            exit 1
+          }
+
+          Write-Host "Compiling installer using Inno Setup compiler at: $iscc"
+          & $iscc windows\installer\RestaurantOS-Setup.iss
 
       - name: Verify Installer Artifact
         shell: pwsh
@@ -106,3 +103,4 @@ jobs:
           path: dist/windows-package/
           if-no-files-found: error
           retention-days: 7
+
