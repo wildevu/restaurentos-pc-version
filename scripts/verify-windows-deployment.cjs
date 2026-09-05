@@ -114,6 +114,7 @@ try {
   for (const mod of requiredModules) {
     assert(fs.existsSync(path.join(nodeModulesDir, mod)), `Production dependency '${mod}' is packaged in node_modules`);
   }
+  assert(fs.existsSync(path.join(nodeModulesDir, '@libsql', 'win32-x64-msvc', 'index.node')), 'Prebuilt Windows x64 LibSQL native binary index.node is packaged');
   
   // Verify server bundle
   assert(fs.existsSync(path.join(appDir, 'server.cjs')), 'Bundled server.cjs exists in package');

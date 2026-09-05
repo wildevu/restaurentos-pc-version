@@ -26,7 +26,7 @@ console.log('====================================================');
 console.log('   RESTAURANTOS SETUP & LICENSING E2E VERIFICATION  ');
 console.log('====================================================\n');
 
-const { db } = require('../src/db/index.ts');
+const { db, runMigrations } = require('../src/db/index.ts');
 const { restaurants, users, installations, licenses, orders, tables, hubState } = require('../src/db/schema.ts');
 const { LicensingService } = require('../src/licensing/service.ts');
 const { generateLicenseKey } = require('./generate-offline-license.cjs');
@@ -48,6 +48,10 @@ function assert(condition, message) {
 
 async function runSuite() {
   try {
+    if (typeof runMigrations === 'function') {
+      await runMigrations();
+    }
+
     // ----------------------------------------------------
     // TEST 1: Fresh Installation - No Restaurant, Valid Installation ID
     // ----------------------------------------------------

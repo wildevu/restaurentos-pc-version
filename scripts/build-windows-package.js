@@ -148,6 +148,29 @@ async function buildPackage() {
     }
   }
 
+  // Ensure Windows prebuilt binary for @libsql/win32-x64-msvc exists in package node_modules
+  const winLibsqlDest = path.join(destModules, '@libsql', 'win32-x64-msvc');
+  const winLibsqlSrc = path.join(srcModules, '@libsql', 'win32-x64-msvc');
+  if (!fs.existsSync(winLibsqlDest) && fs.existsSync(winLibsqlSrc)) {
+    fs.mkdirSync(path.join(destModules, '@libsql'), { recursive: true });
+    fs.cpSync(winLibsqlSrc, winLibsqlDest, { recursive: true });
+  } else if (!fs.existsSync(winLibsqlDest) || !fs.existsSync(path.join(winLibsqlDest, 'index.node'))) {
+    console.log('[Dependencies] Ensuring prebuilt Windows x64 LibSQL binary is packaged...');
+    try {
+      const tmpDir = path.join(ROOT_DIR, 'runtime', 'libsql-win-pkg');
+      fs.mkdirSync(tmpDir, { recursive: true });
+      execSync('npm pack @libsql/win32-x64-msvc@0.5.29 --pack-destination=' + tmpDir, { stdio: 'pipe' });
+      const tarballs = fs.readdirSync(tmpDir).filter(f => f.endsWith('.tgz'));
+      if (tarballs.length > 0) {
+        fs.mkdirSync(winLibsqlDest, { recursive: true });
+        execSync(`tar -xzf "${path.join(tmpDir, tarballs[0])}" --strip-components=1 -C "${winLibsqlDest}"`, { stdio: 'pipe' });
+        console.log('[Dependencies] Embedded Windows x64 LibSQL native binary successfully into package.');
+      }
+    } catch (lErr) {
+      console.warn('[Dependencies] Note on LibSQL Windows prebuilt packaging:', lErr.message);
+    }
+  }
+
   // 6. Generate Windows Configuration Template & Readme
   console.log('[6/6] Writing deployment config template and documentation...');
   const configTemplate = `# RestaurantOS Local Hub Configuration

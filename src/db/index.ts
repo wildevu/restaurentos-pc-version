@@ -41,7 +41,7 @@ export function getMigrationsFolder(): string {
   ];
 
   for (const p of possiblePaths) {
-    if (fs.existsSync(p) && fs.existsSync(path.join(p, '_journal.json')) || fs.existsSync(path.join(p, 'meta/_journal.json'))) {
+    if (fs.existsSync(p) && (fs.existsSync(path.join(p, '_journal.json')) || fs.existsSync(path.join(p, 'meta/_journal.json')))) {
       return p;
     }
   }
