@@ -85,6 +85,8 @@ async function startServer() {
   // Clean logs every 24 hours
   setInterval(() => cleanOldLogs(), 24 * 60 * 60 * 1000);
 
+  let isServerReady = false;
+
   // Initialize Database
   try {
     await runMigrations();
@@ -94,8 +96,11 @@ async function startServer() {
     process.exit(1);
   }
 
-  if (config.SEED_DB === 'true') {
+  // Security Hardening: Demo seeding is STRICTLY forbidden in production
+  if (config.NODE_ENV !== 'production' && config.SEED_DB === 'true') {
     await seedDb();
+  } else if (config.NODE_ENV === 'production' && config.SEED_DB === 'true') {
+    logger.warn('SEED_DB=true is ignored in production mode to prevent customer data mutation.');
   }
 
   const app = express();
@@ -169,21 +174,32 @@ async function startServer() {
     });
   });
 
-  // Readiness Check (Validates DB connectivity, foreign keys, and tables)
+  // Readiness Check (Validates server state, DB connectivity, and table query)
   app.get('/api/ready', async (req: any, res) => {
+    if (!isServerReady) {
+      return res.status(503).json({
+        ready: false,
+        status: 'initializing',
+        message: 'RestaurantOS Local Hub is starting up...'
+      });
+    }
+
     try {
       await db.run(sql.raw('SELECT 1 as alive;'));
       const hub = await db.select().from(hubState).limit(1);
       res.json({
         ready: true,
+        status: 'ready',
         database: 'connected',
         stateInitialized: hub.length > 0,
+        version: '1.0.0',
         lanIps,
-        uptimeSeconds: Math.floor(process.uptime())
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
       });
     } catch (err: any) {
       logger.error('Readiness probe failed', { error: err.message, reqId: req.id });
-      res.status(503).json({ ready: false, error: err.message });
+      res.status(503).json({ ready: false, status: 'error', error: err.message });
     }
   });
 
@@ -385,7 +401,29 @@ async function startServer() {
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
-        res.status(200).send('RestaurantOS Local Hub is initializing...');
+        logger.error(`Frontend assets missing at ${distPath}. index.html not found.`);
+        res.status(500).type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>RestaurantOS Local Hub — Error</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { max-width: 580px; padding: 32px; background: #1e293b; border-radius: 12px; border: 1px solid #334155; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    h1 { color: #f87171; font-size: 22px; margin: 0 0 14px; }
+    p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
+    .path-box { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; color: #38bdf8; font-family: monospace; font-size: 13px; word-break: break-all; margin-bottom: 16px; text-align: left; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>RestaurantOS Frontend Assets Not Found</h1>
+    <p>The static user interface files could not be located at the expected application path:</p>
+    <div class="path-box">${distPath}</div>
+    <p>Please ensure that RestaurantOS was installed completely, or reinstall using the official installer.</p>
+  </div>
+</body>
+</html>`);
       }
     });
   }
@@ -402,6 +440,7 @@ async function startServer() {
   });
 
   httpServer.listen(PORT, '0.0.0.0', () => {
+    isServerReady = true;
     logger.info(`====================================================`);
     logger.info(`   RESTAURANTOS LOCAL HUB — SERVER RUNNING          `);
     logger.info(`====================================================`);

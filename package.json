@@ -9,8 +9,8 @@
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "package:windows": "node scripts/build-windows-package.js",
-    "verify:windows": "node scripts/verify-windows-deployment.cjs",
-    "test": "node scripts/audit-translations-and-ux.cjs && node scripts/verify-offline-licensing.cjs && npx tsx scripts/verify-setup-licensing-flow.cjs && node scripts/verify-windows-deployment.cjs"
+    "verify:windows": "node scripts/verify-windows-deployment.cjs && node scripts/verify-packaged-runtime.cjs",
+    "test": "node scripts/audit-translations-and-ux.cjs && node scripts/verify-offline-licensing.cjs && npx tsx scripts/verify-setup-licensing-flow.cjs && npm run verify:windows"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

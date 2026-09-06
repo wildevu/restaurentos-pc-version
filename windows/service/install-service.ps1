@@ -1,5 +1,5 @@
 # RestaurantOS Local Hub - Windows Background Service & Auto-Start Configuration
-# Configures the hub to start automatically on system boot and recover on failures
+# Configures the hub to start automatically on system boot and recover on failures silently
 
 param(
     [string]$AppDir = "$env:ProgramFiles\RestaurantOS",
@@ -18,14 +18,23 @@ if (-not $isAdmin) {
 
 Write-Host "Configuring RestaurantOS Local Hub automatic startup..." -ForegroundColor Cyan
 
-# Prepare launcher path
-$LauncherScript = Join-Path $AppDir "launch-hub.bat"
-if (-not (Test-Path $LauncherScript)) {
-    Write-Warning "Launcher script not found at $LauncherScript. Using default node runner."
+# Determine the cleanest silent executable path
+$LauncherExe = Join-Path $AppDir "RestaurantOS.exe"
+$VbsLauncher = Join-Path $AppDir "Launch-RestaurantOS.vbs"
+$NodeExe = Join-Path $AppDir "runtime\node.exe"
+$ServerCjs = Join-Path $AppDir "server.cjs"
+
+if (Test-Path $LauncherExe) {
+    $Action = New-ScheduledTaskAction -Execute $LauncherExe -Argument "--service" -WorkingDirectory $AppDir
+} elseif (Test-Path $VbsLauncher) {
+    $Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$VbsLauncher`"" -WorkingDirectory $AppDir
+} elseif (Test-Path $NodeExe) {
+    $Action = New-ScheduledTaskAction -Execute $NodeExe -Argument "`"$ServerCjs`"" -WorkingDirectory $AppDir
+} else {
+    $LauncherScript = Join-Path $AppDir "launch-hub.bat"
+    $Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$LauncherScript`"" -WorkingDirectory $AppDir
 }
 
-# 1. Create or update Windows Task Scheduler entry for robust on-boot start
-$Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$LauncherScript`"" -WorkingDirectory $AppDir
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
 

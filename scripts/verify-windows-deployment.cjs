@@ -139,6 +139,25 @@ try {
   assert(fs.existsSync(path.join(appDir, 'public/favicon.png')) || fs.existsSync(path.join(appDir, 'public/favicon.svg')), 'Branding favicon png/svg exists in package');
   assert(fs.existsSync(path.join(appDir, 'public/pwa-192x192.png')) && fs.existsSync(path.join(appDir, 'public/pwa-512x512.png')), 'PWA icons exist in package');
   
+  // Verify VC++ 2015-2022 Runtime DLLs and Installers
+  const runtimeDlls = ['vcruntime140.dll', 'msvcp140.dll'];
+  for (const dll of runtimeDlls) {
+    assert(fs.existsSync(path.join(appDir, dll)), `MSVC runtime ${dll} exists in application root`);
+    assert(fs.existsSync(path.join(appDir, 'runtime', dll)), `MSVC runtime ${dll} exists in runtime/`);
+    assert(fs.existsSync(path.join(nodeModulesDir, '@libsql', 'win32-x64-msvc', dll)), `MSVC runtime ${dll} exists in @libsql/win32-x64-msvc/`);
+  }
+
+  // Verify launchers
+  assert(fs.existsSync(path.join(appDir, 'launch-hub.bat')), 'launch-hub.bat exists in application root');
+  assert(fs.existsSync(path.join(appDir, 'Launch-RestaurantOS.vbs')), 'Silent Launch-RestaurantOS.vbs exists in application root');
+  assert(fs.existsSync(path.join(appDir, 'RestaurantOS.cs')), 'C# Launcher source RestaurantOS.cs exists in package');
+
+  // Verify Inno Setup uses RestaurantOS.exe and proper icon
+  const setupScript = fs.readFileSync(path.join(pkgDir, 'RestaurantOS-Setup.iss'), 'utf-8');
+  assert(setupScript.includes('MyAppExeName "RestaurantOS.exe"'), 'Inno Setup uses RestaurantOS.exe as main executable');
+  assert(setupScript.includes('VC_redist.x64.exe'), 'Inno Setup includes VC_redist.x64.exe installer');
+  assert(setupScript.includes('{app}\\RestaurantOS.exe'), 'Inno Setup creates shortcuts pointing to RestaurantOS.exe');
+
   // Verify DB migrations 0000 through 0010
   assert(fs.existsSync(path.join(appDir, 'migrations')), 'Database migrations folder exists in package');
   assert(fs.existsSync(path.join(appDir, 'src/db/migrations')), 'Database migrations folder exists in src/db/migrations');

@@ -65,6 +65,51 @@ async function ensureWindowsNodeRuntime() {
   });
 }
 
+function compileWindowsLauncher() {
+  const csSource = path.join(ROOT_DIR, 'windows', 'launcher', 'RestaurantOS.cs');
+  const icoFile = path.join(ROOT_DIR, 'public', 'favicon.ico');
+  const targetExe = path.join(APP_OUT, 'RestaurantOS.exe');
+  const launcherOutExe = path.join(ROOT_DIR, 'windows', 'launcher', 'RestaurantOS.exe');
+
+  if (!fs.existsSync(csSource)) return;
+
+  console.log('[Launcher] Checking C# compiler for native Windows launcher (RestaurantOS.exe)...');
+  
+  const cscCandidates = [
+    'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
+    'C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe',
+    'csc.exe',
+    'csc'
+  ];
+
+  let cscPath = null;
+  for (const candidate of cscCandidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        cscPath = candidate;
+        break;
+      }
+      execSync(`"${candidate}" /?`, { stdio: 'ignore' });
+      cscPath = candidate;
+      break;
+    } catch {}
+  }
+
+  if (cscPath) {
+    try {
+      console.log(`[Launcher] Compiling native Windows launcher with ${cscPath}...`);
+      const iconFlag = fs.existsSync(icoFile) ? `/win32icon:"${icoFile}"` : '';
+      execSync(`"${cscPath}" /target:winexe /optimize+ /platform:anycpu ${iconFlag} /out:"${targetExe}" "${csSource}"`, { stdio: 'inherit' });
+      fs.copyFileSync(targetExe, launcherOutExe);
+      console.log(`[Launcher] Compiled RestaurantOS.exe successfully (${Math.round(fs.statSync(targetExe).size / 1024)} KB).`);
+    } catch (cErr) {
+      console.warn('[Launcher] Warning compiling C# launcher with csc:', cErr.message);
+    }
+  } else {
+    console.log('[Launcher] Note: C# csc compiler not in Linux container. C# source and VBS/BAT wrappers packaged for Windows compilation & execution.');
+  }
+}
+
 async function buildPackage() {
   // 1. Clean previous package folder before building
   if (fs.existsSync(PKG_DIR)) {
@@ -109,6 +154,9 @@ async function buildPackage() {
 
   // Copy top-level launcher and installers
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'launch-hub.bat'), path.join(APP_OUT, 'launch-hub.bat'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'Launch-RestaurantOS.vbs'), path.join(APP_OUT, 'Launch-RestaurantOS.vbs'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'RestaurantOS.cs'), path.join(APP_OUT, 'RestaurantOS.cs'));
+  
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.bat'), path.join(PKG_DIR, 'Install-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'uninstall.bat'), path.join(PKG_DIR, 'Uninstall-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.ps1'), path.join(PKG_DIR, 'install.ps1'));
@@ -177,6 +225,38 @@ async function buildPackage() {
     }
   }
 
+  // Copy bundled Visual C++ 2015-2022 x64 Runtime DLLs
+  const redistX64Dir = path.join(ROOT_DIR, 'windows', 'redist', 'x64');
+  if (fs.existsSync(redistX64Dir)) {
+    console.log('[Redist] Packaging Visual C++ 2015-2022 x64 Runtime DLLs into application root, runtime, and LibSQL module...');
+    const dlls = fs.readdirSync(redistX64Dir).filter(f => f.toLowerCase().endsWith('.dll'));
+    const dests = [
+      APP_OUT,
+      path.join(APP_OUT, 'runtime'),
+      path.join(APP_OUT, 'node_modules', '@libsql', 'win32-x64-msvc')
+    ];
+    
+    for (const dest of dests) {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const dll of dlls) {
+        fs.copyFileSync(path.join(redistX64Dir, dll), path.join(dest, dll));
+      }
+    }
+    console.log(`[Redist] Packaged ${dlls.length} MSVC runtime DLLs across all target directories.`);
+  }
+
+  const redistExe = path.join(ROOT_DIR, 'windows', 'redist', 'VC_redist.x64.exe');
+  if (fs.existsSync(redistExe)) {
+    fs.mkdirSync(path.join(APP_OUT, 'windows', 'redist'), { recursive: true });
+    fs.copyFileSync(redistExe, path.join(APP_OUT, 'windows', 'redist', 'VC_redist.x64.exe'));
+    fs.mkdirSync(path.join(PKG_DIR, 'windows', 'redist'), { recursive: true });
+    fs.copyFileSync(redistExe, path.join(PKG_DIR, 'windows', 'redist', 'VC_redist.x64.exe'));
+    console.log('[Redist] Packaged official VC_redist.x64.exe for Inno Setup silent installer.');
+  }
+
+  // Compile native Windows Launcher if compiler is available
+  compileWindowsLauncher();
+
   // 6. Generate Windows Configuration Template & Readme
   console.log('[6/6] Writing deployment config template and documentation...');
   const configTemplate = `# RestaurantOS Local Hub Configuration
@@ -197,6 +277,7 @@ RestaurantOS includes everything required to run out of the box:
 - Bundled server engine with pre-packaged runtime dependencies (RestaurantOS\\server.cjs)
 - Offline-first Progressive Web App (PWA) client (RestaurantOS\\dist)
 - Automated SQLite database schema migrations (RestaurantOS\\migrations)
+- Bundled Visual C++ 2015-2022 x64 Runtime DLLs
 - Zero external runtime prerequisites (No Node.js, npm, Python, or Git required on customer PC)
 
 ## Quick Installation on Windows 10/11

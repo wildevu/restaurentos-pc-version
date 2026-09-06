@@ -27,6 +27,12 @@ if not exist "%RESTAURANTOS_DATA_DIR%\backups" mkdir "%RESTAURANTOS_DATA_DIR%\ba
 if not exist "%RESTAURANTOS_DATA_DIR%\logs" mkdir "%RESTAURANTOS_DATA_DIR%\logs"
 if not exist "%RESTAURANTOS_DATA_DIR%\config" mkdir "%RESTAURANTOS_DATA_DIR%\config"
 
+:: Check if bundled RestaurantOS.exe exists
+if exist "%APP_DIR%RestaurantOS.exe" (
+    start "" "%APP_DIR%RestaurantOS.exe" %*
+    exit /b 0
+)
+
 :: Check if bundled node exists or system node
 if exist "%APP_DIR%runtime\node.exe" (
     set NODE_EXE="%APP_DIR%runtime\node.exe"
