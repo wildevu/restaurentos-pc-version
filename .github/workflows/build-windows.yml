@@ -28,7 +28,7 @@ jobs:
         run: npm cache clean --force
         
       - name: Install Dependencies
-        run: npm ci --prefer-offline
+        run: npm ci 
 
       - name: Dynamic Windows Native Dependency Audit & Verification
         run: node scripts/audit-windows-native-deps.cjs
