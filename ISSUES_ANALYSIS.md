@@ -482,6 +482,38 @@ Warning: Node.js 20 is deprecated. The following actions target Node.js 20 but a
 
 ---
 
+### Issue #10: Windows ChildProcess SIGTERM Abrupt Exit & Lockfile Cleanup Failure
+**Status:** ✅ **RESOLVED**  
+**Location:** `server.ts`, `scripts/verify-packaged-runtime.cjs`  
+**Error Message:**
+```
+--- TEST 7: Graceful Shutdown & Lockfile Cleanup ---
+  ✗ [FAIL] Server exited cleanly with exit code 0
+  ✗ [FAIL] Instance lockfile was cleaned up on graceful shutdown
+```
+
+**Forensic Root Cause:**
+- Windows does **not** implement POSIX signals (such as `SIGTERM`, `SIGINT`, or `SIGUSR1`).
+- In Node.js on Windows, calling `childProcess.kill('SIGTERM')` maps directly to the Win32 API `TerminateProcess(hProcess, 1)`.
+- `TerminateProcess` forcibly and unconditionally destroys the target process immediately. No JavaScript event loop cycles, exit hooks, or signal handlers are ever executed.
+- As a direct result:
+  1. `server.cjs` never executed `gracefulShutdown()`.
+  2. The process exited with code `1` (or null), violating `assert(exitCode === 0)`.
+  3. The instance lockfile `restaurantos.pid` was never unlinked, violating `assert(!lockExists)`.
+
+**Solution & Implementation:**
+1. **Localhost Administrative Shutdown Endpoint (`server.ts`)**:
+   - Added `POST /api/hub/shutdown` strictly restricted to `127.0.0.1`, `::1`, and `::ffff:127.0.0.1`.
+   - Returns HTTP 200 `{ status: 'shutting_down' }`, closes socket listeners, checkpoints SQLite WAL to disk (`PRAGMA wal_checkpoint(TRUNCATE)`), unlinks `restaurantos.pid`, and cleanly exits with code `0`.
+2. **Cross-Platform STDIN Listener (`server.ts`)**:
+   - Added standard input listener that executes `gracefulShutdown('STDIN')` upon receiving the `SHUTDOWN` command.
+3. **Cross-Platform Verification Harness (`scripts/verify-packaged-runtime.cjs`)**:
+   - Configured `serverProc` with `stdio: ['pipe', 'pipe', 'pipe']`.
+   - TEST 7 triggers shutdown via loopback HTTP POST and STDIN command, backed by a safety fallback timer.
+   - Accurately validates clean exit (code 0) and lockfile cleanup across both Windows and POSIX environments.
+
+---
+
 ## 📋 Summary Table
 
 | Issue | Severity | Type | File(s) | Auto-Fix | Status |
@@ -490,6 +522,7 @@ Warning: Node.js 20 is deprecated. The following actions target Node.js 20 but a
 | Graceful shutdown exit code | 🔴 CRITICAL | Runtime | `server.ts` | ✅ Yes | RESOLVED |
 | Node 20 deprecation & runner warning | ⚠️ WARNING | CI/CD | `.github/workflows/build-windows.yml` | ✅ Yes | RESOLVED |
 | Rolldown native binding missing on disk | 🔴 CRITICAL | Build | `build-windows.yml`, `audit-windows-native-deps.cjs` | ✅ Yes | RESOLVED |
+| Windows SIGTERM TerminateProcess Abrupt Exit | 🔴 CRITICAL | Runtime | `server.ts`, `verify-packaged-runtime.cjs` | ✅ Yes | RESOLVED |
 | Unused C# import | 🟡 CODE | Quality | `RestaurantOS.cs` | ✅ Yes | RESOLVED |
 | Missing HTTP error handling | 🟡 CODE | Quality | `RestaurantOS.cs` | ✅ Yes | RESOLVED |
 | Hardcoded Node version | 🟡 MAINT | Maintenance | `build-windows-package.js` | ✅ Yes | RESOLVED |

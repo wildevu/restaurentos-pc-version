@@ -107,7 +107,7 @@ async function runLiveRuntimeTests() {
   const serverProc = spawn('node', [path.join(pkgDir, 'server.cjs')], {
     cwd: pkgDir,
     env: serverEnv,
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe']
   });
 
   let serverLogs = '';
@@ -131,6 +131,11 @@ async function runLiveRuntimeTests() {
       }
     } catch { }
     await new Promise(r => setTimeout(r, 250));
+  }
+
+  if (!isReady && serverLogs) {
+    console.error('  [DIAGNOSTIC] Packaged Server Logs on Startup Failure:');
+    console.error(serverLogs);
   }
 
   assert(isReady, `Server started on port ${TEST_PORT} and returned /api/ready 200 OK within timeout`);
@@ -167,8 +172,39 @@ async function runLiveRuntimeTests() {
     });
   });
 
-  serverProc.kill('SIGTERM');
+  // Cross-platform graceful shutdown trigger:
+  // 1. Invoke local administrative shutdown endpoint via HTTP loopback
+  try {
+    const postReq = http.request({
+      hostname: '127.0.0.1',
+      port: TEST_PORT,
+      path: '/api/hub/shutdown',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 3000
+    });
+    postReq.on('error', () => {});
+    postReq.end();
+  } catch {}
+
+  // 2. Also write SHUTDOWN command to stdin (supports Windows pipe / wrapper harnesses)
+  try {
+    if (serverProc.stdin && !serverProc.stdin.destroyed) {
+      serverProc.stdin.write('SHUTDOWN\n');
+    }
+  } catch {}
+
+  // 3. Fallback safety timer: if process does not exit in 5 seconds, forcefully terminate
+  const forceKillTimer = setTimeout(() => {
+    if (serverProc.exitCode === null) {
+      try {
+        serverProc.kill(process.platform === 'win32' ? undefined : 'SIGTERM');
+      } catch {}
+    }
+  }, 5000);
+
   const exitCode = await shutdownPromise;
+  clearTimeout(forceKillTimer);
   assert(exitCode === 0, `Server exited cleanly with exit code 0`);
 
   const lockPath = path.join(testDataDir, 'restaurantos.pid');

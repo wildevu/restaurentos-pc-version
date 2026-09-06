@@ -137,6 +137,8 @@ async function startServer() {
   app.set('disconnectUserSockets', disconnectUserSockets);
   app.set('disconnectDeviceSockets', disconnectDeviceSockets);
 
+  let gracefulShutdown: (reason?: string) => Promise<void>;
+
   // Correlation ID & Security Headers Middleware
   app.use((req: any, res: any, next) => {
     const reqId = req.headers['x-request-id'] || `req_${uuidv4().substring(0, 8)}`;
@@ -245,6 +247,24 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // Localhost Administrative Graceful Shutdown Endpoint (Safe cross-platform shutdown)
+  app.post('/api/hub/shutdown', (req: any, res) => {
+    const remoteIp = req.socket?.remoteAddress || '';
+    const isLocal = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1' || remoteIp === 'localhost';
+    if (!isLocal) {
+      return res.status(403).json({ error: 'Shutdown endpoint is restricted to localhost requests only.' });
+    }
+    logger.info('Graceful shutdown requested via local API endpoint.');
+    res.json({ status: 'shutting_down' });
+    setTimeout(() => {
+      if (gracefulShutdown) {
+        gracefulShutdown('LOCAL_API');
+      } else {
+        process.exit(0);
+      }
+    }, 50);
   });
 
   // Auth & Licensing Routes (Public / Unauthenticated Access)
@@ -460,11 +480,11 @@ async function startServer() {
 
   // Graceful Shutdown
   let isShuttingDown = false;
-  const gracefulShutdown = async () => {
+  gracefulShutdown = async (triggerReason: string = 'UNKNOWN') => {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    logger.info('Received shutdown signal, shutting down gracefully...');
+    logger.info(`Received shutdown trigger (${triggerReason}), shutting down gracefully...`);
 
     // Safety timeout in case open connections linger
     const forceTimer = setTimeout(() => {
@@ -532,8 +552,20 @@ async function startServer() {
     }
   };
 
-  process.on('SIGTERM', gracefulShutdown);
-  process.on('SIGINT', gracefulShutdown);
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  // Cross-platform STDIN listener (for Windows service wrappers, pipes, and test harnesses)
+  if (process.stdin.isTTY === false || process.env.NODE_ENV === 'production') {
+    try {
+      process.stdin.setEncoding('utf8');
+      process.stdin.on('data', (chunk) => {
+        if (chunk.toString().trim() === 'SHUTDOWN') {
+          gracefulShutdown('STDIN');
+        }
+      });
+    } catch {}
+  }
 
   process.on('uncaughtException', (err) => {
     logger.error('Uncaught Exception', err);
