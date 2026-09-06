@@ -459,28 +459,77 @@ async function startServer() {
   });
 
   // Graceful Shutdown
+  let isShuttingDown = false;
   const gracefulShutdown = async () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
     logger.info('Received shutdown signal, shutting down gracefully...');
-    try {
-      await db.run(sql.raw('PRAGMA wal_checkpoint(TRUNCATE);'));
-    } catch {}
-    
-    releaseInstanceLock();
 
-    io.close(() => {
-      logger.info('Socket.IO server closed.');
-    });
-
-    httpServer.close(() => {
-      logger.info('HTTP server closed.');
-      process.exit(0);
-    });
-    
-    // Force shutdown after 10s
-    setTimeout(() => {
+    // Safety timeout in case open connections linger
+    const forceTimer = setTimeout(() => {
       logger.error('Could not close connections in time, forcefully shutting down');
+      try {
+        releaseInstanceLock();
+      } catch {}
       process.exit(1);
     }, 10000);
+
+    if (forceTimer.unref) {
+      forceTimer.unref();
+    }
+
+    try {
+      // 1. Close WebSockets / Socket.IO
+      await new Promise<void>((resolve) => {
+        try {
+          io.close(() => {
+            logger.info('Socket.IO server closed.');
+            resolve();
+          });
+        } catch {
+          resolve();
+        }
+      });
+
+      // 2. Close HTTP Server and idle connections
+      if (typeof httpServer.closeIdleConnections === 'function') {
+        httpServer.closeIdleConnections();
+      }
+
+      await new Promise<void>((resolve) => {
+        try {
+          httpServer.close(() => {
+            logger.info('HTTP server closed.');
+            resolve();
+          });
+        } catch {
+          resolve();
+        }
+      });
+
+      // 3. Flush database WAL checkpoint
+      try {
+        await db.run(sql.raw('PRAGMA wal_checkpoint(TRUNCATE);'));
+        logger.info('Database WAL checkpoint completed.');
+      } catch (dbErr) {
+        logger.warn('Error during shutdown WAL checkpoint:', dbErr);
+      }
+
+      // 4. Release lockfile AFTER servers and database checkpoint are complete
+      releaseInstanceLock();
+      logger.info('Graceful shutdown completed successfully.');
+
+      clearTimeout(forceTimer);
+      process.exit(0);
+    } catch (shutdownErr) {
+      logger.error('Error during graceful shutdown:', shutdownErr);
+      try {
+        releaseInstanceLock();
+      } catch {}
+      clearTimeout(forceTimer);
+      process.exit(1);
+    }
   };
 
   process.on('SIGTERM', gracefulShutdown);

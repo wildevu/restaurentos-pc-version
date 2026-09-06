@@ -31,6 +31,9 @@ function copyFolderSync(from, to, exclude = []) {
   });
 }
 
+const NODE_VERSION = process.env.NODE_VERSION || '20.18.0';
+const NODE_ARCH = 'win-x64';
+
 // Ensure official Windows Node.js runtime is available
 async function ensureWindowsNodeRuntime() {
   if (!fs.existsSync(RUNTIME_CACHE_DIR)) {
@@ -42,8 +45,8 @@ async function ensureWindowsNodeRuntime() {
     return;
   }
 
-  console.log('[Runtime] Downloading official standalone Windows x64 Node.js binary from nodejs.org...');
-  const url = 'https://nodejs.org/dist/v20.18.0/win-x64/node.exe';
+  console.log(`[Runtime] Downloading official standalone Windows x64 Node.js binary (v${NODE_VERSION}) from nodejs.org...`);
+  const url = `https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCH}/node.exe`;
   
   await new Promise((resolve, reject) => {
     const file = fs.createWriteStream(NODE_EXE_CACHE);
@@ -76,6 +79,14 @@ function compileWindowsLauncher() {
   console.log('[Launcher] Checking C# compiler for native Windows launcher (RestaurantOS.exe)...');
   
   const cscCandidates = [
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Windows\\Microsoft.NET\\Framework64\\v4.8.1.0\\csc.exe',
+    'C:\\Windows\\Microsoft.NET\\Framework64\\v4.8.0\\csc.exe',
+    'C:\\Windows\\Microsoft.NET\\Framework64\\v4.7.2\\csc.exe',
+    'C:\\Windows\\Microsoft.NET\\Framework64\\v4.5.2\\csc.exe',
     'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
     'C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe',
     'csc.exe',
@@ -219,17 +230,35 @@ async function buildPackage() {
         fs.mkdirSync(winLibsqlDest, { recursive: true });
         execSync(`tar -xzf "${path.join(tmpDir, tarballs[0])}" --strip-components=1 -C "${winLibsqlDest}"`, { stdio: 'pipe' });
         console.log('[Dependencies] Embedded Windows x64 LibSQL native binary successfully into package.');
+      } else {
+        throw new Error('No .tgz package archive found after npm pack @libsql/win32-x64-msvc');
       }
     } catch (lErr) {
-      console.warn('[Dependencies] Note on LibSQL Windows prebuilt packaging:', lErr.message);
+      console.error('[FATAL] LibSQL Windows native binary packaging failed:', lErr.message);
+      console.error('[FATAL] The application requires @libsql/win32-x64-msvc to run on Windows.');
+      process.exit(1);
     }
+  }
+
+  if (!fs.existsSync(path.join(winLibsqlDest, 'index.node'))) {
+    console.error('[FATAL] Verification failed: index.node is missing from ' + winLibsqlDest);
+    process.exit(1);
   }
 
   // Copy bundled Visual C++ 2015-2022 x64 Runtime DLLs
   const redistX64Dir = path.join(ROOT_DIR, 'windows', 'redist', 'x64');
-  if (fs.existsSync(redistX64Dir)) {
+  const requiredDlls = ['msvcp140.dll', 'vcruntime140.dll'];
+  if (!fs.existsSync(redistX64Dir)) {
+    console.warn('[Redist] Warning: Visual C++ redist directory not found at ' + redistX64Dir);
+  } else {
     console.log('[Redist] Packaging Visual C++ 2015-2022 x64 Runtime DLLs into application root, runtime, and LibSQL module...');
     const dlls = fs.readdirSync(redistX64Dir).filter(f => f.toLowerCase().endsWith('.dll'));
+    
+    const missingDlls = requiredDlls.filter(req => !dlls.some(f => f.toLowerCase() === req.toLowerCase()));
+    if (missingDlls.length > 0) {
+      console.warn(`[Redist] WARNING: Required MSVC runtime DLLs missing in ${redistX64Dir}: ${missingDlls.join(', ')}`);
+    }
+
     const dests = [
       APP_OUT,
       path.join(APP_OUT, 'runtime'),

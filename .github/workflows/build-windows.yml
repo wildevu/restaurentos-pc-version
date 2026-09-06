@@ -20,7 +20,8 @@ jobs:
       - name: Setup Node.js Runtime (v20 LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20.18.0'
+          check-latest: false
           cache: 'npm'
 
       - name: Install Dependencies

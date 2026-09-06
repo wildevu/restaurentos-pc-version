@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -211,6 +210,14 @@ namespace RestaurantOS.Launcher
                     return resp.StatusCode == HttpStatusCode.OK;
                 }
             }
+            catch (WebException ex)
+            {
+                if (ex.Response != null)
+                {
+                    try { ex.Response.Close(); } catch { }
+                }
+                return false;
+            }
             catch
             {
                 return false;
@@ -228,16 +235,33 @@ namespace RestaurantOS.Launcher
                 {
                     if (resp.StatusCode == HttpStatusCode.OK)
                     {
-                        using (var reader = new StreamReader(resp.GetResponseStream()))
+                        using (Stream stream = resp.GetResponseStream())
                         {
-                            string body = reader.ReadToEnd();
-                            return body.Contains("\"ready\":true");
+                            if (stream != null)
+                            {
+                                using (StreamReader reader = new StreamReader(stream))
+                                {
+                                    string body = reader.ReadToEnd();
+                                    return body.Contains("\"ready\":true");
+                                }
+                            }
                         }
                     }
+                    return false;
                 }
             }
-            catch { }
-            return false;
+            catch (WebException ex)
+            {
+                if (ex.Response != null)
+                {
+                    try { ex.Response.Close(); } catch { }
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static void OpenBrowser(string url)
