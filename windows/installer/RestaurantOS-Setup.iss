@@ -74,7 +74,7 @@ Source: "..\launcher\RestaurantOS.cs"; DestDir: "{app}\windows\launcher"; Flags:
 Source: "..\..\windows\redist\x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "..\..\windows\redist\x64\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs
 Source: "..\..\windows\redist\x64\*"; DestDir: "{app}\node_modules\@libsql\win32-x64-msvc"; Flags: ignoreversion recursesubdirs
-Source: "..\..\windows\redist\VC_redist.x64.exe"; DestDir: "{app}\windows\redist"; Flags: ignoreversion
+Source: "..\..\windows\redist\VC_redist.x64.exe"; DestDir: "{app}\windows\redist"; Flags: ignoreversion skipifsourcedoesntexist
 
 ; Windows Services & Firewall scripts
 Source: "..\firewall\*"; DestDir: "{app}\windows\firewall"; Flags: ignoreversion recursesubdirs
@@ -124,6 +124,13 @@ function VCRedistNeedsInstall(): Boolean;
 var
   Installed: Cardinal;
 begin
+  // If the standalone installer executable was not packaged, skip running it
+  if not FileExists(ExpandConstant('{app}\windows\redist\VC_redist.x64.exe')) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
   // Check registry keys for VC++ 2015-2022 (v14.x)
   if RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Installed', Installed) and (Installed = 1) then
   begin

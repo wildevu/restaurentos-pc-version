@@ -514,6 +514,36 @@ Warning: Node.js 20 is deprecated. The following actions target Node.js 20 but a
 
 ---
 
+### Issue #11: Inno Setup Compilation Missing `VC_redist.x64.exe`
+**Status:** ✅ **RESOLVED**  
+**Location:** `windows/installer/RestaurantOS-Setup.iss`, `.github/workflows/build-windows.yml`  
+**Error Message:**
+```
+Error on line 77 in D:\a\restaurentos-pc-version\restaurentos-pc-version\windows\installer\RestaurantOS-Setup.iss: 
+Source file "...\windows\redist\VC_redist.x64.exe" does not exist.
+Compile aborted.
+```
+
+**Forensic Root Cause:**
+- In `RestaurantOS-Setup.iss`, line 77 specified `Source: "..\..\windows\redist\VC_redist.x64.exe"`.
+- By default, Inno Setup treats missing source files as fatal errors during script compilation (`ISCC.exe`).
+- Because `VC_redist.x64.exe` is a ~24MB Microsoft installer, it was not checked into git (the individual MSVC runtime DLLs are checked into `windows/redist/x64/`).
+- When the CI workflow reached the Inno Setup compiler step, `ISCC.exe` aborted because `VC_redist.x64.exe` was not present on disk.
+
+**Solution & Implementation:**
+1. **Inno Setup Robustness (`windows/installer/RestaurantOS-Setup.iss`)**:
+   - Added `skipifsourcedoesntexist` flag to line 77:
+     `Source: "..\..\windows\redist\VC_redist.x64.exe"; DestDir: "{app}\windows\redist"; Flags: ignoreversion skipifsourcedoesntexist`
+   - Updated `VCRedistNeedsInstall` Pascal script function:
+     `if not FileExists(ExpandConstant('{app}\windows\redist\VC_redist.x64.exe')) then begin Result := False; Exit; end;`
+   - This ensures Inno Setup never fails compilation even in offline or partial build environments.
+2. **CI Pipeline Automated Download (`.github/workflows/build-windows.yml`)**:
+   - Added automated PowerShell download step: `Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "windows\redist\VC_redist.x64.exe"`.
+   - Wrapped in a graceful try/catch with clear diagnostics.
+   - When present, `VC_redist.x64.exe` is packaged into the installer for complete, hands-off end-user setup.
+
+---
+
 ## 📋 Summary Table
 
 | Issue | Severity | Type | File(s) | Auto-Fix | Status |
@@ -523,6 +553,7 @@ Warning: Node.js 20 is deprecated. The following actions target Node.js 20 but a
 | Node 20 deprecation & runner warning | ⚠️ WARNING | CI/CD | `.github/workflows/build-windows.yml` | ✅ Yes | RESOLVED |
 | Rolldown native binding missing on disk | 🔴 CRITICAL | Build | `build-windows.yml`, `audit-windows-native-deps.cjs` | ✅ Yes | RESOLVED |
 | Windows SIGTERM TerminateProcess Abrupt Exit | 🔴 CRITICAL | Runtime | `server.ts`, `verify-packaged-runtime.cjs` | ✅ Yes | RESOLVED |
+| Inno Setup Missing VC_redist.x64.exe | 🔴 CRITICAL | Packaging | `RestaurantOS-Setup.iss`, `build-windows.yml` | ✅ Yes | RESOLVED |
 | Unused C# import | 🟡 CODE | Quality | `RestaurantOS.cs` | ✅ Yes | RESOLVED |
 | Missing HTTP error handling | 🟡 CODE | Quality | `RestaurantOS.cs` | ✅ Yes | RESOLVED |
 | Hardcoded Node version | 🟡 MAINT | Maintenance | `build-windows-package.js` | ✅ Yes | RESOLVED |

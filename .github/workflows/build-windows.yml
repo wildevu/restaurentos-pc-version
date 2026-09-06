@@ -47,6 +47,20 @@ jobs:
           node scripts/verify-offline-licensing.cjs
           npx tsx scripts/verify-setup-licensing-flow.cjs
 
+      - name: Download Visual C++ 2015-2022 Redistributable Installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "windows\redist" | Out-Null
+          if (-not (Test-Path "windows\redist\VC_redist.x64.exe")) {
+            Write-Host "Downloading VC_redist.x64.exe from Microsoft..."
+            try {
+              Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "windows\redist\VC_redist.x64.exe" -TimeoutSec 90
+              Write-Host "VC_redist.x64.exe downloaded successfully."
+            } catch {
+              Write-Warning "Failed to download VC_redist.x64.exe ($($_.Exception.Message)). Packaging will continue using pre-bundled MSVC runtime DLLs."
+            }
+          }
+
       - name: Build Production Bundles & Standalone Windows Package
         run: npm run package:windows
 
