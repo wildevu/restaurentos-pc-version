@@ -65,22 +65,36 @@ jobs:
         shell: pwsh
         run: |
           # Dynamically search for C# compiler csc.exe across Visual Studio and .NET installations
-          $cscCandidates = @(
-            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe",
-            "C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\Roslyn\csc.exe",
-            "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\Roslyn\csc.exe",
-            "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe",
-            "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe",
-            "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
-            "C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
-          )
           $csc = $null
-          foreach ($p in $cscCandidates) {
-            if (Test-Path $p) {
-              $csc = $p
-              break
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            $vsPath = & $vswhere -latest -property installationPath
+            if ($vsPath) {
+              $roslyn = Join-Path $vsPath "MSBuild\Current\Bin\Roslyn\csc.exe"
+              if (Test-Path $roslyn) {
+                $csc = $roslyn
+              }
             }
           }
+
+          if (-not $csc) {
+            $cscCandidates = @(
+              "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe",
+              "C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\Roslyn\csc.exe",
+              "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\Roslyn\csc.exe",
+              "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe",
+              "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe",
+              "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+              "C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+            )
+            foreach ($p in $cscCandidates) {
+              if (Test-Path $p) {
+                $csc = $p
+                break
+              }
+            }
+          }
+
           if (-not $csc) {
             $cmd = Get-Command csc.exe -ErrorAction SilentlyContinue
             if ($cmd) { $csc = $cmd.Source }

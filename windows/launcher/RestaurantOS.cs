@@ -19,7 +19,6 @@ namespace RestaurantOS.Launcher
         static void Main(string[] args)
         {
             Application.EnableVisualStyles();
-            Application.SetCompatibleRenderingDefault(false);
 
             bool isServiceMode = false;
             foreach (var arg in args)
