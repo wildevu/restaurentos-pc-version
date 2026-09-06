@@ -23,7 +23,10 @@ jobs:
           node-version: '20.18.0'
           check-latest: false
           cache: 'npm'
-
+          
+      - name: Clear npm Cache
+        run: npm cache clean --force
+        
       - name: Install Dependencies
         run: npm ci --prefer-offline
 
