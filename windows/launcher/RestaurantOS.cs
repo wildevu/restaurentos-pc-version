@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -11,9 +12,10 @@ namespace RestaurantOS.Launcher
 {
     static class Program
     {
-        private const string HubUrl = "http://localhost:3000/hub";
-        private const string ReadyUrl = "http://localhost:3000/api/ready";
-        private const int MaxWaitSeconds = 35;
+        private const string HubUrl = "http://127.0.0.1:3000/hub";
+        private const string ReadyUrl = "http://127.0.0.1:3000/api/ready";
+        private const string ReadyFallbackUrl = "http://localhost:3000/api/ready";
+        private const int MaxWaitSeconds = 40;
 
         [STAThread]
         static void Main(string[] args)
@@ -54,6 +56,7 @@ namespace RestaurantOS.Launcher
                 string logsDir = Path.Combine(dataDir, "logs");
                 string stdoutLog = Path.Combine(logsDir, "hub-stdout.log");
                 string stderrLog = Path.Combine(logsDir, "hub-stderr.log");
+                string pidFile = Path.Combine(dataDir, "restaurantos.pid");
 
                 try
                 {
@@ -65,7 +68,36 @@ namespace RestaurantOS.Launcher
                 }
                 catch { }
 
-                // 3. Resolve Node.js Runtime
+                // 3. Prevent Port 3000 Conflict: Check if an instance is already starting or running
+                if (IsPortInUse(3000) || IsExistingPidRunning(pidFile))
+                {
+                    // Wait up to 12 seconds for the existing instance to finish booting
+                    DateTime waitStart = DateTime.UtcNow;
+                    while ((DateTime.UtcNow - waitStart).TotalSeconds < 12)
+                    {
+                        if (CheckReadyEndpoint())
+                        {
+                            if (!isServiceMode)
+                            {
+                                OpenBrowser(HubUrl);
+                            }
+                            return;
+                        }
+                        Thread.Sleep(500);
+                    }
+
+                    // If it is responding now, open browser
+                    if (CheckReadyEndpoint())
+                    {
+                        if (!isServiceMode)
+                        {
+                            OpenBrowser(HubUrl);
+                        }
+                        return;
+                    }
+                }
+
+                // 4. Resolve Node.js Runtime
                 string nodeExe = Path.Combine(appDir, "runtime", "node.exe");
                 if (!File.Exists(nodeExe))
                 {
@@ -82,7 +114,7 @@ namespace RestaurantOS.Launcher
                     serverScript = Path.Combine(appDir, "server.js");
                 }
 
-                // 4. Configure Process Start Info
+                // 5. Configure Process Start Info
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = nodeExe,
@@ -128,7 +160,7 @@ namespace RestaurantOS.Launcher
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
 
-                // 5. Poll for Readiness
+                // 6. Poll for Readiness
                 DateTime startTime = DateTime.UtcNow;
                 bool isReady = false;
 
@@ -172,6 +204,16 @@ namespace RestaurantOS.Launcher
 
                 if (!isReady)
                 {
+                    // Clean up child process to avoid leaving an orphaned zombie locking port 3000
+                    try
+                    {
+                        if (process != null && !process.HasExited)
+                        {
+                            process.Kill();
+                        }
+                    }
+                    catch { }
+
                     ShowErrorDialog(
                         "RestaurantOS startup timed out.\n\n" +
                         "The server did not respond within the expected timeframe.\n" +
@@ -181,7 +223,7 @@ namespace RestaurantOS.Launcher
                     return;
                 }
 
-                // 6. Open Web Browser once ready
+                // 7. Open Web Browser once ready
                 if (!isServiceMode)
                 {
                     OpenBrowser(HubUrl);
@@ -197,39 +239,17 @@ namespace RestaurantOS.Launcher
             }
         }
 
-        private static bool IsHubReadyQuickCheck()
+        private static bool ProbeUrl(string url, int timeoutMs)
         {
             try
             {
-                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ReadyUrl);
-                req.Timeout = 1200;
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+                // CRITICAL ON WINDOWS: Bypasses WPAD proxy auto-detection which blocks for 2-5 seconds
+                req.Proxy = null;
+                req.Timeout = timeoutMs;
+                req.ReadWriteTimeout = timeoutMs;
                 req.Method = "GET";
-                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
-                {
-                    return resp.StatusCode == HttpStatusCode.OK;
-                }
-            }
-            catch (WebException ex)
-            {
-                if (ex.Response != null)
-                {
-                    try { ex.Response.Close(); } catch { }
-                }
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
-        }
 
-        private static bool CheckReadyEndpoint()
-        {
-            try
-            {
-                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(ReadyUrl);
-                req.Timeout = 1000;
-                req.Method = "GET";
                 using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
                 {
                     if (resp.StatusCode == HttpStatusCode.OK)
@@ -261,6 +281,55 @@ namespace RestaurantOS.Launcher
             {
                 return false;
             }
+        }
+
+        private static bool IsHubReadyQuickCheck()
+        {
+            return ProbeUrl(ReadyUrl, 1200) || ProbeUrl(ReadyFallbackUrl, 1200);
+        }
+
+        private static bool CheckReadyEndpoint()
+        {
+            return ProbeUrl(ReadyUrl, 1500) || ProbeUrl(ReadyFallbackUrl, 1500);
+        }
+
+        private static bool IsPortInUse(int port)
+        {
+            try
+            {
+                using (TcpClient client = new TcpClient())
+                {
+                    IAsyncResult ar = client.BeginConnect("127.0.0.1", port, null, null);
+                    bool connected = ar.AsyncWaitHandle.WaitOne(400);
+                    if (connected && client.Connected)
+                    {
+                        client.EndConnect(ar);
+                        return true;
+                    }
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsExistingPidRunning(string pidFile)
+        {
+            try
+            {
+                if (!File.Exists(pidFile)) return false;
+                string text = File.ReadAllText(pidFile).Trim();
+                int pid;
+                if (int.TryParse(text, out pid))
+                {
+                    Process proc = Process.GetProcessById(pid);
+                    return proc != null && !proc.HasExited;
+                }
+            }
+            catch { }
+            return false;
         }
 
         private static void OpenBrowser(string url)
