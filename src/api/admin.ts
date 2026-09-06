@@ -4,7 +4,7 @@ import { users, restaurants, tables, auditEvents, hubState, sessions, devices, p
 import { eq, and, not, sql, isNull, asc, desc, inArray, gte, lte, like } from 'drizzle-orm';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from '../utils/uuid';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';

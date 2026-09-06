@@ -1,6 +1,6 @@
 import { db } from './db';
 import { socket } from '../socket';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from '../utils/uuid';
 
 export type CommandStatusChangeCallback = () => void;
 let statusListeners: CommandStatusChangeCallback[] = [];

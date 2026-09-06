@@ -1,5 +1,5 @@
 import { Table, Order } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from '../utils/uuid';
 
 export function applyOptimisticCommand(
   state: { tables: Table[], orders: Order[] },

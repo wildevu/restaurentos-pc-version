@@ -3,8 +3,7 @@ import express from 'express';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
-import { createServer as createViteServer } from 'vite';
+import { uuidv4 } from './src/utils/uuid';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { runMigrations, seedDb, db } from './src/db/index';
@@ -406,6 +405,7 @@ async function startServer() {
 
   // Vite middleware for development vs Static PWA Serving in Production
   if (config.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

@@ -1,7 +1,7 @@
 import { db } from './index';
 import { tables, menuCategories, menuItems, orders, orderItems, auditEvents, idempotencyKeys, hubState, users, restaurants } from './schema';
 import { eq, and, asc, sql, inArray, isNull } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from '../utils/uuid';
 import { z } from 'zod';
 import { 
   CommandPayloadSchema, 

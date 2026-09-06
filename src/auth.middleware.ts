@@ -4,7 +4,7 @@ import { users, sessions, restaurants, auditEvents, devices } from './db/schema'
 import { eq, and, sql, gt, isNull } from 'drizzle-orm';
 import { hashPassword, verifyPassword, generateToken, hashToken } from './crypto';
 import { SetupPayloadSchema, LoginPayloadSchema } from './schemas';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from './utils/uuid';
 import { logger } from './logger';
 
 // --- In-Memory Rate Limiter for Login ---

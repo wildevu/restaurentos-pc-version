@@ -20,7 +20,7 @@ import {
 import { eq, and, sql, gt } from 'drizzle-orm';
 import { hashPassword, verifyPassword, generateToken, hashToken } from './crypto';
 import { SetupPayloadSchema, LoginPayloadSchema } from './schemas';
-import { v4 as uuidv4 } from 'uuid';
+import { uuidv4 } from './utils/uuid';
 import { z } from 'zod';
 import { logger } from './logger';
 import { authenticate } from './auth.middleware';
