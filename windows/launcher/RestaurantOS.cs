@@ -88,7 +88,7 @@ namespace RestaurantOS.Launcher
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = nodeExe,
-                    Arguments = $"\"{serverScript}\"",
+                    Arguments = string.Format("\"{0}\"", serverScript),
                     WorkingDirectory = appDir,
                     CreateNoWindow = true,
                     UseShellExecute = false,
@@ -108,7 +108,7 @@ namespace RestaurantOS.Launcher
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        try { File.AppendAllText(stdoutLog, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {e.Data}{Environment.NewLine}"); } catch { }
+                        try { File.AppendAllText(stdoutLog, string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}{2}", DateTime.UtcNow, e.Data, Environment.NewLine)); } catch { }
                     }
                 };
 
@@ -116,7 +116,7 @@ namespace RestaurantOS.Launcher
                 {
                     if (!string.IsNullOrEmpty(e.Data))
                     {
-                        try { File.AppendAllText(stderrLog, $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] {e.Data}{Environment.NewLine}"); } catch { }
+                        try { File.AppendAllText(stderrLog, string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}{2}", DateTime.UtcNow, e.Data, Environment.NewLine)); } catch { }
                     }
                 };
 
@@ -158,7 +158,7 @@ namespace RestaurantOS.Launcher
                             "The local database engine or server could not be initialized.\n" +
                             "Please restart RestaurantOS. If the problem continues, contact support.\n\n" +
                             (string.IsNullOrEmpty(errDetail) ? "" : "Details:\n" + errDetail + "\n\n") +
-                            $"Diagnostic logs:\n{logsDir}\\"
+                            string.Format("Diagnostic logs:\n{0}\\", logsDir)
                         );
                         return;
                     }
@@ -178,7 +178,7 @@ namespace RestaurantOS.Launcher
                         "RestaurantOS startup timed out.\n\n" +
                         "The server did not respond within the expected timeframe.\n" +
                         "Please verify system resources or restart your computer.\n\n" +
-                        $"Diagnostic logs:\n{logsDir}\\"
+                        string.Format("Diagnostic logs:\n{0}\\", logsDir)
                     );
                     return;
                 }
