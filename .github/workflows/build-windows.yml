@@ -12,15 +12,17 @@ jobs:
   build-windows:
     name: Build & Package Windows Installer
     runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js Runtime (v20 LTS)
+      - name: Setup Node.js Runtime (v22 Active LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: '20.18.0'
+          node-version: '22'
           check-latest: false
           cache: 'npm'
           

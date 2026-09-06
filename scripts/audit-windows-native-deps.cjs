@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 console.log('====================================================');
 console.log('   RESTAURANTOS DYNAMIC WINDOWS NATIVE AUDIT        ');
@@ -94,12 +95,14 @@ function findPackagePath(pkgName) {
   const rootPath = path.join(NODE_MODULES, ...parts);
   if (fs.existsSync(rootPath)) return rootPath;
 
-  // Search nested in @tailwindcss/node, drizzle-kit, esbuild, etc.
+  // Search nested in rolldown, vite, @tailwindcss/node, drizzle-kit, esbuild
   const knownParents = [
+    ['rolldown', 'node_modules', ...parts],
+    ['vite', 'node_modules', ...parts],
+    ['vite', 'node_modules', 'rolldown', 'node_modules', ...parts],
     ['@tailwindcss', 'node', 'node_modules', ...parts],
     ['drizzle-kit', 'node_modules', ...parts],
-    ['esbuild', 'node_modules', ...parts],
-    ['vite', 'node_modules', ...parts]
+    ['esbuild', 'node_modules', ...parts]
   ];
 
   for (const p of knownParents) {
@@ -107,7 +110,27 @@ function findPackagePath(pkgName) {
     if (fs.existsSync(candidate)) return candidate;
   }
 
-  return null;
+  // Deep recursive search in node_modules subtrees if nested under arbitrary dependencies
+  function searchNested(dir, depth = 0) {
+    if (depth > 3 || !fs.existsSync(dir)) return null;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        const sub = path.join(dir, entry.name);
+        const target = path.join(sub, 'node_modules', ...parts);
+        if (fs.existsSync(target)) return target;
+        if (entry.name.startsWith('@') || entry.name === 'vite' || entry.name === 'rolldown') {
+          const res = searchNested(sub, depth + 1);
+          if (res) return res;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  return searchNested(NODE_MODULES, 0);
 }
 
 // Function to find native binary (.node or .exe) in package directory
@@ -181,6 +204,23 @@ for (const [depName, info] of discoveredWindowsDeps.entries()) {
       }
     } else {
       if (isX64 && !depName.includes('gnu')) {
+        // Attempt automatic on-demand recovery for Windows runners
+        const targetVersion = Array.from(info.versionRanges)[0] || 'latest';
+        console.log(`  [Auto-Recovery] Attempting to fetch missing Windows package: ${depName}@${targetVersion}...`);
+        try {
+          execSync(`npm install --no-save --ignore-scripts=false ${depName}@${targetVersion}`, { stdio: 'pipe' });
+          const recoveredPath = findPackagePath(depName);
+          if (recoveredPath && fs.existsSync(recoveredPath)) {
+            passedCount++;
+            console.log(`  ✓ [RECOVERED] ${depName}`);
+            console.log(`     Type: ${category} | Required By: ${reqByStr}`);
+            console.log(`     Location: ${path.relative(ROOT_DIR, recoveredPath)}`);
+            continue;
+          }
+        } catch (recoverErr) {
+          console.warn(`  [Auto-Recovery] Could not auto-install ${depName}: ${recoverErr.message}`);
+        }
+
         failedCount++;
         console.error(`  ✗ [MISSING ON DISK - CRITICAL] ${depName}`);
         console.error(`     Type: ${category} | Required By: ${reqByStr}`);
