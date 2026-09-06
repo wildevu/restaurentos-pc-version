@@ -76,13 +76,25 @@ function compileWindowsLauncher() {
 
   if (!fs.existsSync(csSource)) return;
 
+  // Check if RestaurantOS.exe was pre-compiled by a previous workflow step
+  if (fs.existsSync(launcherOutExe)) {
+    try {
+      fs.copyFileSync(launcherOutExe, targetExe);
+      console.log(`[Launcher] Using pre-compiled RestaurantOS.exe (${Math.round(fs.statSync(targetExe).size / 1024)} KB).`);
+      return;
+    } catch {}
+  }
+
   console.log('[Launcher] Checking C# compiler for native Windows launcher (RestaurantOS.exe)...');
   
   const cscCandidates = [
-    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
-    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
     'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe',
     'C:\\Windows\\Microsoft.NET\\Framework64\\v4.8.1.0\\csc.exe',
     'C:\\Windows\\Microsoft.NET\\Framework64\\v4.8.0\\csc.exe',
     'C:\\Windows\\Microsoft.NET\\Framework64\\v4.7.2\\csc.exe',
@@ -110,11 +122,15 @@ function compileWindowsLauncher() {
     try {
       console.log(`[Launcher] Compiling native Windows launcher with ${cscPath}...`);
       const iconFlag = fs.existsSync(icoFile) ? `/win32icon:"${icoFile}"` : '';
-      execSync(`"${cscPath}" /target:winexe /optimize+ /platform:anycpu ${iconFlag} /out:"${targetExe}" "${csSource}"`, { stdio: 'inherit' });
+      const refs = '/r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll';
+      execSync(`"${cscPath}" /target:winexe /optimize+ /platform:anycpu ${refs} ${iconFlag} /out:"${targetExe}" "${csSource}"`, { stdio: 'inherit' });
       fs.copyFileSync(targetExe, launcherOutExe);
       console.log(`[Launcher] Compiled RestaurantOS.exe successfully (${Math.round(fs.statSync(targetExe).size / 1024)} KB).`);
     } catch (cErr) {
       console.warn('[Launcher] Warning compiling C# launcher with csc:', cErr.message);
+      if (process.platform === 'win32') {
+        throw new Error(`Failed to compile RestaurantOS.exe on Windows: ${cErr.message}`);
+      }
     }
   } else {
     console.log('[Launcher] Note: C# csc compiler not in Linux container. C# source and VBS/BAT wrappers packaged for Windows compilation & execution.');

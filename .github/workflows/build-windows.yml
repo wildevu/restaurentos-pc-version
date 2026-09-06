@@ -61,6 +61,43 @@ jobs:
             }
           }
 
+      - name: Compile Native Windows Launcher (RestaurantOS.exe)
+        shell: pwsh
+        run: |
+          # Dynamically search for C# compiler csc.exe across Visual Studio and .NET installations
+          $cscCandidates = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\Roslyn\csc.exe",
+            "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\Roslyn\csc.exe",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe",
+            "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe",
+            "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+            "C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+          )
+          $csc = $null
+          foreach ($p in $cscCandidates) {
+            if (Test-Path $p) {
+              $csc = $p
+              break
+            }
+          }
+          if (-not $csc) {
+            $cmd = Get-Command csc.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $csc = $cmd.Source }
+          }
+          if (-not $csc) {
+            Write-Error "Could not locate C# compiler (csc.exe) on Windows runner!"
+            exit 1
+          }
+          Write-Host "Compiling native Windows launcher with $csc..."
+          & $csc /target:winexe /optimize+ /platform:anycpu /r:System.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll /win32icon:"public\favicon.ico" /out:"windows\launcher\RestaurantOS.exe" "windows\launcher\RestaurantOS.cs"
+          if (-not (Test-Path "windows\launcher\RestaurantOS.exe")) {
+            Write-Error "RestaurantOS.exe was not created!"
+            exit 1
+          }
+          $exeBytes = (Get-Item "windows\launcher\RestaurantOS.exe").Length
+          Write-Host "Successfully compiled native RestaurantOS.exe ($exeBytes bytes)."
+
       - name: Build Production Bundles & Standalone Windows Package
         run: npm run package:windows
 

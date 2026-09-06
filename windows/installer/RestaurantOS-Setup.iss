@@ -65,7 +65,8 @@ Source: "..\..\dist\windows-package\RestaurantOS\package.json"; DestDir: "{app}"
 Source: "..\..\dist\windows-package\RestaurantOS\restaurantos.env.template"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Native Launchers & Wrappers
-Source: "..\launcher\RestaurantOS.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: FileExists(ExpandConstant('{src}\..\launcher\RestaurantOS.exe')) or FileExists(ExpandConstant('..\launcher\RestaurantOS.exe'))
+Source: "..\..\dist\windows-package\RestaurantOS\RestaurantOS.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\launcher\RestaurantOS.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\launcher\Launch-RestaurantOS.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launcher\launch-hub.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launcher\RestaurantOS.cs"; DestDir: "{app}\windows\launcher"; Flags: ignoreversion
@@ -95,10 +96,15 @@ Name: "{commonappdata}\RestaurantOS\config"; Permissions: users-modify
 
 [Icons]
 ; Desktop & Start Menu Shortcuts pointing directly to the RestaurantOS Windows Application
-Name: "{group}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"
-Name: "{group}\Open Local Hub Status"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Local Hub Status"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\public\favicon.ico"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+
+; Fallback shortcuts to silent VBS launcher if RestaurantOS.exe is not present
+Name: "{group}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Local Hub Status"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [Run]
 ; Silent MSVC Runtime Installation if required
@@ -111,7 +117,8 @@ Filename: "{app}\windows\firewall\add-firewall-rule.bat"; Flags: runhidden; Task
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\install-service.ps1"" -AppDir ""{app}"""; Flags: runhidden; Tasks: autostart
 
 ; Launch App after Installation
-Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [UninstallRun]
 ; Unregister Windows Service & Firewall rules before removing files
