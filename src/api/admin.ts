@@ -279,6 +279,57 @@ adminRouter.post('/tables', async (req: any, res) => {
   }
 });
 
+adminRouter.post('/tables/batch', async (req: any, res) => {
+  try {
+    const schema = z.object({
+      section: z.string().min(1),
+      tableNumbers: z.array(z.number().int().min(1)).min(1),
+      labelPrefix: z.string().optional()
+    });
+    const parsed = schema.parse(req.body);
+
+    const existingTables = await db.select({ number: tables.number }).from(tables).where(isNull(tables.archivedAt));
+    const existingSet = new Set(existingTables.map((t: any) => t.number));
+
+    const duplicates = parsed.tableNumbers.filter((n: number) => existingSet.has(n));
+    if (duplicates.length > 0) {
+      return res.status(400).json({ error: `Table number(s) already exist: ${duplicates.join(', ')}` });
+    }
+
+    const now = new Date();
+    await db.transaction(async (tx: any) => {
+      for (const num of parsed.tableNumbers) {
+        const id = uuidv4();
+        await tx.insert(tables).values({
+          id,
+          number: num,
+          label: parsed.labelPrefix ? `${parsed.labelPrefix} ${num}` : `Table ${num}`,
+          section: parsed.section,
+          displayOrder: num,
+          status: 'EMPTY',
+          createdAt: now,
+          updatedAt: now,
+        });
+        await tx.insert(auditEvents).values({
+          id: uuidv4(),
+          restaurantId: req.user.restaurantId,
+          actorUserId: req.user.id,
+          action: 'TABLE_CREATED',
+          entityType: 'TABLE',
+          entityId: id,
+          metadata: JSON.stringify({ number: num, section: parsed.section }),
+          createdAt: now,
+        });
+      }
+    });
+
+    await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
+    res.json({ success: true, count: parsed.tableNumbers.length });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 adminRouter.put('/tables/:id', async (req: any, res) => {
   try {
     const schema = z.object({

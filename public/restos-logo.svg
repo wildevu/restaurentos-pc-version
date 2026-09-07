@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" fill="none">
+  <!-- Brand Color: #FF3815 -->
+  <g fill="#FF3815">
+    <!-- Letter R -->
+    <path d="M 12 16 H 48 C 61 16 69 24 69 37 C 69 49 61 56 49 58 L 71 104 H 51 L 32 62 H 30 V 104 H 12 Z M 30 32 V 47 H 46 C 50 47 53 44 53 39.5 C 53 35 50 32 46 32 Z" />
+    
+    <!-- Letter E -->
+    <path d="M 80 16 H 132 V 33 H 98 V 51 H 126 V 68 H 98 V 87 H 133 V 104 H 80 Z" />
+    
+    <!-- Letter S -->
+    <path d="M 143 85 C 145 96 155 104 169 104 C 183 104 193 96 193 84 C 193 72 184 66 169 62 C 150 57 143 51 143 38 C 143 25 154 16 168 16 C 182 16 191 24 193 35 L 176 38 C 175 31 169 27 167 27 C 160 27 155 31 155 37 C 155 45 162 49 174 52 C 191 57 200 64 200 78 C 200 93 188 104 169 104 C 151 104 140 92 138 80 Z" />
+    
+    <!-- Letter T -->
+    <path d="M 208 16 H 268 V 33 H 247 V 104 H 229 V 33 H 208 Z" />
+    
+    <!-- Letter O -->
+    <path d="M 276 38 C 276 24 287 16 304 16 C 321 16 332 24 332 38 V 82 C 332 96 321 104 304 104 C 287 104 276 96 276 82 Z M 294 80 C 294 87 298 90 304 90 C 310 90 314 87 314 80 V 40 C 314 33 310 30 304 30 C 298 30 294 33 294 40 Z" />
+    
+    <!-- Letter S (Second) -->
+    <path d="M 342 85 C 344 96 354 104 368 104 C 382 104 392 96 392 84 C 392 72 383 66 368 62 C 349 57 342 51 342 38 C 342 25 353 16 367 16 C 381 16 390 24 392 35 L 375 38 C 374 31 368 27 366 27 C 359 27 354 31 354 37 C 354 45 361 49 373 52 C 390 57 399 64 399 78 C 399 93 387 104 368 104 C 350 104 339 92 337 80 Z" />
+  </g>
+
+  <!-- Power Fork Circular Icon Badge -->
+  <g transform="translate(415, 10)">
+    <!-- Outer Ring -->
+    <circle cx="50" cy="50" r="44" stroke="#FF3815" stroke-width="12" fill="none" />
+    <!-- Fork Outer U-Tines -->
+    <path d="M 34 31 V 56 C 34 65 41 72 50 72 C 59 72 66 65 66 56 V 31" stroke="#FF3815" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <!-- Center Tine -->
+    <line x1="50" y1="28" x2="50" y2="60" stroke="#FF3815" stroke-width="10" stroke-linecap="round" />
+  </g>
+</svg>

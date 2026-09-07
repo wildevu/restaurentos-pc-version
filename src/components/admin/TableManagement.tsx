@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Archive, CheckCircle, ArrowUp, ArrowDown, Trash2, RotateCcw, Filter, LayoutGrid } from 'lucide-react';
+import { Plus, Edit2, Archive, CheckCircle, ArrowUp, ArrowDown, Trash2, RotateCcw, Filter, LayoutGrid, Layers, AlertCircle } from 'lucide-react';
+import { parseTableNumbersInput } from '../SetupScreen';
 
 export function TableManagement({ authToken }: { authToken: string }) {
   const [tables, setTables] = useState<any[]>([]);
@@ -15,6 +16,14 @@ export function TableManagement({ authToken }: { authToken: string }) {
   const [section, setSection] = useState('Main Dining');
   const [displayOrder, setDisplayOrder] = useState(1);
   const [archived, setArchived] = useState(false);
+
+  // Batch Category Table Setup State
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchSection, setBatchSection] = useState('');
+  const [batchNumbersInput, setBatchNumbersInput] = useState('');
+  const [batchLabelPrefix, setBatchLabelPrefix] = useState('Table');
+  const [batchError, setBatchError] = useState('');
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
   
   // Filter state
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('ALL');
@@ -174,6 +183,53 @@ export function TableManagement({ authToken }: { authToken: string }) {
     }
   };
 
+  const handleBatchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBatchError('');
+    const trimmedSection = batchSection.trim();
+    if (!trimmedSection) {
+      setBatchError('Please specify a category / section name.');
+      return;
+    }
+
+    const parsedNumbers = parseTableNumbersInput(batchNumbersInput);
+    if (parsedNumbers.length === 0) {
+      setBatchError('Please enter valid table numbers (e.g. 11-15 or 20, 21, 22).');
+      return;
+    }
+
+    setBatchSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/tables/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          section: trimmedSection,
+          tableNumbers: parsedNumbers,
+          labelPrefix: batchLabelPrefix.trim() || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to create tables');
+      }
+
+      setSuccessMsg(`Successfully created ${parsedNumbers.length} tables in category "${trimmedSection}"!`);
+      setShowBatchModal(false);
+      setBatchSection('');
+      setBatchNumbersInput('');
+      fetchTables();
+    } catch (err: any) {
+      setBatchError(err.message);
+    } finally {
+      setBatchSubmitting(false);
+    }
+  };
+
   const filteredTables = tables.filter(t => {
     if (!showArchivedFilter && t.archivedAt) return false;
     if (showArchivedFilter && !t.archivedAt) return false;
@@ -192,12 +248,23 @@ export function TableManagement({ authToken }: { authToken: string }) {
             Configure tables, dining areas/sections, sequence order, and availability.
           </p>
         </div>
-        <button
-          onClick={handleOpenNew}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 shadow-md shadow-amber-500/10 transition-colors"
-        >
-          <Plus size={16} /> Add Table
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setBatchError('');
+              setShowBatchModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-neutral-800 border border-neutral-700 hover:border-neutral-600 text-neutral-200 hover:text-white font-medium text-xs rounded-xl transition-colors cursor-pointer"
+          >
+            <Layers size={15} className="text-amber-400" /> Add by Category
+          </button>
+          <button
+            onClick={handleOpenNew}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 shadow-md shadow-amber-500/10 transition-colors cursor-pointer"
+          >
+            <Plus size={16} /> Add Single Table
+          </button>
+        </div>
       </div>
 
       {error && <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs">{error}</div>}
@@ -420,6 +487,107 @@ export function TableManagement({ authToken }: { authToken: string }) {
                   className="px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 transition-colors"
                 >
                   Save Table
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add by Category / Batch Modal */}
+      {showBatchModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-neutral-800 border border-neutral-700 rounded-2xl w-full max-w-md p-6 shadow-xl">
+            <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-amber-400" />
+              Add Tables by Category
+            </h3>
+            <p className="text-xs text-neutral-400 mb-4">
+              Select or type a dining category and specify table numbers manually.
+            </p>
+
+            {batchError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{batchError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleBatchSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">
+                  Dining Area / Category *
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    required
+                    value={batchSection}
+                    onChange={e => setBatchSection(e.target.value)}
+                    placeholder="e.g. Patio, VIP Lounge, Terrace, Bar"
+                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                  {uniqueSections.length > 0 && (
+                    <select
+                      onChange={e => {
+                        if (e.target.value) setBatchSection(e.target.value);
+                      }}
+                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-2 text-xs text-neutral-300 focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="">Choose existing...</option>
+                      {uniqueSections.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">
+                  Table Numbers (Manual or Ranges) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={batchNumbersInput}
+                  onChange={e => setBatchNumbersInput(e.target.value)}
+                  placeholder="e.g. 20-25 or 101, 102, 103"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1">
+                  Enter comma-separated numbers (1, 2, 3) or hyphenated ranges (10-15).
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">
+                  Table Label Prefix (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={batchLabelPrefix}
+                  onChange={e => setBatchLabelPrefix(e.target.value)}
+                  placeholder="Table (or T, Bar, Booth)"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 mt-2 border-t border-neutral-700">
+                <button
+                  type="button"
+                  disabled={batchSubmitting}
+                  onClick={() => setShowBatchModal(false)}
+                  className="px-4 py-2 text-xs text-neutral-300 hover:bg-neutral-700 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={batchSubmitting}
+                  className="px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 transition-colors disabled:opacity-50"
+                >
+                  {batchSubmitting ? 'Creating Tables...' : 'Add Tables'}
                 </button>
               </div>
             </form>

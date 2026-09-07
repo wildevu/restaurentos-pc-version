@@ -23,7 +23,8 @@ export function verifyLicenseKey(
     return { valid: false, error: 'License key is missing or invalid.' };
   }
 
-  const trimmed = licenseKey.trim();
+  // Sanitize license string: remove surrounding quotes, whitespace, and email linebreaks
+  const trimmed = licenseKey.trim().replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, '');
   const parts = trimmed.split('.');
   if (parts.length !== 3) {
     return {

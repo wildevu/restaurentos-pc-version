@@ -33,6 +33,12 @@ if exist "%APP_DIR%RestaurantOS.exe" (
     exit /b 0
 )
 
+:: Auto-heal port 3000 conflicts if frozen background process exists
+for /f "tokens=5" %%a in ('netstat -ano -p tcp ^| findstr :3000 ^| findstr LISTENING 2^>nul') do (
+    echo [Self-Healing] Freeing occupied port 3000 (PID %%a)...
+    taskkill /F /PID %%a >nul 2>&1
+)
+
 :: Check if bundled node exists or system node
 if exist "%APP_DIR%runtime\node.exe" (
     set NODE_EXE="%APP_DIR%runtime\node.exe"

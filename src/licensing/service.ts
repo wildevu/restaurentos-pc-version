@@ -189,21 +189,37 @@ export class LicensingService {
       .set({ status: 'SUPERSEDED' })
       .where(eq(licenses.installationId, inst.id));
 
-    // 3. Persist the new active license record
-    await db.insert(licenses).values({
-      id: payload.licenseId,
-      rawLicenseKey: rawKey.trim(),
-      product: payload.product,
-      version: payload.v,
-      restaurantId: payload.restaurantId || inst.restaurantId || 'default',
-      installationId: inst.id,
-      durationDays: payload.durationDays,
-      issuedAt: new Date(payload.issuedAt),
-      activatedAt,
-      expiresAt,
-      status: 'ACTIVE',
-      createdAt: now,
-    });
+    // 3. Persist the new active license record (upsert to handle re-activation smoothly)
+    const existingLicense = await db.select().from(licenses).where(eq(licenses.id, payload.licenseId)).limit(1);
+    if (existingLicense.length > 0) {
+      await db.update(licenses).set({
+        rawLicenseKey: rawKey.trim(),
+        product: payload.product,
+        version: payload.v,
+        restaurantId: payload.restaurantId || inst.restaurantId || 'default',
+        installationId: inst.id,
+        durationDays: payload.durationDays,
+        issuedAt: new Date(payload.issuedAt),
+        activatedAt,
+        expiresAt,
+        status: 'ACTIVE',
+      }).where(eq(licenses.id, payload.licenseId));
+    } else {
+      await db.insert(licenses).values({
+        id: payload.licenseId,
+        rawLicenseKey: rawKey.trim(),
+        product: payload.product,
+        version: payload.v,
+        restaurantId: payload.restaurantId || inst.restaurantId || 'default',
+        installationId: inst.id,
+        durationDays: payload.durationDays,
+        issuedAt: new Date(payload.issuedAt),
+        activatedAt,
+        expiresAt,
+        status: 'ACTIVE',
+        createdAt: now,
+      });
+    }
 
     // 4. Record persistent audit event
     await db.insert(auditEvents).values({

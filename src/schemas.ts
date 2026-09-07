@@ -6,7 +6,7 @@ export const SetupPayloadSchema = z.object({
   currency: z.string().length(3, 'Currency code must be exactly 3 characters (e.g. USD, EUR, GBP)').default('USD'),
   timezone: z.string().default('UTC'),
   logo: z.string().optional(),
-  tableCount: z.number().int().min(1).max(100).optional(),
+  tableCount: z.number().int().min(1).max(500).optional(),
   sections: z.array(z.string()).optional(),
   initialTables: z.array(z.object({
     number: z.number().int().min(1),

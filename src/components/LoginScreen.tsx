@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChefHat, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, RotateCcw, ShieldAlert } from 'lucide-react';
+import { RestosLogo } from './RestosLogo';
 
 interface LoginScreenProps {
   onLogin: (token: string) => void;
@@ -117,15 +118,9 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
       )}
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex items-center justify-center mb-4">
-          <img src="/logo.svg" alt="RestaurantOS Logo" className="w-14 h-14 drop-shadow-xs" />
+        <div className="inline-flex items-center justify-center mb-2">
+          <RestosLogo className="h-12 sm:h-14 w-auto drop-shadow-xs" />
         </div>
-        <h2 className="text-2xl font-black tracking-tight text-gray-900">
-          RestaurantOS
-        </h2>
-        <p className="mt-1 text-xs text-gray-500 font-medium">
-          Local-First Authoritative Hub &bull; Staff Sign In
-        </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
@@ -190,7 +185,7 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
                 disabled={loading}
                 className="w-full flex justify-center py-3 px-4 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 shadow-sm shadow-blue-500/20 disabled:opacity-50 transition-all cursor-pointer"
               >
-                {loading ? 'Authenticating...' : 'Sign In to Local Hub'}
+                {loading ? 'Authenticating...' : 'Sign In'}
               </button>
             </div>
           </form>

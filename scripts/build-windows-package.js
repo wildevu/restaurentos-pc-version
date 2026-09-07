@@ -182,8 +182,10 @@ async function buildPackage() {
   // Copy top-level launcher and installers
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'launch-hub.bat'), path.join(APP_OUT, 'launch-hub.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'Launch-RestaurantOS.vbs'), path.join(APP_OUT, 'Launch-RestaurantOS.vbs'));
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'Troubleshoot-RestaurantOS.bat'), path.join(APP_OUT, 'Troubleshoot-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'RestaurantOS.cs'), path.join(APP_OUT, 'RestaurantOS.cs'));
   
+  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'Troubleshoot-RestaurantOS.bat'), path.join(PKG_DIR, 'Troubleshoot-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.bat'), path.join(PKG_DIR, 'Install-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'uninstall.bat'), path.join(PKG_DIR, 'Uninstall-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.ps1'), path.join(PKG_DIR, 'install.ps1'));

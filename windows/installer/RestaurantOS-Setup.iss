@@ -69,6 +69,7 @@ Source: "..\..\dist\windows-package\RestaurantOS\RestaurantOS.exe"; DestDir: "{a
 Source: "..\launcher\RestaurantOS.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\launcher\Launch-RestaurantOS.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launcher\launch-hub.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\launcher\Troubleshoot-RestaurantOS.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\launcher\RestaurantOS.cs"; DestDir: "{app}\windows\launcher"; Flags: ignoreversion
 
 ; Visual C++ 2015-2022 x64 Runtime Files & Installer
@@ -98,6 +99,7 @@ Name: "{commonappdata}\RestaurantOS\config"; Permissions: users-modify
 ; Desktop & Start Menu Shortcuts pointing directly to the RestaurantOS Windows Application
 Name: "{group}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 Name: "{group}\Open Local Hub Status"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\RestaurantOS Quick Repair"; Filename: "{app}\Troubleshoot-RestaurantOS.bat"; IconFilename: "{app}\public\favicon.ico"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\public\favicon.ico"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 

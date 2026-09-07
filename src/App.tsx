@@ -8,6 +8,7 @@ import { CashierDisplay } from './components/CashierDisplay';
 import { SetupScreen } from './components/SetupScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { PairingScreen } from './components/PairingScreen';
+import { RestosLogo } from './components/RestosLogo';
 import { I18nProvider, useI18n } from './i18n';
 import { 
   ChefHat, 
@@ -127,18 +128,17 @@ function AppContent({
 
       <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs z-20">
         <div className="flex items-center gap-4 sm:gap-6">
-          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link to="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
             {restaurant?.logo ? (
-              <img src={restaurant.logo} alt="Restaurant Logo" className="w-8 h-8 rounded-lg object-cover shadow-xs" />
+              <div className="flex items-center gap-2.5">
+                <img src={restaurant.logo} alt="Restaurant Logo" className="w-8 h-8 rounded-lg object-cover shadow-xs" />
+                <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">
+                  {restaurant.name}
+                </h1>
+              </div>
             ) : (
-              <img src="/logo.svg" alt="RestaurantOS Logo" className="w-8 h-8" />
+              <RestosLogo className="h-7 w-auto" />
             )}
-            <div>
-              <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">
-                {restaurant?.name || 'RestaurantOS'}
-              </h1>
-              <span className="text-[10px] font-bold text-gray-400 tracking-wider uppercase">Local Hub</span>
-            </div>
           </Link>
 
           {/* Role-Based Desktop Navigation Links */}

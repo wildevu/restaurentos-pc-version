@@ -68,26 +68,23 @@ namespace RestaurantOS.Launcher
                 }
                 catch { }
 
-                // 3. Prevent Port 3000 Conflict: Check if an instance is already starting or running
+                // 3. AUTOMATIC SELF-HEALING: Check if an instance is running or port 3000 is occupied
                 if (IsPortInUse(3000) || IsExistingPidRunning(pidFile))
                 {
-                    // Wait up to 12 seconds for the existing instance to finish booting
+                    // Give a healthy booting instance up to 3 seconds to answer
                     DateTime waitStart = DateTime.UtcNow;
-                    while ((DateTime.UtcNow - waitStart).TotalSeconds < 12)
+                    bool isResponding = false;
+                    while ((DateTime.UtcNow - waitStart).TotalSeconds < 3)
                     {
                         if (CheckReadyEndpoint())
                         {
-                            if (!isServiceMode)
-                            {
-                                OpenBrowser(HubUrl);
-                            }
-                            return;
+                            isResponding = true;
+                            break;
                         }
-                        Thread.Sleep(500);
+                        Thread.Sleep(400);
                     }
 
-                    // If it is responding now, open browser
-                    if (CheckReadyEndpoint())
+                    if (isResponding)
                     {
                         if (!isServiceMode)
                         {
@@ -95,6 +92,11 @@ namespace RestaurantOS.Launcher
                         }
                         return;
                     }
+
+                    // Not responding after 3 seconds: This is a hung or zombie ghost process!
+                    // Execute automatic self-healing immediately so user is never blocked.
+                    LogMessage(stdoutLog, "[Self-Healing] Detected unresponsive process locking port 3000. Automatically recovering...");
+                    PerformAutoRepair(pidFile, 3000, stdoutLog);
                 }
 
                 // 4. Resolve Node.js Runtime
@@ -114,117 +116,141 @@ namespace RestaurantOS.Launcher
                     serverScript = Path.Combine(appDir, "server.js");
                 }
 
-                // 5. Configure Process Start Info
-                ProcessStartInfo psi = new ProcessStartInfo
+                // 5. Launch and Poll with Auto-Repair & Retry support
+                bool launchSuccessful = false;
+                int attempts = 0;
+
+                while (!launchSuccessful && attempts < 3)
                 {
-                    FileName = nodeExe,
-                    Arguments = string.Format("\"{0}\"", serverScript),
-                    WorkingDirectory = appDir,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
+                    attempts++;
 
-                psi.EnvironmentVariables["NODE_ENV"] = "production";
-                psi.EnvironmentVariables["PORT"] = "3000";
-                psi.EnvironmentVariables["RESTAURANTOS_DATA_DIR"] = dataDir;
-
-                Process process = new Process { StartInfo = psi };
-
-                // Redirect logs asynchronously
-                process.OutputDataReceived += (s, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
+                    ProcessStartInfo psi = new ProcessStartInfo
                     {
-                        try { File.AppendAllText(stdoutLog, string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}{2}", DateTime.UtcNow, e.Data, Environment.NewLine)); } catch { }
-                    }
-                };
+                        FileName = nodeExe,
+                        Arguments = string.Format("\"{0}\"", serverScript),
+                        WorkingDirectory = appDir,
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    };
 
-                process.ErrorDataReceived += (s, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
+                    psi.EnvironmentVariables["NODE_ENV"] = "production";
+                    psi.EnvironmentVariables["PORT"] = "3000";
+                    psi.EnvironmentVariables["RESTAURANTOS_DATA_DIR"] = dataDir;
+
+                    Process process = new Process { StartInfo = psi };
+
+                    process.OutputDataReceived += (s, e) =>
                     {
-                        try { File.AppendAllText(stderrLog, string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}{2}", DateTime.UtcNow, e.Data, Environment.NewLine)); } catch { }
-                    }
-                };
-
-                bool started = process.Start();
-                if (!started)
-                {
-                    ShowErrorDialog("Failed to start the RestaurantOS engine process.");
-                    return;
-                }
-
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-
-                // 6. Poll for Readiness
-                DateTime startTime = DateTime.UtcNow;
-                bool isReady = false;
-
-                while ((DateTime.UtcNow - startTime).TotalSeconds < MaxWaitSeconds)
-                {
-                    if (process.HasExited)
-                    {
-                        string errDetail = "";
-                        try
+                        if (!string.IsNullOrEmpty(e.Data))
                         {
-                            if (File.Exists(stderrLog))
-                            {
-                                string[] lines = File.ReadAllLines(stderrLog);
-                                if (lines.Length > 0)
-                                {
-                                    int count = Math.Min(lines.Length, 5);
-                                    errDetail = string.Join(Environment.NewLine, lines, lines.Length - count, count);
-                                }
-                            }
+                            LogMessage(stdoutLog, e.Data);
                         }
-                        catch { }
+                    };
 
-                        ShowErrorDialog(
-                            "RestaurantOS could not start.\n\n" +
-                            "The local database engine or server could not be initialized.\n" +
-                            "Please restart RestaurantOS. If the problem continues, contact support.\n\n" +
-                            (string.IsNullOrEmpty(errDetail) ? "" : "Details:\n" + errDetail + "\n\n") +
-                            string.Format("Diagnostic logs:\n{0}\\", logsDir)
+                    process.ErrorDataReceived += (s, e) =>
+                    {
+                        if (!string.IsNullOrEmpty(e.Data))
+                        {
+                            LogMessage(stderrLog, e.Data);
+                        }
+                    };
+
+                    bool started = false;
+                    try
+                    {
+                        started = process.Start();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage(stderrLog, "Process start failed: " + ex.Message);
+                    }
+
+                    if (!started)
+                    {
+                        DialogResult retry = ShowAutoRepairDialog(
+                            "Failed to start the RestaurantOS engine process.\n\n" +
+                            "Would you like RestaurantOS to auto-repair and retry?",
+                            logsDir
                         );
+                        if (retry == DialogResult.Retry)
+                        {
+                            PerformAutoRepair(pidFile, 3000, stdoutLog);
+                            continue;
+                        }
                         return;
                     }
 
-                    if (CheckReadyEndpoint())
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+
+                    // Poll for Readiness
+                    DateTime startTime = DateTime.UtcNow;
+                    bool isReady = false;
+
+                    while ((DateTime.UtcNow - startTime).TotalSeconds < MaxWaitSeconds)
                     {
-                        isReady = true;
+                        if (process.HasExited)
+                        {
+                            string errDetail = GetRecentLogLines(stderrLog, 5);
+
+                            DialogResult retry = ShowAutoRepairDialog(
+                                "RestaurantOS could not start.\n\n" +
+                                "The local engine exited unexpectedly (a previous background process or port 3000 conflict may have occurred).\n\n" +
+                                "Click 'Retry' to automatically terminate conflicting background processes, free port 3000, and restart the engine.\n" +
+                                "Click 'Cancel' to exit.\n\n" +
+                                (string.IsNullOrEmpty(errDetail) ? "" : "Details:\n" + errDetail + "\n\n"),
+                                logsDir
+                            );
+
+                            if (retry == DialogResult.Retry)
+                            {
+                                PerformAutoRepair(pidFile, 3000, stdoutLog);
+                                break; // Breaks inner poll loop, triggers outer retry loop
+                            }
+                            return;
+                        }
+
+                        if (CheckReadyEndpoint())
+                        {
+                            isReady = true;
+                            launchSuccessful = true;
+                            break;
+                        }
+
+                        Thread.Sleep(300);
+                    }
+
+                    if (isReady)
+                    {
                         break;
                     }
 
-                    Thread.Sleep(300);
-                }
-
-                if (!isReady)
-                {
-                    // Clean up child process to avoid leaving an orphaned zombie locking port 3000
-                    try
+                    // Timed out while process is still running
+                    if (!launchSuccessful && !process.HasExited)
                     {
-                        if (process != null && !process.HasExited)
-                        {
-                            process.Kill();
-                        }
-                    }
-                    catch { }
+                        try { process.Kill(); } catch { }
 
-                    ShowErrorDialog(
-                        "RestaurantOS startup timed out.\n\n" +
-                        "The server did not respond within the expected timeframe.\n" +
-                        "Please verify system resources or restart your computer.\n\n" +
-                        string.Format("Diagnostic logs:\n{0}\\", logsDir)
-                    );
-                    return;
+                        DialogResult retry = ShowAutoRepairDialog(
+                            "RestaurantOS startup timed out.\n\n" +
+                            "The server did not respond within the expected timeframe.\n\n" +
+                            "Click 'Retry' to auto-repair port bindings and restart.",
+                            logsDir
+                        );
+
+                        if (retry == DialogResult.Retry)
+                        {
+                            PerformAutoRepair(pidFile, 3000, stdoutLog);
+                            continue;
+                        }
+                        return;
+                    }
                 }
 
-                // 7. Open Web Browser once ready
-                if (!isServiceMode)
+                // 6. Open Web Browser once ready
+                if (launchSuccessful && !isServiceMode)
                 {
                     OpenBrowser(HubUrl);
                 }
@@ -239,12 +265,169 @@ namespace RestaurantOS.Launcher
             }
         }
 
+        /// <summary>
+        /// Automatically terminates orphaned/zombie processes holding port 3000 and deletes stale locks.
+        /// </summary>
+        private static void PerformAutoRepair(string pidFile, int port, string stdoutLog)
+        {
+            try
+            {
+                LogMessage(stdoutLog, "[Auto-Repair] Starting port and process auto-repair...");
+
+                // 1. Terminate process referenced in pidFile if active
+                try
+                {
+                    if (File.Exists(pidFile))
+                    {
+                        string text = File.ReadAllText(pidFile).Trim();
+                        int pid;
+                        if (int.TryParse(text, out pid) && pid > 0 && pid != Process.GetCurrentProcess().Id)
+                        {
+                            try
+                            {
+                                Process target = Process.GetProcessById(pid);
+                                if (target != null && !target.HasExited)
+                                {
+                                    target.Kill();
+                                    target.WaitForExit(1000);
+                                    LogMessage(stdoutLog, string.Format("[Auto-Repair] Terminated PID {0} from pidFile", pid));
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch { }
+
+                // 2. Terminate any zombie process listening on the target port via netstat
+                KillProcessesListeningOnPort(port, stdoutLog);
+
+                // 3. Clear lockfiles
+                try
+                {
+                    if (File.Exists(pidFile)) File.Delete(pidFile);
+                }
+                catch { }
+
+                string dataDir = Path.GetDirectoryName(pidFile);
+                if (!string.IsNullOrEmpty(dataDir))
+                {
+                    string lockFile = Path.Combine(dataDir, "restaurantos.lock");
+                    try
+                    {
+                        if (File.Exists(lockFile)) File.Delete(lockFile);
+                    }
+                    catch { }
+                }
+
+                // 4. Wait up to 2 seconds for the socket to fully release
+                DateTime waitStart = DateTime.UtcNow;
+                while ((DateTime.UtcNow - waitStart).TotalSeconds < 2)
+                {
+                    if (!IsPortInUse(port)) break;
+                    Thread.Sleep(250);
+                }
+
+                LogMessage(stdoutLog, "[Auto-Repair] Port 3000 is now free and ready for startup.");
+            }
+            catch (Exception ex)
+            {
+                LogMessage(stdoutLog, "[Auto-Repair] Warning during auto-repair: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Inspects active TCP listening sockets via netstat and kills any process locking the given port.
+        /// </summary>
+        private static void KillProcessesListeningOnPort(int port, string stdoutLog)
+        {
+            try
+            {
+                ProcessStartInfo netstatPsi = new ProcessStartInfo
+                {
+                    FileName = "netstat",
+                    Arguments = "-ano -p tcp",
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+
+                using (Process netstatProc = Process.Start(netstatPsi))
+                {
+                    string output = netstatProc.StandardOutput.ReadToEnd();
+                    netstatProc.WaitForExit(2000);
+
+                    string portPattern = ":" + port.ToString();
+                    using (StringReader reader = new StringReader(output))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            if (line.Contains(portPattern) && line.Contains("LISTENING"))
+                            {
+                                string[] parts = line.Trim().Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                                if (parts.Length >= 5)
+                                {
+                                    int pid;
+                                    if (int.TryParse(parts[parts.Length - 1], out pid))
+                                    {
+                                        if (pid > 0 && pid != Process.GetCurrentProcess().Id)
+                                        {
+                                            try
+                                            {
+                                                Process victim = Process.GetProcessById(pid);
+                                                if (victim != null && !victim.HasExited)
+                                                {
+                                                    victim.Kill();
+                                                    victim.WaitForExit(1000);
+                                                    LogMessage(stdoutLog, string.Format("[Auto-Repair] Successfully freed port {0} by terminating zombie PID {1}", port, pid));
+                                                }
+                                            }
+                                            catch { }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static void LogMessage(string logFile, string message)
+        {
+            try
+            {
+                File.AppendAllText(logFile, string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}{2}", DateTime.UtcNow, message, Environment.NewLine));
+            }
+            catch { }
+        }
+
+        private static string GetRecentLogLines(string file, int maxLines)
+        {
+            try
+            {
+                if (File.Exists(file))
+                {
+                    string[] lines = File.ReadAllLines(file);
+                    if (lines.Length > 0)
+                    {
+                        int count = Math.Min(lines.Length, maxLines);
+                        return string.Join(Environment.NewLine, lines, lines.Length - count, count);
+                    }
+                }
+            }
+            catch { }
+            return "";
+        }
+
         private static bool ProbeUrl(string url, int timeoutMs)
         {
             try
             {
                 HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
-                // CRITICAL ON WINDOWS: Bypasses WPAD proxy auto-detection which blocks for 2-5 seconds
                 req.Proxy = null;
                 req.Timeout = timeoutMs;
                 req.ReadWriteTimeout = timeoutMs;
@@ -268,14 +451,6 @@ namespace RestaurantOS.Launcher
                     }
                     return false;
                 }
-            }
-            catch (WebException ex)
-            {
-                if (ex.Response != null)
-                {
-                    try { ex.Response.Close(); } catch { }
-                }
-                return false;
             }
             catch
             {
@@ -350,6 +525,16 @@ namespace RestaurantOS.Launcher
                 }
                 catch { }
             }
+        }
+
+        private static DialogResult ShowAutoRepairDialog(string message, string logsDir)
+        {
+            return MessageBox.Show(
+                message + string.Format("Diagnostic logs:\n{0}\\", logsDir),
+                "RestaurantOS Local Hub - Auto-Repair & Troubleshoot",
+                MessageBoxButtons.RetryCancel,
+                MessageBoxIcon.Warning
+            );
         }
 
         private static void ShowErrorDialog(string message)

@@ -10,8 +10,7 @@ const EXEMPT_PATHS = [
   '/api/auth/logout',
   '/api/auth/session',
   '/api/auth/pair',
-  '/api/licensing/status',
-  '/api/licensing/activate',
+  '/api/licensing',
   '/api/hub/status',
 ];
 

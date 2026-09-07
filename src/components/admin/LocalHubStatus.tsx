@@ -110,7 +110,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                     <span className="text-xs font-black text-emerald-600 uppercase tracking-wider">Hub Active & Running</span>
                   </div>
                   <h3 className="text-xl font-black text-gray-900 mt-0.5">{status.restaurantName}</h3>
-                  <span className="text-xs font-medium text-gray-400">RestaurantOS Local Hub v{status.version} • Uptime {formatUptime(status.uptimeSeconds)}</span>
+                  <span className="text-xs font-medium text-gray-400">RESTOS v{status.version} • Uptime {formatUptime(status.uptimeSeconds)}</span>
                 </div>
               </div>
 
