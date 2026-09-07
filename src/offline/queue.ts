@@ -129,4 +129,13 @@ export function subscribeToOptimistic(callback: OptimisticCommandCallback) {
   };
 }
 
-// We need to modify executeCommand to trigger notifyOptimisticListeners
+// Self-healing interval: periodically check for stuck pending/syncing commands
+// and flush them if the socket is connected but not currently flushing.
+setInterval(async () => {
+  if (socket.connected && !isFlushing) {
+    const count = await getPendingCount();
+    if (count > 0) {
+      flushQueue();
+    }
+  }
+}, 5000);

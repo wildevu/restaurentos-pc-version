@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChefHat, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, RotateCcw, ShieldAlert } from 'lucide-react';
 import { RestosLogo } from './RestosLogo';
+import { uuidv4 } from '../utils/uuid';
 
 interface LoginScreenProps {
   onLogin: (token: string) => void;
@@ -25,7 +26,7 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
     // Ensure deviceId exists
     let deviceId = localStorage.getItem('restaurantos_device_id');
     if (!deviceId) {
-      deviceId = crypto.randomUUID();
+      deviceId = uuidv4();
       localStorage.setItem('restaurantos_device_id', deviceId);
     }
 

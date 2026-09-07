@@ -635,6 +635,17 @@ export function App() {
   }
 
   if (appState === 'LOGIN') {
+    // Allow unauthenticated access to the pairing screen
+    if (window.location.pathname.startsWith('/pair')) {
+      return (
+        <I18nProvider restaurant={restaurant} initialLanguage={restaurant?.language || 'en'}>
+          <BrowserRouter>
+            <PairingScreen onLogin={handleLogin} />
+          </BrowserRouter>
+        </I18nProvider>
+      );
+    }
+
     return (
       <I18nProvider restaurant={restaurant} initialLanguage={restaurant?.language || 'en'}>
         <LoginScreen onLogin={handleLogin} onReset={() => checkStatus(null)} />
