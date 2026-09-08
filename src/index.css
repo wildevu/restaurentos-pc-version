@@ -1,9 +1,12 @@
 @import "tailwindcss";
 
-body {
+html, body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
   background-color: #f9fafb;
+  overscroll-behavior-y: none;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media print {

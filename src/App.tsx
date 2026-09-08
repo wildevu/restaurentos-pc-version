@@ -470,13 +470,18 @@ export function App() {
     };
   }, []);
 
-  const checkStatus = async (token = authToken) => {
+  const checkStatus = async (token = authToken, retriesLeft = 5) => {
     try {
       if (token) {
-        // Verify token
+        // Verify token with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         const res = await fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
+
         if (res.ok) {
           const data = await res.json();
           setUser(data.user);
@@ -494,7 +499,11 @@ export function App() {
       }
 
       // Check setup status from authoritative API
-      const setupRes = await fetch('/api/auth/status');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const setupRes = await fetch('/api/auth/status', { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       const setupData = await setupRes.json();
       if (setupData.restaurant) {
         setRestaurant(setupData.restaurant);
@@ -505,7 +514,12 @@ export function App() {
         setAppState('LOGIN');
       }
     } catch (err) {
-      console.error('Failed to check status', err);
+      console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
+      if (retriesLeft > 0) {
+        setTimeout(() => checkStatus(token, retriesLeft - 1), 1500);
+        return;
+      }
+
       // Fallback check to setup-status
       try {
         const fallbackRes = await fetch('/api/auth/setup-status');
@@ -519,11 +533,16 @@ export function App() {
     }
   };
 
-  const initApp = async (token: string) => {
+  const initApp = async (token: string, retriesLeft = 5) => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       const res = await fetch('/api/state', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const data = await res.json();
         if (data.stateVersion !== undefined) stateVersionRef.current = data.stateVersion;
@@ -534,6 +553,13 @@ export function App() {
           setRestaurant(data.restaurant);
         }
       }
+
+      // Unbind previous listeners before reconnecting
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
+      socket.off('AUTH_REVOKED');
+      socket.off('STATE_UPDATE');
 
       connectSocket(token);
 
@@ -595,9 +621,36 @@ export function App() {
         }
       });
     } catch (err) {
-      console.error("Init error", err);
+      console.error(`Init error (retries left: ${retriesLeft})`, err);
+      if (retriesLeft > 0) {
+        setTimeout(() => initApp(token, retriesLeft - 1), 1500);
+      }
     }
   };
+
+  // Mobile/Tablet Screen Unlock & Tab Visibility Re-Sync Listener
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && authToken) {
+        if (!socket.connected) {
+          socket.connect();
+        } else {
+          socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current }, (res: any) => {
+            if (res && res.upToDate === false && res.state) {
+              stateVersionRef.current = res.state.stateVersion;
+              setTables(res.state.tables);
+              setOrders(res.state.orders);
+              if (res.state.menu) setMenu(res.state.menu);
+              if (res.state.restaurant) setRestaurant(res.state.restaurant);
+            }
+          });
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [authToken]);
 
   const handleLogin = (token: string) => {
     localStorage.setItem('restaurantos_auth_token', token);
