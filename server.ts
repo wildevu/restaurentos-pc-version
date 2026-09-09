@@ -25,15 +25,39 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 function getLocalLanIps(): string[] {
   const interfaces = os.networkInterfaces();
-  const ips: string[] = [];
+  const physicalIps: string[] = [];
+  const virtualIps: string[] = [];
+
+  const virtualKeywords = [
+    'wsl',
+    'hyper-v',
+    'vethernet',
+    'virtualbox',
+    'vmware',
+    'docker',
+    'zerotier',
+    'tailscale',
+    'npcap',
+    'loopback',
+    'host-only'
+  ];
+
   for (const name of Object.keys(interfaces)) {
+    const isVirtual = virtualKeywords.some(keyword => name.toLowerCase().includes(keyword));
+
     for (const iface of interfaces[name] || []) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        ips.push(iface.address);
+        if (isVirtual) {
+          virtualIps.push(iface.address);
+        } else {
+          physicalIps.push(iface.address);
+        }
       }
     }
   }
-  return ips;
+
+  // Prioritize physical Wi-Fi/Ethernet IPs first!
+  return [...physicalIps, ...virtualIps];
 }
 
 function acquireInstanceLock(): boolean {

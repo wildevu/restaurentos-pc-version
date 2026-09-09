@@ -563,7 +563,13 @@ export function App() {
 
       connectSocket(token);
 
+      let disconnectTimer: any = null;
+
       socket.on('connect', () => {
+        if (disconnectTimer) {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = null;
+        }
         setIsConnected(true);
         socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current }, async (res: any) => {
           let latestTables: any[] = [];
@@ -597,9 +603,20 @@ export function App() {
         });
       });
       
-      socket.on('disconnect', () => setIsConnected(false));
+      socket.on('disconnect', () => {
+        // 3-second grace period before flipping UI status to offline to prevent flicker during brief Wi-Fi drops
+        if (!disconnectTimer) {
+          disconnectTimer = setTimeout(() => {
+            setIsConnected(false);
+          }, 3000);
+        }
+      });
       socket.on('connect_error', () => {
-        setIsConnected(false);
+        if (!disconnectTimer) {
+          disconnectTimer = setTimeout(() => {
+            setIsConnected(false);
+          }, 3000);
+        }
       });
       
       socket.on('AUTH_REVOKED', (payload: any) => {

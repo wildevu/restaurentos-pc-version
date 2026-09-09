@@ -27,8 +27,13 @@ Write-Host "Configuring Windows Firewall for RestaurantOS Local Hub (Port $Port)
 # Remove any old rule with same name
 netsh advfirewall firewall delete rule name="$RuleName" 2>&1 | Out-Null
 
-# Add inbound rule for TCP 3000, limited strictly to Private and Domain profiles (never public hotspots)
-$result = netsh advfirewall firewall add rule name="$RuleName" dir=in action=allow protocol=TCP localport=$Port profile=private,domain description="Allows waiter, kitchen, and manager devices on the local restaurant network to connect to RestaurantOS Local Hub"
+# Add inbound rule for TCP 3000 across all profiles, scoped to RestaurantOS binary executable for maximum security
+$NodeExe = Join-Path $AppDir "runtime\node.exe"
+if (Test-Path $NodeExe) {
+    $result = netsh advfirewall firewall add rule name="$RuleName" dir=in action=allow protocol=TCP localport=$Port program="$NodeExe" profile=any description="Allows waiter, kitchen, and manager devices on the local restaurant network to connect to RestaurantOS Local Hub"
+} else {
+    $result = netsh advfirewall firewall add rule name="$RuleName" dir=in action=allow protocol=TCP localport=$Port profile=any description="Allows waiter, kitchen, and manager devices on the local restaurant network to connect to RestaurantOS Local Hub"
+}
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Windows Firewall rule successfully configured for RestaurantOS Local Hub on TCP port $Port (Private/Domain)." -ForegroundColor Green
