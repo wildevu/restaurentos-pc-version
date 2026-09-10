@@ -166,6 +166,7 @@ export const licenses = sqliteTable('licenses', {
   rawLicenseKey: text('raw_license_key').notNull(),
   product: text('product').notNull(),
   version: integer('version').notNull(),
+  licenseType: text('license_type').notNull().default('STANDARD'),
   restaurantId: text('restaurant_id').notNull(),
   installationId: text('installation_id').notNull(),
   durationDays: integer('duration_days').notNull(),

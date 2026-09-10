@@ -9,6 +9,7 @@ export interface LicenseStatusInfo {
   status: 'ACTIVE' | 'EXPIRED' | 'UNLICENSED' | 'CLOCK_ROLLBACK_DETECTED';
   isLicensed: boolean;
   canOperate: boolean;
+  licenseType?: 'STANDARD' | 'PREMIUM';
   installationId: string;
   restaurantId?: string;
   licenseId?: string;
@@ -130,6 +131,7 @@ export class LicensingService {
         status: 'EXPIRED',
         isLicensed: false,
         canOperate: false,
+        licenseType: (active.licenseType as 'STANDARD' | 'PREMIUM') || 'STANDARD',
         installationId: inst.id,
         restaurantId: inst.restaurantId || undefined,
         licenseId: active.id,
@@ -144,6 +146,7 @@ export class LicensingService {
       status: 'ACTIVE',
       isLicensed: true,
       canOperate: true,
+      licenseType: (active.licenseType as 'STANDARD' | 'PREMIUM') || 'STANDARD',
       installationId: inst.id,
       restaurantId: inst.restaurantId || undefined,
       licenseId: active.id,
@@ -195,6 +198,7 @@ export class LicensingService {
       rawLicenseKey: rawKey.trim(),
       product: payload.product,
       version: payload.v,
+      licenseType: payload.licenseType || 'STANDARD',
       restaurantId: payload.restaurantId || inst.restaurantId || 'default',
       installationId: inst.id,
       durationDays: payload.durationDays,
@@ -229,5 +233,13 @@ export class LicensingService {
 
     const statusInfo = await this.getStatus();
     return { success: true, statusInfo };
+  }
+
+  /**
+   * Helper function to check if the active license has Premium features enabled.
+   */
+  static async hasPremiumAccess(): Promise<boolean> {
+    const status = await this.getStatus();
+    return status.status === 'ACTIVE' && status.canOperate && status.licenseType === 'PREMIUM';
   }
 }

@@ -93,6 +93,7 @@ export function verifyLicenseKey(
     };
   }
 
+  const parsedType = String(parsedPayload.licenseType || 'STANDARD').toUpperCase().trim();
   const canonicalPayload: CanonicalLicensePayload = {
     v: 1,
     product: 'restaurantos',
@@ -101,6 +102,7 @@ export function verifyLicenseKey(
     installationId: parsedPayload.installationId || '',
     durationDays: parsedPayload.durationDays,
     issuedAt: parsedPayload.issuedAt,
+    licenseType: parsedType === 'PREMIUM' ? 'PREMIUM' : 'STANDARD',
   };
 
   // 4. Installation and Restaurant Binding Check
