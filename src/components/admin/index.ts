@@ -9,3 +9,4 @@ export * from './Backups';
 export * from './SystemHealth';
 export * from './LocalHubStatus';
 export * from './LicenseManagement';
+export * from './ConsultantModule';

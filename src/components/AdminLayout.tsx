@@ -12,7 +12,8 @@ import {
   Database, 
   Activity,
   Server,
-  Key
+  Key,
+  Briefcase
 } from 'lucide-react';
 
 export function AdminLayout() {
@@ -22,6 +23,7 @@ export function AdminLayout() {
   const navItems = [
     { nameKey: 'admin.navHub', defaultName: 'Local Hub Status', path: '/admin/hub', icon: Server },
     { nameKey: 'admin.navLicensing', defaultName: 'Licensing', path: '/admin/licensing', icon: Key },
+    { nameKey: 'admin.navConsultant', defaultName: 'Consultant', path: '/admin/consultant', icon: Briefcase },
     { nameKey: 'admin.navSettings', defaultName: 'Settings', path: '/admin/settings', icon: Store },
     { nameKey: 'admin.navStaff', defaultName: 'Staff', path: '/admin/staff', icon: Users },
     { nameKey: 'admin.navMenu', defaultName: 'Menu & CSV', path: '/admin/menu', icon: MenuSquare },

@@ -37,7 +37,8 @@ import {
   Backups,
   SystemHealth,
   LocalHubStatus,
-  LicenseManagement
+  LicenseManagement,
+  ConsultantModule
 } from './components/admin';
 
 import { 
@@ -352,6 +353,7 @@ function AppContent({
             <Route path="/admin" element={<AdminLayout />}>
               <Route path="hub" element={<LocalHubStatus authToken={authToken!} />} />
               <Route path="licensing" element={<LicenseManagement />} />
+              <Route path="consultant" element={<ConsultantModule authToken={authToken!} />} />
               <Route path="settings" element={<RestaurantSettings authToken={authToken!} />} />
               <Route path="staff" element={<StaffManagement authToken={authToken!} currentUser={user} />} />
               <Route path="tables" element={<TableManagement authToken={authToken!} />} />

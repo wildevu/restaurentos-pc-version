@@ -1509,6 +1509,186 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
 // ==========================================
 // GROUP 8 — SYSTEM HEALTH / LOCAL HUB
 // ==========================================
+// Endpoint to export encrypted/structured .ros analytics report for Founder CRM AI Analysis
+adminRouter.get('/reports/export-ros', async (req: any, res) => {
+  try {
+    const isPremium = await LicensingService.hasPremiumAccess();
+    if (!isPremium) {
+      return res.status(403).json({
+        error: 'A Premium License is required to generate and export AI Consultant .ros reports. Please upgrade your subscription.'
+      });
+    }
+
+    const days = parseInt(req.query.days as string || '30', 10);
+    const validDays = isNaN(days) || days <= 0 ? 30 : days;
+
+    const now = new Date();
+    const startDate = new Date(now.getTime() - validDays * 24 * 60 * 60 * 1000);
+
+    const inst = await LicensingService.getOrCreateInstallation();
+    const rest = await db.select().from(restaurants).limit(1);
+    const restaurantName = rest[0]?.name || 'RestaurantOS Hub';
+    const currency = rest[0]?.currency || 'EUR';
+
+    // 1. Fetch completed orders within period
+    const allOrders = await db.select()
+      .from(orders)
+      .where(and(
+        eq(orders.status, 'CLOSED'),
+        gte(orders.createdAt, startDate)
+      ));
+
+    const totalOrders = allOrders.length;
+    let totalGrossRevenue = 0;
+
+    const orderIds = allOrders.map(o => o.id);
+
+    // 2. Fetch order items for these orders
+    let allOrderItems: any[] = [];
+    if (orderIds.length > 0) {
+      allOrderItems = await db.select()
+        .from(orderItems)
+        .where(inArray(orderItems.orderId, orderIds));
+    }
+
+    for (const item of allOrderItems) {
+      totalGrossRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+    }
+
+    const averageOrderValue = totalOrders > 0 ? parseFloat((totalGrossRevenue / totalOrders).toFixed(2)) : 0;
+
+    // 3. Staff Leaderboard (Ranked by Tables Managed / Closed Orders Count)
+    const staffStatsMap: Record<string, { userName: string, tablesManaged: number, totalRevenue: number }> = {};
+    const allUsers = await db.select().from(users);
+    const userNamesMap = new Map(allUsers.map(u => [u.id, u.name]));
+
+    for (const ord of allOrders) {
+      const staffId = ord.closedByUserId || ord.openedByUserId || 'system';
+      const staffName = userNamesMap.get(staffId) || 'Staff';
+
+      if (!staffStatsMap[staffId]) {
+        staffStatsMap[staffId] = { userName: staffName, tablesManaged: 0, totalRevenue: 0 };
+      }
+      staffStatsMap[staffId].tablesManaged += 1;
+    }
+
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const staffId = ord.closedByUserId || ord.openedByUserId || 'system';
+        if (staffStatsMap[staffId]) {
+          staffStatsMap[staffId].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+        }
+      }
+    }
+
+    const staffPerformance = Object.values(staffStatsMap)
+      .map(s => ({
+        userName: s.userName,
+        tablesManaged: s.tablesManaged,
+        totalRevenue: parseFloat(s.totalRevenue.toFixed(2)),
+        averageOrderValue: s.tablesManaged > 0 ? parseFloat((s.totalRevenue / s.tablesManaged).toFixed(2)) : 0
+      }))
+      .sort((a, b) => b.tablesManaged - a.tablesManaged);
+
+    // 4. Menu Engineering Matrix (STARS, PLOWHORSES, PUZZLES, DOGS)
+    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number }> = {};
+
+    for (const item of allOrderItems) {
+      const name = item.productNameSnapshot || 'Item';
+      if (!itemSalesMap[name]) {
+        itemSalesMap[name] = { itemName: name, quantitySold: 0, unitPrice: item.unitPriceSnapshot || 0, totalRevenue: 0 };
+      }
+      itemSalesMap[name].quantitySold += item.quantity || 1;
+      itemSalesMap[name].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+    }
+
+    const itemSalesList = Object.values(itemSalesMap);
+    const totalItemsSold = itemSalesList.reduce((sum, i) => sum + i.quantitySold, 0);
+    const avgQuantityPerItem = itemSalesList.length > 0 ? totalItemsSold / itemSalesList.length : 0;
+    const avgRevenuePerItem = itemSalesList.length > 0 ? totalGrossRevenue / itemSalesList.length : 0;
+
+    const menuEngineering = itemSalesList.map(item => {
+      const isHighPopularity = item.quantitySold >= avgQuantityPerItem;
+      const isHighRevenue = item.totalRevenue >= avgRevenuePerItem;
+
+      let classification: 'STAR' | 'PLOWHORSE' | 'PUZZLE' | 'DOG' = 'DOG';
+      if (isHighPopularity && isHighRevenue) classification = 'STAR';
+      else if (isHighPopularity && !isHighRevenue) classification = 'PLOWHORSE';
+      else if (!isHighPopularity && isHighRevenue) classification = 'PUZZLE';
+
+      return {
+        itemName: item.itemName,
+        quantitySold: item.quantitySold,
+        unitPrice: item.unitPrice,
+        totalRevenue: parseFloat(item.totalRevenue.toFixed(2)),
+        classification
+      };
+    }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    // 5. Hourly Sales & Rush Heatmap
+    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number }> = {};
+    for (let h = 0; h < 24; h++) {
+      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0 };
+    }
+
+    for (const ord of allOrders) {
+      const h = new Date(ord.createdAt).getHours();
+      hourlyMap[h].orderCount += 1;
+    }
+
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const h = new Date(ord.createdAt).getHours();
+        hourlyMap[h].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+      }
+    }
+
+    const salesByHour = Object.values(hourlyMap).map(h => ({
+      hour: h.hour,
+      revenue: parseFloat(h.revenue.toFixed(2)),
+      orderCount: h.orderCount
+    }));
+
+    // Construct JSON Payload
+    const rosReport = {
+      header: {
+        version: 1,
+        product: 'restaurantos',
+        exportId: `exp_${crypto.randomBytes(8).toString('hex')}`,
+        installationId: inst.id,
+        restaurantName,
+        currency,
+        period: {
+          days: validDays,
+          startDate: startDate.toISOString(),
+          endDate: now.toISOString()
+        },
+        generatedAt: now.toISOString()
+      },
+      kpiSummary: {
+        totalGrossRevenue: parseFloat(totalGrossRevenue.toFixed(2)),
+        totalOrders,
+        totalTablesServed: totalOrders,
+        averageOrderValue,
+        paymentMethod: 'CASH_ONLY'
+      },
+      staffPerformance,
+      menuEngineering,
+      salesByHour
+    };
+
+    const filename = `restaurantos_export_${validDays}days_${now.toISOString().slice(0, 10)}.ros`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(JSON.stringify(rosReport, null, 2));
+  } catch (err: any) {
+    logger.error('Failed to generate .ros report', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 adminRouter.get('/system/health', async (req: any, res) => {
   try {
     ensureBackupDir();

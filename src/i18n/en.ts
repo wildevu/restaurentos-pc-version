@@ -396,6 +396,7 @@ export const en = {
     navBackups: 'Backups',
     navHealth: 'System Health',
     navLicensing: 'Licensing',
+    navConsultant: 'Consultant',
 
     // Settings
     settingsTitle: 'Restaurant Configuration',

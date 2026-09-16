@@ -398,6 +398,7 @@ export const fr: Translations = {
     navBackups: 'Sauvegardes',
     navHealth: 'Santé Système',
     navLicensing: 'Licence',
+    navConsultant: 'Consultant',
 
     // Settings
     settingsTitle: 'Configuration du Restaurant',
