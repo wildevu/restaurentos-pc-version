@@ -1651,6 +1651,60 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       orderCount: h.orderCount
     }));
 
+    // 6. Day-by-Day Sales Breakdown (salesByDate)
+    const dailyMap: Record<string, { date: string, revenue: number, orderCount: number }> = {};
+    for (const ord of allOrders) {
+      const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+      if (!dailyMap[dateStr]) {
+        dailyMap[dateStr] = { date: dateStr, revenue: 0, orderCount: 0 };
+      }
+      dailyMap[dateStr].orderCount += 1;
+    }
+
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+        if (dailyMap[dateStr]) {
+          dailyMap[dateStr].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+        }
+      }
+    }
+
+    const salesByDate = Object.values(dailyMap)
+      .map(d => ({
+        date: d.date,
+        revenue: parseFloat(d.revenue.toFixed(2)),
+        orderCount: d.orderCount
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // 7. Day-of-Week Sales Breakdown (salesByDayOfWeek)
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const dayOfWeekMap: Record<string, { day: string, revenue: number, orderCount: number }> = {};
+    for (const dName of dayNames) {
+      dayOfWeekMap[dName] = { day: dName, revenue: 0, orderCount: 0 };
+    }
+
+    for (const ord of allOrders) {
+      const dName = dayNames[new Date(ord.createdAt).getDay()];
+      dayOfWeekMap[dName].orderCount += 1;
+    }
+
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const dName = dayNames[new Date(ord.createdAt).getDay()];
+        dayOfWeekMap[dName].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+      }
+    }
+
+    const salesByDayOfWeek = Object.values(dayOfWeekMap).map(d => ({
+      day: d.day,
+      revenue: parseFloat(d.revenue.toFixed(2)),
+      orderCount: d.orderCount
+    }));
+
     // Construct JSON Payload
     const rosReport = {
       header: {
@@ -1676,7 +1730,9 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       },
       staffPerformance,
       menuEngineering,
-      salesByHour
+      salesByHour,
+      salesByDate,
+      salesByDayOfWeek
     };
 
     const filename = `restaurantos_export_${validDays}days_${now.toISOString().slice(0, 10)}.ros`;
