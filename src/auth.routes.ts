@@ -160,6 +160,7 @@ authRouter.post('/setup', async (req, res) => {
         language: payload.language || 'en',
         currency: payload.currency.toUpperCase(),
         timezone: payload.timezone,
+        seatingCapacity: payload.seatingCapacity || 30,
         logo: payload.logo || null,
         createdAt: now,
         updatedAt: now,

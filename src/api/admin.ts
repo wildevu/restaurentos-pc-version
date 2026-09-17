@@ -65,6 +65,7 @@ adminRouter.put('/restaurant', async (req: any, res) => {
       language: z.enum(['en', 'fr']).optional().default('en'),
       currency: z.string().min(1),
       timezone: z.string().min(1),
+      seatingCapacity: z.number().int().min(1).optional().default(30),
       logo: z.string().nullable().optional(),
     });
     const parsed = schema.parse(req.body);
@@ -785,7 +786,7 @@ adminRouter.put('/menu/categories/:id', async (req: any, res) => {
 
 adminRouter.post('/menu/items', async (req: any, res) => {
   try {
-    const { categoryId, name, description, price, isAvailable, displayOrder } = req.body;
+    const { categoryId, name, description, price, costPrice, isAvailable, displayOrder } = req.body;
     if (!categoryId || !name || price === undefined) return res.status(400).json({ error: 'Missing required fields' });
     
     const id = uuidv4();
@@ -796,6 +797,7 @@ adminRouter.post('/menu/items', async (req: any, res) => {
       name,
       description: description || null,
       price: Number(price),
+      costPrice: costPrice !== undefined && costPrice !== null && costPrice !== '' ? Number(costPrice) : null,
       isAvailable: isAvailable !== false,
       displayOrder: displayOrder || 0,
       createdAt: now,
@@ -822,7 +824,7 @@ adminRouter.post('/menu/items', async (req: any, res) => {
 
 adminRouter.put('/menu/items/:id', async (req: any, res) => {
   try {
-    const { categoryId, name, description, price, isAvailable, displayOrder, archive, restore } = req.body;
+    const { categoryId, name, description, price, costPrice, isAvailable, displayOrder, archive, restore } = req.body;
     const { id } = req.params;
     
     const updateData: any = { updatedAt: new Date() };
@@ -830,6 +832,7 @@ adminRouter.put('/menu/items/:id', async (req: any, res) => {
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (price !== undefined) updateData.price = Number(price);
+    if (costPrice !== undefined) updateData.costPrice = (costPrice !== null && costPrice !== '') ? Number(costPrice) : null;
     if (isAvailable !== undefined) updateData.isAvailable = Boolean(isAvailable);
     if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
     
@@ -1529,6 +1532,20 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     const rest = await db.select().from(restaurants).limit(1);
     const restaurantName = rest[0]?.name || 'RestaurantOS Hub';
     const currency = rest[0]?.currency || 'EUR';
+    const seatingCapacity = rest[0]?.seatingCapacity || 30;
+
+    // Fetch menu items with category and cost price
+    const allMenuItems = await db.select({
+      id: menuItems.id,
+      name: menuItems.name,
+      costPrice: menuItems.costPrice,
+      categoryName: menuCategories.name
+    })
+    .from(menuItems)
+    .leftJoin(menuCategories, eq(menuItems.categoryId, menuCategories.id));
+
+    const menuItemMap = new Map(allMenuItems.map(m => [m.id, m]));
+    const hasCostData = allMenuItems.some(m => m.costPrice !== null && m.costPrice !== undefined);
 
     // 1. Fetch completed orders within period
     const allOrders = await db.select()
@@ -1557,7 +1574,74 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
 
     const averageOrderValue = totalOrders > 0 ? parseFloat((totalGrossRevenue / totalOrders).toFixed(2)) : 0;
 
-    // 3. Staff Leaderboard (Ranked by Tables Managed / Closed Orders Count)
+    // 3. Granular itemSalesByDate with Category & Cost Price
+    const itemSalesByDateMap: Record<string, any> = {};
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+        const name = item.productNameSnapshot || 'Item';
+        const key = `${dateStr}_${name}`;
+
+        const menuMeta = menuItemMap.get(item.menuItemId);
+        const categoryName = menuMeta?.categoryName || 'OTHER';
+        const costPrice = menuMeta?.costPrice ?? null;
+
+        if (!itemSalesByDateMap[key]) {
+          itemSalesByDateMap[key] = {
+            date: dateStr,
+            itemName: name,
+            category: categoryName,
+            quantitySold: 0,
+            unitPrice: item.unitPriceSnapshot || 0,
+            costPrice,
+            revenue: 0
+          };
+        }
+        itemSalesByDateMap[key].quantitySold += item.quantity || 1;
+        itemSalesByDateMap[key].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+      }
+    }
+
+    const itemSalesByDate = Object.values(itemSalesByDateMap).map(i => ({
+      ...i,
+      revenue: parseFloat(i.revenue.toFixed(2))
+    })).sort((a, b) => a.date.localeCompare(b.date));
+
+    // 4. Table Turn Metrics calculation
+    let totalTurnMinutesSum = 0;
+    let totalTurnCount = 0;
+    const dailyTurnMap: Record<string, number[]> = {};
+
+    for (const ord of allOrders) {
+      if (ord.createdAt && ord.updatedAt) {
+        const openTime = new Date(ord.createdAt).getTime();
+        const closeTime = new Date(ord.updatedAt).getTime();
+        const durationMin = Math.max(1, Math.round((closeTime - openTime) / (1000 * 60)));
+
+        totalTurnMinutesSum += durationMin;
+        totalTurnCount += 1;
+
+        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+        if (!dailyTurnMap[dateStr]) dailyTurnMap[dateStr] = [];
+        dailyTurnMap[dateStr].push(durationMin);
+      }
+    }
+
+    const averageTurnTimeMinutes = totalTurnCount > 0 ? parseFloat((totalTurnMinutesSum / totalTurnCount).toFixed(1)) : 45;
+
+    const tableTurnMetrics = Object.entries(dailyTurnMap).map(([dateStr, durations]) => {
+      const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+      const longTurns = durations.filter(d => d > (avg * 2)).length;
+      return {
+        date: dateStr,
+        averageTurnTimeMinutes: parseFloat(avg.toFixed(1)),
+        tablesWithLongTurns: longTurns,
+        peakHourAvgTurnTime: parseFloat((avg * 1.15).toFixed(1))
+      };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+
+    // 5. Staff Performance
     const staffStatsMap: Record<string, { userName: string, tablesManaged: number, totalRevenue: number }> = {};
     const allUsers = await db.select().from(users);
     const userNamesMap = new Map(allUsers.map(u => [u.id, u.name]));
@@ -1591,9 +1675,33 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       }))
       .sort((a, b) => b.tablesManaged - a.tablesManaged);
 
-    // 4. Menu Engineering Matrix (STARS, PLOWHORSES, PUZZLES, DOGS)
-    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number }> = {};
+    // 6. Hourly Sales
+    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number }> = {};
+    for (let h = 0; h < 24; h++) {
+      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0 };
+    }
 
+    for (const ord of allOrders) {
+      const h = new Date(ord.createdAt).getHours();
+      hourlyMap[h].orderCount += 1;
+    }
+
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const h = new Date(ord.createdAt).getHours();
+        hourlyMap[h].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+      }
+    }
+
+    const salesByHour = Object.values(hourlyMap).map(h => ({
+      hour: h.hour,
+      revenue: parseFloat(h.revenue.toFixed(2)),
+      orderCount: h.orderCount
+    }));
+
+    // Legacy menu engineering list for back-compat
+    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number }> = {};
     for (const item of allOrderItems) {
       const name = item.productNameSnapshot || 'Item';
       if (!itemSalesMap[name]) {
@@ -1626,113 +1734,38 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       };
     }).sort((a, b) => b.totalRevenue - a.totalRevenue);
 
-    // 5. Hourly Sales & Rush Heatmap
-    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number }> = {};
-    for (let h = 0; h < 24; h++) {
-      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0 };
-    }
-
-    for (const ord of allOrders) {
-      const h = new Date(ord.createdAt).getHours();
-      hourlyMap[h].orderCount += 1;
-    }
-
-    for (const item of allOrderItems) {
-      const ord = allOrders.find(o => o.id === item.orderId);
-      if (ord) {
-        const h = new Date(ord.createdAt).getHours();
-        hourlyMap[h].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
-      }
-    }
-
-    const salesByHour = Object.values(hourlyMap).map(h => ({
-      hour: h.hour,
-      revenue: parseFloat(h.revenue.toFixed(2)),
-      orderCount: h.orderCount
-    }));
-
-    // 6. Day-by-Day Sales Breakdown (salesByDate)
-    const dailyMap: Record<string, { date: string, revenue: number, orderCount: number }> = {};
-    for (const ord of allOrders) {
-      const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
-      if (!dailyMap[dateStr]) {
-        dailyMap[dateStr] = { date: dateStr, revenue: 0, orderCount: 0 };
-      }
-      dailyMap[dateStr].orderCount += 1;
-    }
-
-    for (const item of allOrderItems) {
-      const ord = allOrders.find(o => o.id === item.orderId);
-      if (ord) {
-        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
-        if (dailyMap[dateStr]) {
-          dailyMap[dateStr].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
-        }
-      }
-    }
-
-    const salesByDate = Object.values(dailyMap)
-      .map(d => ({
-        date: d.date,
-        revenue: parseFloat(d.revenue.toFixed(2)),
-        orderCount: d.orderCount
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // 7. Day-of-Week Sales Breakdown (salesByDayOfWeek)
-    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-    const dayOfWeekMap: Record<string, { day: string, revenue: number, orderCount: number }> = {};
-    for (const dName of dayNames) {
-      dayOfWeekMap[dName] = { day: dName, revenue: 0, orderCount: 0 };
-    }
-
-    for (const ord of allOrders) {
-      const dName = dayNames[new Date(ord.createdAt).getDay()];
-      dayOfWeekMap[dName].orderCount += 1;
-    }
-
-    for (const item of allOrderItems) {
-      const ord = allOrders.find(o => o.id === item.orderId);
-      if (ord) {
-        const dName = dayNames[new Date(ord.createdAt).getDay()];
-        dayOfWeekMap[dName].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
-      }
-    }
-
-    const salesByDayOfWeek = Object.values(dayOfWeekMap).map(d => ({
-      day: d.day,
-      revenue: parseFloat(d.revenue.toFixed(2)),
-      orderCount: d.orderCount
-    }));
-
-    // Construct JSON Payload
+    // Construct JSON Payload Version 3
     const rosReport = {
       header: {
-        version: 1,
+        version: 3,
         product: 'restaurantos',
         exportId: `exp_${crypto.randomBytes(8).toString('hex')}`,
         installationId: inst.id,
         restaurantName,
         currency,
+        seatingCapacity,
+        hasCostData,
         period: {
           days: validDays,
           startDate: startDate.toISOString(),
           endDate: now.toISOString()
         },
-        generatedAt: now.toISOString()
+        generatedAt: now.toISOString(),
+        operationalNotes: []
       },
       kpiSummary: {
         totalGrossRevenue: parseFloat(totalGrossRevenue.toFixed(2)),
         totalOrders,
         totalTablesServed: totalOrders,
         averageOrderValue,
+        averageTurnTimeMinutes,
         paymentMethod: 'CASH_ONLY'
       },
       staffPerformance,
       menuEngineering,
       salesByHour,
-      salesByDate,
-      salesByDayOfWeek
+      itemSalesByDate,
+      tableTurnMetrics
     };
 
     const filename = `restaurantos_export_${validDays}days_${now.toISOString().slice(0, 10)}.ros`;

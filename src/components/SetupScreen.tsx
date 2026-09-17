@@ -27,6 +27,7 @@ const setupSchema = z.object({
   language: z.enum(['en', 'fr']).default('en'),
   currency: z.string().length(3, 'Currency must be a 3-letter code (e.g. USD, EUR)').default('USD'),
   timezone: z.string().min(1, 'Timezone is required').default('UTC'),
+  seatingCapacity: z.number().int().min(1).default(30),
   logo: z.string().optional(),
   tableCount: z.number().int().min(1).max(100).default(10),
   sections: z.array(z.string()).min(1).default(['Main Dining', 'Patio', 'Bar']),
@@ -56,6 +57,7 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
     language: 'en' as 'en' | 'fr',
     currency: 'USD',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    seatingCapacity: 30,
     logo: '',
     tableCount: 10,
     sections: ['Main Dining', 'Patio', 'Bar'],
@@ -329,6 +331,20 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
                     required
                     value={formData.timezone}
                     onChange={e => setFormData({ ...formData, timezone: e.target.value })}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-neutral-300 flex items-center gap-1.5 mb-1.5">
+                    Total Seating Capacity (Seats) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={formData.seatingCapacity}
+                    onChange={e => setFormData({ ...formData, seatingCapacity: Number(e.target.value) })}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
