@@ -1716,7 +1716,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     }
 
     // Rules 1 & 2: Clamp orderCount >= 0; if orderCount == 0 then force revenue = 0
-    const salesByHour = Object.values(hourlyMap).map(h => {
+    const dailyHourlySales = Object.values(hourlyMap).map(h => {
       const clampedOrders = Math.max(0, h.orderCount);
       const cleanRevenue = clampedOrders === 0 ? 0 : Math.max(0, h.revenue);
       return {
@@ -1791,7 +1791,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       },
       staffPerformance,
       menuEngineering,
-      salesByHour,
+      dailyHourlySales,
       itemSalesByDate,
       coversByDate,
       tableTurnMetrics
