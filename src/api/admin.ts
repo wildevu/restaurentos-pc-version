@@ -11,6 +11,8 @@ import path from 'path';
 import { hashToken } from '../crypto';
 import { getFrontendStateTx } from '../db/queries';
 import { BACKUP_DIR, DB_PATH, ensureDirectories } from '../paths';
+import { LicensingService } from '../licensing/service';
+import { logger } from '../logger';
 
 export const adminRouter = Router();
 
