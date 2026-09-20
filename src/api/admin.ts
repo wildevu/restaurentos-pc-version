@@ -1696,14 +1696,15 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       .sort((a, b) => b.tablesManaged - a.tablesManaged);
 
     // 6. Hourly Sales
-    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number }> = {};
+    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number, covers: number }> = {};
     for (let h = 0; h < 24; h++) {
-      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0 };
+      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0, covers: 0 };
     }
 
     for (const ord of allOrders) {
       const h = new Date(ord.createdAt).getHours();
       hourlyMap[h].orderCount += 1;
+      hourlyMap[h].covers += ord.covers || 1;
     }
 
     for (const item of allOrderItems) {
@@ -1721,7 +1722,8 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       return {
         hour: h.hour,
         revenue: parseFloat(cleanRevenue.toFixed(2)),
-        orderCount: clampedOrders
+        orderCount: clampedOrders,
+        covers: clampedOrders === 0 ? 0 : Math.max(0, h.covers)
       };
     });
 
