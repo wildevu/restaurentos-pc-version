@@ -59,7 +59,7 @@ export const CommandPayloadSchema = z.object({
   payload: z.any()
 });
 
-export const OpenTablePayload = z.object({ tableId: z.string() });
+export const OpenTablePayload = z.object({ tableId: z.string(), covers: z.number().int().min(1).optional().default(1) });
 export const CloseTablePayload = z.object({ tableId: z.string() });
 export const AddItemPayload = z.object({ tableId: z.string(), menuItemId: z.string(), notes: z.string().max(255).optional() });
 export const UpdateItemPayload = z.object({ tableId: z.string(), orderItemId: z.string() });

@@ -36,6 +36,7 @@ export const menuItems = sqliteTable('menu_items', {
 export const orders = sqliteTable('orders', {
   id: text('id').primaryKey(),
   tableId: text('table_id').references(() => tables.id).notNull(),
+  covers: integer('covers').notNull().default(1),
   status: text('status').notNull().default('OPEN'),
   currencySnapshot: text('currency_snapshot').default('USD'),
   openedByUserId: text('opened_by_user_id').references(() => users.id),

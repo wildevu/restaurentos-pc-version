@@ -1557,6 +1557,22 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
 
     const totalOrders = allOrders.length;
     let totalGrossRevenue = 0;
+    let totalCovers = 0;
+
+    const coversByDateMap: Record<string, number> = {};
+
+    for (const ord of allOrders) {
+      const coversVal = ord.covers || 1;
+      totalCovers += coversVal;
+
+      const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+      if (!coversByDateMap[dateStr]) coversByDateMap[dateStr] = 0;
+      coversByDateMap[dateStr] += coversVal;
+    }
+
+    const coversByDate = Object.entries(coversByDateMap)
+      .map(([date, covers]) => ({ date, covers }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     const orderIds = allOrders.map(o => o.id);
 
@@ -1603,10 +1619,14 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       }
     }
 
-    const itemSalesByDate = Object.values(itemSalesByDateMap).map(i => ({
-      ...i,
-      revenue: parseFloat(i.revenue.toFixed(2))
-    })).sort((a, b) => a.date.localeCompare(b.date));
+    // Rule 3: Exclude zero-quantity rows to eliminate noise & token waste
+    const itemSalesByDate = Object.values(itemSalesByDateMap)
+      .filter(i => i.quantitySold > 0)
+      .map(i => ({
+        ...i,
+        revenue: parseFloat(i.revenue.toFixed(2))
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     // 4. Table Turn Metrics calculation
     let totalTurnMinutesSum = 0;
@@ -1694,11 +1714,16 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       }
     }
 
-    const salesByHour = Object.values(hourlyMap).map(h => ({
-      hour: h.hour,
-      revenue: parseFloat(h.revenue.toFixed(2)),
-      orderCount: h.orderCount
-    }));
+    // Rules 1 & 2: Clamp orderCount >= 0; if orderCount == 0 then force revenue = 0
+    const salesByHour = Object.values(hourlyMap).map(h => {
+      const clampedOrders = Math.max(0, h.orderCount);
+      const cleanRevenue = clampedOrders === 0 ? 0 : Math.max(0, h.revenue);
+      return {
+        hour: h.hour,
+        revenue: parseFloat(cleanRevenue.toFixed(2)),
+        orderCount: clampedOrders
+      };
+    });
 
     // Legacy menu engineering list for back-compat
     const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number }> = {};
@@ -1757,6 +1782,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
         totalGrossRevenue: parseFloat(totalGrossRevenue.toFixed(2)),
         totalOrders,
         totalTablesServed: totalOrders,
+        totalCovers,
         averageOrderValue,
         averageTurnTimeMinutes,
         paymentMethod: 'CASH_ONLY'
@@ -1765,6 +1791,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       menuEngineering,
       salesByHour,
       itemSalesByDate,
+      coversByDate,
       tableTurnMetrics
     };
 

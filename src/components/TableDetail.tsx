@@ -15,8 +15,10 @@ import {
   ShoppingBag,
   Bell,
   CheckCircle2,
-  CheckCheck
+  CheckCheck,
+  Users
 } from 'lucide-react';
+import { CoversModal } from './CoversModal';
 
 interface Props {
   table: Table;
@@ -30,6 +32,7 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
   const { t, formatCurrency } = useI18n();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [showCoversModal, setShowCoversModal] = useState<boolean>(false);
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [noteValue, setNoteValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -61,7 +64,12 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
   };
 
   const handleOpenTable = () => {
-    dispatchCommand('OPEN_TABLE', { tableId: table.id });
+    setShowCoversModal(true);
+  };
+
+  const handleConfirmCovers = (coversCount: number) => {
+    setShowCoversModal(false);
+    dispatchCommand('OPEN_TABLE', { tableId: table.id, covers: coversCount });
   };
 
   const handleAddItem = (menuItem: any) => {
@@ -197,6 +205,13 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
           </div>
         </div>
 
+        <CoversModal
+          isOpen={showCoversModal}
+          tableNumber={table.number}
+          tableName={table.label}
+          onSelectCovers={handleConfirmCovers}
+        />
+
         <div className="bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-xs my-auto space-y-4">
           <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
             <UtensilsCrossed size={32} />
@@ -243,6 +258,11 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
                 <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[11px] font-extrabold rounded-full">
                   {t('tables.activeBadge', 'Active')}
                 </span>
+                {order?.covers && (
+                  <span className="flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-0.5 bg-purple-100 text-purple-800 rounded-full">
+                    <Users size={12} /> {order.covers} {order.covers === 1 ? 'Personne' : 'Personnes'}
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-gray-500 font-medium">
                 {table.section || t('common.allAreas', 'Main Dining')} &bull; {t('order.serverLabel', `Server: ${order.openedByUserName || 'Staff'}`, { name: order.openedByUserName || 'Staff' })}
