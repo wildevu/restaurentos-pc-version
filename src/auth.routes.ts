@@ -198,6 +198,7 @@ authRouter.post('/setup', async (req, res) => {
 
       // 4. Create Initial Tables if requested or provided
       if (payload.initialTables && payload.initialTables.length > 0) {
+        logger.info(`[Setup] Creating ${payload.initialTables.length} custom numbered tables...`);
         for (let i = 0; i < payload.initialTables.length; i++) {
           const t = payload.initialTables[i];
           await tx.insert(tables).values({

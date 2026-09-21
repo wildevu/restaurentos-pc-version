@@ -73,7 +73,10 @@ export const LicenseManagement: React.FC = () => {
       } else {
         setSuccessMessage(t('licensing.activationSuccess'));
         setLicenseKeyInput('');
-        setStatus(data.status);
+        if (data.statusInfo) {
+          setStatus(data.statusInfo);
+        }
+        await fetchStatus();
       }
     } catch (err: any) {
       setErrorMessage(err.message || t('licensing.activationFailed'));

@@ -71,9 +71,9 @@ namespace RestaurantOS.Launcher
                 // 3. Prevent Port 3000 Conflict: Check if an instance is already starting or running
                 if (IsPortInUse(3000) || IsExistingPidRunning(pidFile))
                 {
-                    // Wait up to 12 seconds for the existing instance to finish booting
+                    // Wait up to 5 seconds for the existing instance to finish booting
                     DateTime waitStart = DateTime.UtcNow;
-                    while ((DateTime.UtcNow - waitStart).TotalSeconds < 12)
+                    while ((DateTime.UtcNow - waitStart).TotalSeconds < 5)
                     {
                         if (CheckReadyEndpoint())
                         {
@@ -83,7 +83,7 @@ namespace RestaurantOS.Launcher
                             }
                             return;
                         }
-                        Thread.Sleep(500);
+                        Thread.Sleep(400);
                     }
 
                     // If it is responding now, open browser
@@ -95,6 +95,10 @@ namespace RestaurantOS.Launcher
                         }
                         return;
                     }
+
+                    // Port 3000 is occupied by an unresponsive/orphaned process. Clean it up to allow fresh startup.
+                    KillOrphanedServerProcesses();
+                    Thread.Sleep(1000);
                 }
 
                 // 4. Resolve Node.js Runtime
@@ -313,6 +317,38 @@ namespace RestaurantOS.Launcher
             {
                 return false;
             }
+        }
+
+        private static void KillOrphanedServerProcesses()
+        {
+            try
+            {
+                string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                if (string.IsNullOrEmpty(programData)) programData = @"C:\ProgramData";
+                string pidFile = Path.Combine(programData, "RestaurantOS", "restaurantos.pid");
+
+                if (File.Exists(pidFile))
+                {
+                    string text = File.ReadAllText(pidFile).Trim();
+                    int pid;
+                    if (int.TryParse(text, out pid))
+                    {
+                        try
+                        {
+                            Process proc = Process.GetProcessById(pid);
+                            if (proc != null && !proc.HasExited)
+                            {
+                                proc.Kill();
+                                proc.WaitForExit(1000);
+                            }
+                        }
+                        catch { }
+                    }
+                    try { File.Delete(pidFile); } catch { }
+                }
+
+            }
+            catch { }
         }
 
         private static bool IsExistingPidRunning(string pidFile)

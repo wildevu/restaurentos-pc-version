@@ -349,10 +349,12 @@ export function TableManagement({ authToken }: { authToken: string }) {
                   type="number"
                   value={number}
                   onChange={e => setNumber(Number(e.target.value))}
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-bold"
                   required
                   min={1}
+                  placeholder="e.g. 1, 12, 101"
                 />
+                <span className="text-[10px] text-neutral-400 mt-1 block">Specify any custom table number. Numbers can be updated anytime.</span>
               </div>
 
               <div>
