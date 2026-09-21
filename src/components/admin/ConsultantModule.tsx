@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { config } from '../../config';
 import {
   Briefcase,
   Download,
@@ -26,8 +25,8 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
   const [selectedPeriod, setSelectedPeriod] = useState<number>(30); // 7, 30, or 90 days
   const [downloading, setDownloading] = useState(false);
 
-  const upgradeUrl = config.FOUNDER_UPGRADE_URL;
-  const uploadUrl = config.FOUNDER_UPLOAD_URL;
+  const upgradeUrl = 'https://restos-crm-platform.vercel.app/upgrade';
+  const uploadUrl = 'https://restos-crm-platform.vercel.app/upload';
 
   useEffect(() => {
     fetchLicenseStatus();

@@ -13,6 +13,11 @@
     <meta name="theme-color" content="#ffffff" />
   </head>
   <body>
+    <script>
+      if (typeof window !== 'undefined' && !window.process) {
+        window.process = { env: {}, cwd: function() { return '/'; } };
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
