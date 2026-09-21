@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { db } from '../db';
 import { installations, licenses, auditEvents, restaurants } from '../db/schema';
