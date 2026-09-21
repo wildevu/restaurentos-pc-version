@@ -9,4 +9,5 @@ const envSchema = z.object({
   FOUNDER_UPLOAD_URL: z.string().default('https://restos-crm-platform.vercel.app/upload'),
 });
 
-export const config = envSchema.parse(process.env);
+const rawEnv = typeof process !== 'undefined' && process.env ? process.env : {};
+export const config = envSchema.parse(rawEnv);
