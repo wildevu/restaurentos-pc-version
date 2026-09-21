@@ -96,15 +96,16 @@ Name: "{commonappdata}\RestaurantOS\config"; Permissions: users-modify
 
 [Icons]
 ; Desktop & Start Menu Shortcuts pointing directly to the RestaurantOS Windows Application
-Name: "{group}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Name: "{group}\Open Local Hub Status"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Local Hub Status"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Data & Backups Folder"; Filename: "explorer.exe"; Parameters: """{commonappdata}\RestaurantOS"""; IconFilename: "shell32.dll,4"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\public\favicon.ico"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Tasks: desktopicon; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 ; Fallback shortcuts to silent VBS launcher if RestaurantOS.exe is not present
-Name: "{group}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Name: "{group}\Open Local Hub Status"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Local Hub Status"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Tasks: desktopicon; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [Run]
 ; Silent MSVC Runtime Installation if required
