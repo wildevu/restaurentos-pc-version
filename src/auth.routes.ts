@@ -144,7 +144,9 @@ authRouter.post('/setup', async (req, res) => {
     }
 
     const payload = SetupPayloadSchema.parse(req.body);
-    const restaurantId = uuidv4();
+    const restaurantId = (licenseStatus.restaurantId && licenseStatus.restaurantId !== 'default')
+      ? licenseStatus.restaurantId
+      : uuidv4();
     const ownerId = uuidv4();
     const sessionId = uuidv4();
     const now = new Date();
@@ -229,15 +231,7 @@ authRouter.post('/setup', async (req, res) => {
         }
       }
 
-      // 5. Create default categories for fresh start
-      const defaultCategories = ['Starters', 'Mains', 'Desserts', 'Beverages'];
-      for (let i = 0; i < defaultCategories.length; i++) {
-        await tx.insert(menuCategories).values({
-          id: uuidv4(),
-          name: defaultCategories[i],
-          displayOrder: i + 1,
-        });
-      }
+      // 5. Menu categories start completely clean — client creates or imports their menu
 
       // 6. Create Initial Session for immediate seamless login
       await tx.insert(sessions).values({

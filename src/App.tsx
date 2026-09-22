@@ -517,6 +517,12 @@ export function App() {
       }
     } catch (err) {
       console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
+      // If user was already authenticated, keep app state active without trapping on loading overlay
+      if (user && token) {
+        setAppState('APP');
+        return;
+      }
+
       if (retriesLeft > 0) {
         setTimeout(() => checkStatus(token, retriesLeft - 1), 1500);
         return;

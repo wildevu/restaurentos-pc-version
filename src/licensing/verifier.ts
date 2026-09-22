@@ -113,11 +113,16 @@ export function verifyLicenseKey(
     };
   }
 
-  if (expectedRestaurantId && canonicalPayload.restaurantId && canonicalPayload.restaurantId !== expectedRestaurantId) {
-    return {
-      valid: false,
-      error: `License is bound to restaurant ID '${canonicalPayload.restaurantId}', not '${expectedRestaurantId}'.`,
-    };
+  if (expectedRestaurantId && canonicalPayload.restaurantId && canonicalPayload.restaurantId !== 'default' && canonicalPayload.restaurantId !== expectedRestaurantId) {
+    // If hardware installation ID matches this hub, allow seamless renewal/upgrade for the same customer
+    if (expectedInstallationId && canonicalPayload.installationId === expectedInstallationId) {
+      // Hardware match verified!
+    } else {
+      return {
+        valid: false,
+        error: `License is bound to restaurant ID '${canonicalPayload.restaurantId}', not '${expectedRestaurantId}'.`,
+      };
+    }
   }
 
   // 5. Ed25519 Cryptographic Signature Verification
