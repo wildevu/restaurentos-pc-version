@@ -63,7 +63,7 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
       if (onReset) {
         onReset();
       } else {
-        window.location.reload();
+        window.location.href = '/';
       }
     } catch (err: any) {
       setError(err.message);

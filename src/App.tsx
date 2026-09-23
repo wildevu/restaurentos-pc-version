@@ -472,7 +472,7 @@ export function App() {
     };
   }, []);
 
-  const checkStatus = async (token = authToken, retriesLeft = 5) => {
+  const checkStatus = async (token = authToken, retriesLeft = 3) => {
     try {
       if (token) {
         // Verify token with timeout
@@ -493,10 +493,17 @@ export function App() {
           setAppState('APP');
           initApp(token);
           return;
-        } else {
-          // Token invalid, clear it
+        } else if (res.status === 401 || res.status === 403) {
+          // Token explicitly invalid/revoked by server
           localStorage.removeItem('restaurantos_auth_token');
           setAuthToken(null);
+          token = null;
+        } else {
+          // Server returned 5xx or transient error — keep user in app if already loaded
+          if (user || appState === 'APP') {
+            setAppState('APP');
+            return;
+          }
         }
       }
 
@@ -517,14 +524,14 @@ export function App() {
       }
     } catch (err) {
       console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
-      // If user was already authenticated, keep app state active without trapping on loading overlay
-      if (user && token) {
+      // If user was already authenticated or app is active, preserve APP state without trapping
+      if (user || appState === 'APP') {
         setAppState('APP');
         return;
       }
 
       if (retriesLeft > 0) {
-        setTimeout(() => checkStatus(token, retriesLeft - 1), 1500);
+        setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
         return;
       }
 
@@ -659,16 +666,6 @@ export function App() {
       if (document.visibilityState === 'visible' && authToken) {
         if (!socket.connected) {
           socket.connect();
-        } else {
-          socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current }, (res: any) => {
-            if (res && res.upToDate === false && res.state) {
-              stateVersionRef.current = res.state.stateVersion;
-              setTables(res.state.tables);
-              setOrders(res.state.orders);
-              if (res.state.menu) setMenu(res.state.menu);
-              if (res.state.restaurant) setRestaurant(res.state.restaurant);
-            }
-          });
         }
       }
     };
