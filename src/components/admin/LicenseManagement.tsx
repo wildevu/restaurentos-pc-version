@@ -26,9 +26,9 @@ export const LicenseManagement: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const res = await fetch('/api/licensing/status');
       if (res.ok) {
         const data = await res.json();
@@ -37,7 +37,7 @@ export const LicenseManagement: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch license status', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -76,7 +76,7 @@ export const LicenseManagement: React.FC = () => {
         if (data.statusInfo) {
           setStatus(data.statusInfo);
         }
-        await fetchStatus();
+        await fetchStatus(true);
       }
     } catch (err: any) {
       setErrorMessage(err.message || t('licensing.activationFailed'));

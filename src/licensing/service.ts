@@ -214,14 +214,16 @@ export class LicensingService {
       .set({ status: 'SUPERSEDED' })
       .where(eq(licenses.installationId, inst.id));
 
-    // 3. Persist the new active license record
+    // 3. Persist the new active license record (always lock to permanent inst.restaurantId if already initialized)
+    const effectiveRestaurantId = inst.restaurantId || (payload.restaurantId && payload.restaurantId !== 'default' ? payload.restaurantId : 'default');
+
     await db.insert(licenses).values({
       id: payload.licenseId,
       rawLicenseKey: rawKey.trim(),
       product: payload.product,
       version: payload.v,
       licenseType: finalLicenseType,
-      restaurantId: payload.restaurantId || inst.restaurantId || 'default',
+      restaurantId: effectiveRestaurantId,
       installationId: inst.id,
       durationDays: payload.durationDays,
       issuedAt: new Date(payload.issuedAt),

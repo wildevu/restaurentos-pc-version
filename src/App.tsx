@@ -136,7 +136,7 @@ function AppContent({
             )}
             <div>
               <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">
-                {restaurant?.name || 'RestaurantOS'}
+                {restaurant?.name && !restaurant.name.startsWith('inst_') ? restaurant.name : 'RestaurantOS'}
               </h1>
               <span className="text-[10px] font-bold text-gray-400 tracking-wider uppercase">Local Hub</span>
             </div>
@@ -701,7 +701,12 @@ export function App() {
   };
 
   if (appState === 'LOADING') {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center font-bold text-gray-500">Loading RestaurantOS...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-bold text-gray-500 gap-3">
+        <RefreshCw size={24} className="animate-spin text-blue-600" />
+        <span>Loading RestaurantOS...</span>
+      </div>
+    );
   }
 
   if (appState === 'SETUP') {
