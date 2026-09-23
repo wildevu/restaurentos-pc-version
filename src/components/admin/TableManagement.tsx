@@ -41,14 +41,15 @@ export function TableManagement({ authToken }: { authToken: string }) {
     fetchTables();
   }, [authToken]);
 
-  const uniqueSections = Array.from(new Set(tables.map(t => t.section || 'Main Dining')));
+  const defaultSections = ['Main Dining', 'Patio', 'Bar', 'Terrace', 'Private Room', 'VIP'];
+  const uniqueSections = Array.from(new Set([...defaultSections, ...tables.map(t => (t.section || '').trim()).filter(Boolean)]));
 
   const handleOpenNew = () => {
     setEditingTable(null);
-    const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
+    const nextNum = tables.length > 0 ? Math.max(...tables.map(t => Number(t.number) || 0)) + 1 : 1;
     setNumber(nextNum);
-    setLabel('');
-    setSection(uniqueSections[0] || 'Main Dining');
+    setLabel(`Table ${nextNum}`);
+    setSection(selectedSectionFilter !== 'ALL' ? selectedSectionFilter : uniqueSections[0] || 'Main Dining');
     setDisplayOrder(nextNum);
     setArchived(false);
     setShowModal(true);
@@ -56,10 +57,10 @@ export function TableManagement({ authToken }: { authToken: string }) {
   
   const handleOpenEdit = (table: any) => {
     setEditingTable(table);
-    setNumber(table.number);
-    setLabel(table.label || '');
+    setNumber(Number(table.number) || 1);
+    setLabel(table.label || `Table ${table.number}`);
     setSection(table.section || 'Main Dining');
-    setDisplayOrder(table.displayOrder || table.number);
+    setDisplayOrder(Number(table.displayOrder) || Number(table.number) || 1);
     setArchived(!!table.archivedAt);
     setShowModal(true);
   };
@@ -72,10 +73,13 @@ export function TableManagement({ authToken }: { authToken: string }) {
     const url = editingTable ? `/api/admin/tables/${editingTable.id}` : `/api/admin/tables`;
     const method = editingTable ? 'PUT' : 'POST';
     
+    const cleanLabel = label.trim() || `Table ${number}`;
+    const cleanSection = section.trim() || 'Main Dining';
+
     const body: any = {
       number: Number(number),
-      label: label.trim() || null,
-      section: section.trim() || 'Main Dining',
+      label: cleanLabel,
+      section: cleanSection,
       displayOrder: Number(displayOrder)
     };
     if (editingTable) {
@@ -358,19 +362,29 @@ export function TableManagement({ authToken }: { authToken: string }) {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-neutral-300 mb-1">Dining Section / Area</label>
-                <input
-                  type="text"
-                  list="sections-list"
-                  value={section}
-                  onChange={e => setSection(e.target.value)}
-                  placeholder="e.g. Main Dining, Patio, Bar"
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-                  required
-                />
-                <datalist id="sections-list">
-                  {uniqueSections.map(s => <option key={s} value={s} />)}
-                </datalist>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">Dining Section / Area *</label>
+                <div className="flex gap-2">
+                  <select
+                    value={section}
+                    onChange={e => setSection(e.target.value)}
+                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-medium"
+                  >
+                    {uniqueSections.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                    <option value="__CUSTOM__">+ Custom Area...</option>
+                  </select>
+                </div>
+                {section === '__CUSTOM__' && (
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Enter custom dining area name"
+                    onChange={e => setSection(e.target.value)}
+                    className="mt-2 w-full bg-neutral-900 border border-amber-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                    required
+                  />
+                )}
               </div>
               
               <div>

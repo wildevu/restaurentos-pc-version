@@ -236,8 +236,8 @@ adminRouter.post('/tables', async (req: any, res) => {
   try {
     const schema = z.object({
       number: z.number().int().min(1),
-      label: z.string().optional(),
-      section: z.string().optional(),
+      label: z.string().nullable().optional(),
+      section: z.string().nullable().optional(),
       displayOrder: z.number().int().optional()
     });
     const parsed = schema.parse(req.body);
@@ -287,7 +287,7 @@ adminRouter.put('/tables/:id', async (req: any, res) => {
     const schema = z.object({
       number: z.number().int().min(1).optional(),
       label: z.string().nullable().optional(),
-      section: z.string().optional(),
+      section: z.string().nullable().optional(),
       displayOrder: z.number().int().optional(),
       archived: z.boolean().optional()
     });
