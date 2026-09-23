@@ -210,6 +210,7 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
           tableNumber={table.number}
           tableName={table.label}
           onSelectCovers={handleConfirmCovers}
+          onClose={() => setShowCoversModal(false)}
         />
 
         <div className="bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-xs my-auto space-y-4">
