@@ -6,6 +6,7 @@ interface LicenseStatusData {
   status: 'ACTIVE' | 'EXPIRED' | 'UNLICENSED' | 'CLOCK_ROLLBACK_DETECTED';
   isLicensed: boolean;
   canOperate: boolean;
+  licenseType?: 'STANDARD' | 'PREMIUM';
   installationId: string;
   restaurantId?: string;
   licenseId?: string;
