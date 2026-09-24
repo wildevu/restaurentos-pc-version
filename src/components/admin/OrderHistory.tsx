@@ -56,6 +56,21 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
     fetchHistory();
   };
 
+  const calculateTableDuration = (createdAt: string, updatedAt?: string) => {
+    if (!createdAt) return '—';
+    const start = new Date(createdAt).getTime();
+    const end = updatedAt ? new Date(updatedAt).getTime() : Date.now();
+    const diffMs = Math.max(0, end - start);
+    const totalMinutes = Math.floor(diffMs / (1000 * 60));
+
+    if (totalMinutes < 1) return '< 1m';
+    if (totalMinutes < 60) return `${totalMinutes}m`;
+
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -142,7 +157,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                 <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-wider">
                   <th className="py-3.5 px-4">Order Time</th>
                   <th className="py-3.5 px-4">Table</th>
-                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 px-4">Status & Duration</th>
                   <th className="py-3.5 px-4">Staff</th>
                   <th className="py-3.5 px-4">Items Count</th>
                   <th className="py-3.5 px-4">Total Amount</th>
@@ -165,13 +180,19 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                         )}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-full ${
-                          order.status === 'CLOSED'
-                            ? 'bg-gray-100 text-gray-700'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}>
-                          {order.status}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`inline-flex px-2.5 py-1 text-xs font-bold rounded-full ${
+                            order.status === 'CLOSED'
+                              ? 'bg-gray-100 text-gray-700'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {order.status}
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200 rounded-md">
+                            <Clock size={12} className="text-amber-600 shrink-0" />
+                            {calculateTableDuration(order.createdAt, order.updatedAt)}
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 text-gray-700">
                         <div className="font-medium">{order.openedByName || 'Staff'}</div>
@@ -216,6 +237,10 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                   </h3>
                   <span className="px-2.5 py-0.5 bg-gray-200 text-gray-700 text-xs font-bold rounded-md">
                     {selectedOrder.status}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200 rounded-md">
+                    <Clock size={12} className="text-amber-600 shrink-0" />
+                    {calculateTableDuration(selectedOrder.createdAt, selectedOrder.updatedAt)}
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
