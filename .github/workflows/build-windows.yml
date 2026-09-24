@@ -164,17 +164,10 @@ jobs:
 
       - name: Upload Windows Installer (.EXE)
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: RestaurantOS-Setup-Installer
           path: dist/installer/RestaurantOS-Setup-*.exe
           if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload Windows Standalone Package (Diagnostic)
-        uses: actions/upload-artifact@v4
-        with:
-          name: RestaurantOS-Standalone-Windows-Package
-          path: dist/windows-package/
-          if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
