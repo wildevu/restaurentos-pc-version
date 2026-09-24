@@ -16,4 +16,10 @@ Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 # Unregister scheduled task
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
-Write-Host "RestaurantOS Local Hub startup task removed." -ForegroundColor Green
+# Terminate any active node or server processes bound to Program Files\RestaurantOS
+try {
+    Write-Host "Terminating active RestaurantOS background processes..." -ForegroundColor Yellow
+    Get-Process -Name "node", "RestaurantOS" -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*Program Files\RestaurantOS*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+} catch {}
+
+Write-Host "RestaurantOS Local Hub startup task and background processes removed." -ForegroundColor Green
