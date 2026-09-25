@@ -1170,7 +1170,8 @@ adminRouter.get('/orders/history', async (req: any, res) => {
         kitchenStatusUpdatedAt: i.kitchenStatusUpdatedAt,
         addedByUserId: i.addedByUserId,
         addedByName: i.addedByUserId ? userMap.get(i.addedByUserId) || 'Staff' : null,
-        createdAt: i.createdAt
+        createdAt: i.createdAt,
+        updatedAt: i.updatedAt
       }));
 
       const totalItems = items.reduce((sum: number, i: any) => sum + i.quantity, 0);
@@ -1236,7 +1237,8 @@ adminRouter.get('/orders/:id', async (req: any, res) => {
       kitchenStatusUpdatedAt: i.kitchenStatusUpdatedAt,
       addedByUserId: i.addedByUserId,
       addedByName: i.addedByUserId ? userMap.get(i.addedByUserId) || 'Staff' : null,
-      createdAt: i.createdAt
+      createdAt: i.createdAt,
+      updatedAt: i.updatedAt
     }));
 
     res.json({
@@ -1592,7 +1594,27 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
 
     const averageOrderValue = totalOrders > 0 ? parseFloat((totalGrossRevenue / totalOrders).toFixed(2)) : 0;
 
-    // 3. Granular itemSalesByDate with Category & Cost Price
+    // Calculate Kitchen Preparation Time across completed orders
+    let totalKitchenPrepMinutesSum = 0;
+    let totalKitchenItemsCount = 0;
+
+    for (const item of allOrderItems) {
+      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+        const start = new Date(item.createdAt).getTime();
+        const end = item.kitchenStatusUpdatedAt
+          ? new Date(item.kitchenStatusUpdatedAt).getTime()
+          : new Date(item.updatedAt).getTime();
+        const prepMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
+        totalKitchenPrepMinutesSum += prepMin;
+        totalKitchenItemsCount += 1;
+      }
+    }
+
+    const averageKitchenPrepTimeMinutes = totalKitchenItemsCount > 0
+      ? parseFloat((totalKitchenPrepMinutesSum / totalKitchenItemsCount).toFixed(1))
+      : 12;
+
+    // 3. Granular itemSalesByDate with Category & Cost Price & Kitchen Prep Metrics
     const itemSalesByDateMap: Record<string, any> = {};
     for (const item of allOrderItems) {
       const ord = allOrders.find(o => o.id === item.orderId);
@@ -1605,6 +1627,15 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
         const categoryName = menuMeta?.categoryName || 'OTHER';
         const costPrice = menuMeta?.costPrice ?? null;
 
+        let prepDurationMin = 10;
+        if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+          const start = new Date(item.createdAt).getTime();
+          const end = item.kitchenStatusUpdatedAt
+            ? new Date(item.kitchenStatusUpdatedAt).getTime()
+            : new Date(item.updatedAt).getTime();
+          prepDurationMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
+        }
+
         if (!itemSalesByDateMap[key]) {
           itemSalesByDateMap[key] = {
             date: dateStr,
@@ -1613,6 +1644,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
             quantitySold: 0,
             unitPrice: item.unitPriceSnapshot || 0,
             costPrice,
+            kitchenPrepTimeMinutes: prepDurationMin,
             revenue: 0
           };
         }
@@ -1730,14 +1762,21 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     });
 
     // Legacy menu engineering list for back-compat
-    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number }> = {};
+    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number, totalPrepMin: number, prepCount: number }> = {};
     for (const item of allOrderItems) {
       const name = item.productNameSnapshot || 'Item';
       if (!itemSalesMap[name]) {
-        itemSalesMap[name] = { itemName: name, quantitySold: 0, unitPrice: item.unitPriceSnapshot || 0, totalRevenue: 0 };
+        itemSalesMap[name] = { itemName: name, quantitySold: 0, unitPrice: item.unitPriceSnapshot || 0, totalRevenue: 0, totalPrepMin: 0, prepCount: 0 };
       }
       itemSalesMap[name].quantitySold += item.quantity || 1;
       itemSalesMap[name].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+
+      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+        const start = new Date(item.createdAt).getTime();
+        const end = item.kitchenStatusUpdatedAt ? new Date(item.kitchenStatusUpdatedAt).getTime() : new Date(item.updatedAt).getTime();
+        itemSalesMap[name].totalPrepMin += Math.max(1, Math.round((end - start) / (1000 * 60)));
+        itemSalesMap[name].prepCount += 1;
+      }
     }
 
     const itemSalesList = Object.values(itemSalesMap);
@@ -1754,11 +1793,16 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       else if (isHighPopularity && !isHighRevenue) classification = 'PLOWHORSE';
       else if (!isHighPopularity && isHighRevenue) classification = 'PUZZLE';
 
+      const avgItemPrepTimeMinutes = item.prepCount > 0
+        ? parseFloat((item.totalPrepMin / item.prepCount).toFixed(1))
+        : 10;
+
       return {
         itemName: item.itemName,
         quantitySold: item.quantitySold,
         unitPrice: item.unitPrice,
         totalRevenue: parseFloat(item.totalRevenue.toFixed(2)),
+        averagePrepTimeMinutes: avgItemPrepTimeMinutes,
         classification
       };
     }).sort((a, b) => b.totalRevenue - a.totalRevenue);
@@ -1789,6 +1833,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
         totalCovers,
         averageOrderValue,
         averageTurnTimeMinutes,
+        averageKitchenPrepTimeMinutes,
         paymentMethod: 'CASH_ONLY'
       },
       staffPerformance,
@@ -1900,4 +1945,3 @@ export function startAutoBackupScheduler() {
   setTimeout(runAutoBackup, 30000);
   setInterval(runAutoBackup, intervalMs);
 }
-
