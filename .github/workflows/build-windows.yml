@@ -165,14 +165,6 @@ jobs:
           }
           Write-Host "Generated installer artifact: $($installer.FullName) (Size: $([math]::Round($installer.Length / 1MB, 2)) MB)"
 
-      - name: Upload Windows Installer (.EXE) Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RestaurantOS-Setup-Installer
-          path: dist/installer/RestaurantOS-Setup-*.exe
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Publish Windows Installer to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: github.event_name != 'pull_request'
@@ -184,3 +176,12 @@ jobs:
           files: dist/installer/RestaurantOS-Setup-*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows Installer (.EXE) Artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: RestaurantOS-Setup-Installer
+          path: dist/installer/RestaurantOS-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14
