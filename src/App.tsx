@@ -442,6 +442,22 @@ export function App() {
   const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
   const stateVersionRef = useRef<number>(0);
 
+  // Safety fallback timer so page refreshes never freeze on LOADING
+  useEffect(() => {
+    const fallbackTimer = setTimeout(() => {
+      if (appState === 'LOADING') {
+        const token = localStorage.getItem('restaurantos_auth_token');
+        if (token) {
+          setAppState('APP');
+        } else {
+          setAppState('LOGIN');
+        }
+      }
+    }, 3500);
+
+    return () => clearTimeout(fallbackTimer);
+  }, [appState]);
+
   useEffect(() => {
     checkStatus();
   }, []);
@@ -472,12 +488,12 @@ export function App() {
     };
   }, []);
 
-  const checkStatus = async (token = authToken, retriesLeft = 3) => {
+  const checkStatus = async (token = authToken, retriesLeft = 2) => {
     try {
       if (token) {
         // Verify token with timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         const res = await fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` },
           signal: controller.signal
@@ -500,16 +516,15 @@ export function App() {
           token = null;
         } else {
           // Server returned 5xx or transient error — keep user in app if already loaded
-          if (user || appState === 'APP') {
-            setAppState('APP');
-            return;
-          }
+          setAppState('APP');
+          initApp(token);
+          return;
         }
       }
 
       // Check setup status from authoritative API
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       const setupRes = await fetch('/api/auth/status', { signal: controller.signal });
       clearTimeout(timeoutId);
 
@@ -524,14 +539,14 @@ export function App() {
       }
     } catch (err) {
       console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
-      // If user was already authenticated or app is active, preserve APP state without trapping
-      if (user || appState === 'APP') {
+      if (token) {
         setAppState('APP');
+        initApp(token);
         return;
       }
 
       if (retriesLeft > 0) {
-        setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
+        setTimeout(() => checkStatus(token, retriesLeft - 1), 1000);
         return;
       }
 
@@ -548,10 +563,10 @@ export function App() {
     }
   };
 
-  const initApp = async (token: string, retriesLeft = 5) => {
+  const initApp = async (token: string, retriesLeft = 3) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       const res = await fetch('/api/state', {
         headers: { 'Authorization': `Bearer ${token}` },
         signal: controller.signal
@@ -619,7 +634,6 @@ export function App() {
       });
       
       socket.on('disconnect', () => {
-        // 3-second grace period before flipping UI status to offline to prevent flicker during brief Wi-Fi drops
         if (!disconnectTimer) {
           disconnectTimer = setTimeout(() => {
             setIsConnected(false);
@@ -655,7 +669,7 @@ export function App() {
     } catch (err) {
       console.error(`Init error (retries left: ${retriesLeft})`, err);
       if (retriesLeft > 0) {
-        setTimeout(() => initApp(token, retriesLeft - 1), 1500);
+        setTimeout(() => initApp(token, retriesLeft - 1), 1000);
       }
     }
   };

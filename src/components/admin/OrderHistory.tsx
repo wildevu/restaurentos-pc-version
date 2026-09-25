@@ -10,7 +10,8 @@ import {
   X, 
   Receipt,
   Download,
-  AlertCircle
+  AlertCircle,
+  Flame
 } from 'lucide-react';
 
 export function OrderHistory({ authToken }: { authToken?: string }) {
@@ -71,6 +72,29 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
+  const calculateKitchenPrepTime = (order: any) => {
+    if (!order || !order.items || order.items.length === 0) return '—';
+
+    // Evaluate timestamps across items
+    const times = order.items
+      .map((item: any) => {
+        if (!item.createdAt) return null;
+        const created = new Date(item.createdAt).getTime();
+        const updated = item.updatedAt ? new Date(item.updatedAt).getTime() : created;
+        return Math.max(0, Math.floor((updated - created) / (1000 * 60)));
+      })
+      .filter((m: number | null): m is number => m !== null);
+
+    if (times.length === 0) return '—';
+    const maxMins = Math.max(...times);
+    if (maxMins < 1) return '< 1m';
+    if (maxMins < 60) return `${maxMins}m`;
+
+    const hours = Math.floor(maxMins / 60);
+    const mins = maxMins % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -78,7 +102,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
         <div>
           <h2 className="text-2xl font-black text-gray-900 tracking-tight">Order History & Logs</h2>
           <p className="text-gray-500 text-sm mt-0.5">
-            View completed and historic service orders, items, notes, and staff attributions.
+            View completed and historic service orders, items, notes, table turn times, and kitchen preparation metrics.
           </p>
         </div>
       </div>
@@ -98,7 +122,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-gray-900 hover:bg-black text-white font-bold text-sm rounded-xl transition-colors shadow-sm"
+            className="px-4 py-2 bg-gray-900 hover:bg-black text-white font-bold text-sm rounded-xl transition-colors shadow-sm cursor-pointer"
           >
             Search
           </button>
@@ -107,7 +131,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setStatusFilter('CLOSED')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
               statusFilter === 'CLOSED' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -115,7 +139,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
           </button>
           <button
             onClick={() => setStatusFilter('OPEN')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
               statusFilter === 'OPEN' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -123,7 +147,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
           </button>
           <button
             onClick={() => setStatusFilter('ALL')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
               statusFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -157,7 +181,8 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                 <tr className="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-wider">
                   <th className="py-3.5 px-4">Order Time</th>
                   <th className="py-3.5 px-4">Table</th>
-                  <th className="py-3.5 px-4">Status & Duration</th>
+                  <th className="py-3.5 px-4">Status & Table Time</th>
+                  <th className="py-3.5 px-4">Kitchen Prep Time</th>
                   <th className="py-3.5 px-4">Staff</th>
                   <th className="py-3.5 px-4">Items Count</th>
                   <th className="py-3.5 px-4">Total Amount</th>
@@ -167,6 +192,8 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
               <tbody className="divide-y divide-gray-100">
                 {orders.map(order => {
                   const createdDate = new Date(order.createdAt);
+                  const prepTime = calculateKitchenPrepTime(order);
+
                   return (
                     <tr key={order.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="py-3.5 px-4 font-medium text-gray-900 whitespace-nowrap">
@@ -188,11 +215,17 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                           }`}>
                             {order.status}
                           </span>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200 rounded-md">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200 rounded-md" title="Total table turn time">
                             <Clock size={12} className="text-amber-600 shrink-0" />
                             {calculateTableDuration(order.createdAt, order.updatedAt)}
                           </span>
                         </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-mono font-bold bg-orange-50 text-orange-900 border border-orange-200 rounded-md" title="Kitchen Prep Duration">
+                          <Flame size={12} className="text-orange-600 shrink-0" />
+                          {prepTime}
+                        </span>
                       </td>
                       <td className="py-3.5 px-4 text-gray-700">
                         <div className="font-medium">{order.openedByName || 'Staff'}</div>
@@ -209,7 +242,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => setSelectedOrder(order)}
-                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-xs transition-colors inline-flex items-center gap-1"
+                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-xs transition-colors inline-flex items-center gap-1 cursor-pointer"
                         >
                           <span>View Details</span>
                           <ChevronRight size={14} />
@@ -231,7 +264,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
             {/* Header */}
             <div className="p-6 bg-gray-50 border-b border-gray-200 flex items-start justify-between">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-xl font-black text-gray-900">
                     Table {selectedOrder.tableNumber} Order Details
                   </h3>
@@ -240,7 +273,11 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                   </span>
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200 rounded-md">
                     <Clock size={12} className="text-amber-600 shrink-0" />
-                    {calculateTableDuration(selectedOrder.createdAt, selectedOrder.updatedAt)}
+                    Table: {calculateTableDuration(selectedOrder.createdAt, selectedOrder.updatedAt)}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-mono font-bold bg-orange-50 text-orange-900 border border-orange-200 rounded-md">
+                    <Flame size={12} className="text-orange-600 shrink-0" />
+                    Kitchen: {calculateKitchenPrepTime(selectedOrder)}
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -249,7 +286,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
               </div>
               <button
                 onClick={() => setSelectedOrder(null)}
-                className="p-1.5 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition-colors"
+                className="p-1.5 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition-colors cursor-pointer"
               >
                 <X size={20} />
               </button>

@@ -159,15 +159,6 @@ export const LicenseManagement: React.FC = () => {
             <div className="text-left sm:text-right">
               <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{t('licensing.remainingDays')}</span>
               <div className="flex items-center gap-2 mt-1 sm:justify-end">
-                {status.licenseType && (
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wider uppercase border ${
-                    status.licenseType === 'PREMIUM'
-                      ? 'bg-purple-100 text-purple-800 border-purple-300'
-                      : 'bg-blue-100 text-blue-800 border-blue-300'
-                  }`}>
-                    {status.licenseType}
-                  </span>
-                )}
                 <p className="text-2xl font-bold text-slate-900">{status.remainingDays} <span className="text-sm font-normal text-slate-500">{t('licensing.days')}</span></p>
               </div>
             </div>
