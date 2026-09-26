@@ -8,6 +8,7 @@ import { CashierDisplay } from './components/CashierDisplay';
 import { SetupScreen } from './components/SetupScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { PairingScreen } from './components/PairingScreen';
+import { ExpiredLicenseModal } from './components/ExpiredLicenseModal';
 import { I18nProvider, useI18n } from './i18n';
 import { 
   ChefHat, 
@@ -68,27 +69,29 @@ function AppContent({
   pendingCommands, 
   rejectedCommands, 
   handleLogout, 
-  handleLogin 
+  handleLogin,
+  checkStatus
 }: any) {
   const [showRejectedModal, setShowRejectedModal] = useState(false);
   const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const location = useLocation();
   const { t, language, setLanguage } = useI18n();
 
-  useEffect(() => {
-    const checkLicense = async () => {
-      try {
-        const res = await fetch('/api/licensing/status');
-        if (res.ok) {
-          const data = await res.json();
-          setLicenseStatus(data);
-        }
-      } catch (err) {
-        console.error('License check error', err);
+  const fetchLicenseStatus = async () => {
+    try {
+      const res = await fetch('/api/licensing/status');
+      if (res.ok) {
+        const data = await res.json();
+        setLicenseStatus(data);
       }
-    };
-    checkLicense();
-    const interval = setInterval(checkLicense, 60000);
+    } catch (err) {
+      console.error('License check error', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchLicenseStatus();
+    const interval = setInterval(fetchLicenseStatus, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -101,6 +104,8 @@ function AppContent({
   const isCashierUser = user?.role === 'CASHIER';
   const isWaiterUser = user?.role === 'WAITER';
   const isOwnerOrManager = user?.role === 'OWNER' || user?.role === 'MANAGER';
+
+  const isExpired = licenseStatus && !licenseStatus.canOperate;
 
   const getRoleBadgeStyle = (role: string) => {
     switch (role) {
@@ -124,6 +129,17 @@ function AppContent({
         commands={rejectedCommands} 
         isOpen={showRejectedModal} 
         onClose={() => setShowRejectedModal(false)} 
+      />
+
+      {/* Expired License Renewal Modal Window */}
+      <ExpiredLicenseModal
+        installationId={licenseStatus?.installationId || ''}
+        isOpen={!!isExpired}
+        isOwnerOrManager={isOwnerOrManager}
+        onActivated={() => {
+          fetchLicenseStatus();
+          checkStatus();
+        }}
       />
 
       <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs z-20">
@@ -271,30 +287,6 @@ function AppContent({
           </div>
         </div>
       </header>
-
-      {/* License Warning Banner */}
-      {licenseStatus && !licenseStatus.canOperate && (
-        <div id="license-global-warning-banner" className="bg-amber-500 text-white px-4 py-2.5 flex items-center justify-between shadow-xs z-30">
-          <div className="flex items-center gap-2.5 text-xs sm:text-sm font-semibold">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <span>
-              {licenseStatus.status === 'EXPIRED'
-                ? t('licensing.expiredBannerMessage')
-                : licenseStatus.status === 'CLOCK_ROLLBACK_DETECTED'
-                ? t('licensing.clockRollbackMessage')
-                : t('licensing.unlicensedBannerMessage')}
-            </span>
-          </div>
-          {isOwnerOrManager && (
-            <Link
-              to="/admin/licensing"
-              className="ml-4 px-3 py-1 bg-white text-amber-900 hover:bg-amber-50 text-xs font-bold rounded-md shadow-xs transition-colors shrink-0"
-            >
-              {t('licensing.activateBtn')}
-            </Link>
-          )}
-        </div>
-      )}
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-0 bg-gray-50 overflow-y-auto">
@@ -753,6 +745,7 @@ export function App() {
           rejectedCommands={rejectedCommands}
           handleLogout={handleLogout}
           handleLogin={handleLogin}
+          checkStatus={checkStatus}
         />
       </BrowserRouter>
     </I18nProvider>
