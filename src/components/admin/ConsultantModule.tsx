@@ -15,6 +15,7 @@ import {
   QrCode,
   Lock
 } from 'lucide-react';
+import { LegalDocsModal } from '../LegalDocsModal';
 
 interface ConsultantModuleProps {
   authToken?: string;
@@ -26,11 +27,10 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
   const [selectedPeriod, setSelectedPeriod] = useState<number>(30); // 7, 30, or 90 days
   const [downloading, setDownloading] = useState(false);
   const [consentAccepted, setConsentAccepted] = useState(true);
+  const [legalDocType, setLegalDocType] = useState<'PRIVACY' | 'TERMS' | null>(null);
 
   const upgradeUrl = 'https://restos-crm-platform.vercel.app/upgrade';
   const uploadUrl = 'https://restos-crm-platform.vercel.app/upload';
-  const privacyUrl = 'https://restos-crm-platform.vercel.app/privacy';
-  const termsUrl = 'https://restos-crm-platform.vercel.app/terms';
 
   useEffect(() => {
     fetchLicenseStatus();
@@ -95,6 +95,9 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
 
   return (
     <div className="space-y-6">
+      {/* Offline Legal Viewer Modal */}
+      <LegalDocsModal type={legalDocType} onClose={() => setLegalDocType(null)} />
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-xs">
         <div>
@@ -170,13 +173,21 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
               />
               <label htmlFor="rosConsentCheckbox" className="leading-snug cursor-pointer">
                 J'accepte d'exporter et de transmettre ce rapport .ros pour analyse conformément aux{' '}
-                <a href={termsUrl} target="_blank" rel="noreferrer" className="text-purple-700 underline font-bold">
+                <button
+                  type="button"
+                  onClick={() => setLegalDocType('TERMS')}
+                  className="text-purple-700 underline font-bold cursor-pointer hover:text-purple-900 inline"
+                >
                   Conditions d'Utilisation
-                </a>{' '}
+                </button>{' '}
                 et à la{' '}
-                <a href={privacyUrl} target="_blank" rel="noreferrer" className="text-purple-700 underline font-bold">
+                <button
+                  type="button"
+                  onClick={() => setLegalDocType('PRIVACY')}
+                  className="text-purple-700 underline font-bold cursor-pointer hover:text-purple-900 inline"
+                >
                   Politique de Confidentialité
-                </a>.
+                </button>.
               </label>
             </div>
 

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useI18n } from '../i18n';
+import { LegalDocsModal } from './LegalDocsModal';
 import { 
   Store, 
   Users, 
@@ -14,12 +15,13 @@ import {
   Server,
   Key,
   Briefcase,
-  ExternalLink
+  FileText
 } from 'lucide-react';
 
 export function AdminLayout() {
   const location = useLocation();
   const { t } = useI18n();
+  const [legalDocType, setLegalDocType] = useState<'PRIVACY' | 'TERMS' | null>(null);
 
   const navItems = [
     { nameKey: 'admin.navHub', defaultName: 'Local Hub Status', path: '/admin/hub', icon: Server },
@@ -38,6 +40,9 @@ export function AdminLayout() {
 
   return (
     <div className="flex h-[calc(100vh-73px)]">
+      {/* Offline Legal Docs Modal Viewer */}
+      <LegalDocsModal type={legalDocType} onClose={() => setLegalDocType(null)} />
+
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between">
         <nav className="p-4 space-y-1.5 overflow-y-auto">
           <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider px-3 pb-2">
@@ -67,15 +72,14 @@ export function AdminLayout() {
         {/* Sidebar Legal Links Footer */}
         <div className="p-4 border-t border-gray-100 text-[11px] text-gray-400 flex items-center justify-between">
           <span>RestaurantOS Local Hub</span>
-          <a
-            href="https://restos-crm-platform.vercel.app/privacy"
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-blue-600 flex items-center gap-1 transition-colors font-medium"
+          <button
+            type="button"
+            onClick={() => setLegalDocType('PRIVACY')}
+            className="hover:text-blue-600 flex items-center gap-1 transition-colors font-medium cursor-pointer"
           >
+            <FileText size={11} />
             <span>Confidentialité</span>
-            <ExternalLink size={10} />
-          </a>
+          </button>
         </div>
       </aside>
       <main className="flex-1 overflow-auto bg-gray-50/70 p-8">
