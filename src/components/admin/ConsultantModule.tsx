@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  QrCode
+  QrCode,
+  Lock
 } from 'lucide-react';
 
 interface ConsultantModuleProps {
@@ -24,9 +25,12 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<number>(30); // 7, 30, or 90 days
   const [downloading, setDownloading] = useState(false);
+  const [consentAccepted, setConsentAccepted] = useState(true);
 
   const upgradeUrl = 'https://restos-crm-platform.vercel.app/upgrade';
   const uploadUrl = 'https://restos-crm-platform.vercel.app/upload';
+  const privacyUrl = 'https://restos-crm-platform.vercel.app/privacy';
+  const termsUrl = 'https://restos-crm-platform.vercel.app/terms';
 
   useEffect(() => {
     fetchLicenseStatus();
@@ -50,6 +54,11 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
   const isPremium = licenseStatus?.status === 'ACTIVE' && licenseStatus?.canOperate && licenseStatus?.licenseType === 'PREMIUM';
 
   const handleDownloadRosReport = async () => {
+    if (!consentAccepted) {
+      alert('Veuillez accepter les conditions de confidentialité avant d\'exporter le rapport .ros');
+      return;
+    }
+
     try {
       setDownloading(true);
       const res = await fetch(`/api/admin/reports/export-ros?days=${selectedPeriod}`, {
@@ -150,11 +159,32 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
               ))}
             </div>
 
+            {/* Consent & Privacy Checkbox */}
+            <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 flex items-start gap-2.5 text-xs text-gray-700">
+              <input
+                type="checkbox"
+                id="rosConsentCheckbox"
+                checked={consentAccepted}
+                onChange={(e) => setConsentAccepted(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+              />
+              <label htmlFor="rosConsentCheckbox" className="leading-snug cursor-pointer">
+                J'accepte d'exporter et de transmettre ce rapport .ros pour analyse conformément aux{' '}
+                <a href={termsUrl} target="_blank" rel="noreferrer" className="text-purple-700 underline font-bold">
+                  Conditions d'Utilisation
+                </a>{' '}
+                et à la{' '}
+                <a href={privacyUrl} target="_blank" rel="noreferrer" className="text-purple-700 underline font-bold">
+                  Politique de Confidentialité
+                </a>.
+              </label>
+            </div>
+
             <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center gap-4">
               <button
                 onClick={handleDownloadRosReport}
-                disabled={downloading}
-                className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                disabled={downloading || !consentAccepted}
+                className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-black text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
               >
                 <Download size={18} />
                 <span>{downloading ? 'Génération du Fichier .ros...' : '📊 Créer le Rapport (.ros)'}</span>

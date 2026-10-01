@@ -13,7 +13,8 @@ import {
   Activity,
   Server,
   Key,
-  Briefcase
+  Briefcase,
+  ExternalLink
 } from 'lucide-react';
 
 export function AdminLayout() {
@@ -62,6 +63,20 @@ export function AdminLayout() {
             );
           })}
         </nav>
+
+        {/* Sidebar Legal Links Footer */}
+        <div className="p-4 border-t border-gray-100 text-[11px] text-gray-400 flex items-center justify-between">
+          <span>RestaurantOS Local Hub</span>
+          <a
+            href="https://restos-crm-platform.vercel.app/privacy"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-blue-600 flex items-center gap-1 transition-colors font-medium"
+          >
+            <span>Confidentialité</span>
+            <ExternalLink size={10} />
+          </a>
+        </div>
       </aside>
       <main className="flex-1 overflow-auto bg-gray-50/70 p-8">
         <Outlet />
