@@ -24,7 +24,7 @@ try {
                             -Action Allow `
                             -Protocol TCP `
                             -LocalPort $Port `
-                            -Profile Any `
+                            -Profile Private,Domain `
                             -Enabled True
     } else {
         Write-Host "Creating new Windows Firewall rule '$RuleName' for port $Port..."
@@ -33,7 +33,7 @@ try {
                             -Action Allow `
                             -Protocol TCP `
                             -LocalPort $Port `
-                            -Profile Any `
+                            -Profile Private,Domain `
                             -Enabled True `
                             -Description "Allows local LAN waiter tablets and kitchen displays to connect to RestaurantOS Local Hub."
     }
