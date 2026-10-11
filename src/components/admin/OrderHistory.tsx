@@ -11,7 +11,10 @@ import {
   Receipt,
   Download,
   AlertCircle,
-  Flame
+  Flame,
+  DollarSign,
+  TrendingUp,
+  ShoppingBag
 } from 'lucide-react';
 
 export function OrderHistory({ authToken }: { authToken?: string }) {
@@ -80,7 +83,11 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
       .map((item: any) => {
         if (!item.createdAt) return null;
         const created = new Date(item.createdAt).getTime();
-        const updated = item.updatedAt ? new Date(item.updatedAt).getTime() : created;
+        const updated = item.kitchenStatusUpdatedAt
+          ? new Date(item.kitchenStatusUpdatedAt).getTime()
+          : item.updatedAt
+          ? new Date(item.updatedAt).getTime()
+          : created;
         return Math.max(0, Math.floor((updated - created) / (1000 * 60)));
       })
       .filter((m: number | null): m is number => m !== null);
@@ -91,9 +98,20 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
     if (maxMins < 60) return `${maxMins}m`;
 
     const hours = Math.floor(maxMins / 60);
-    const mins = maxMins % 60;
+    const mins = totalMinutes % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
+
+  // Today's Bilan Metrics Calculation
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayOrders = orders.filter(o => {
+    if (!o.createdAt) return false;
+    const orderDateStr = new Date(o.createdAt).toISOString().slice(0, 10);
+    return orderDateStr === todayStr && o.status === 'CLOSED';
+  });
+
+  const todayRevenue = todayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const todayOrdersCount = todayOrders.length;
 
   return (
     <div className="space-y-6">
@@ -104,6 +122,45 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
           <p className="text-gray-500 text-sm mt-0.5">
             View completed and historic service orders, items, notes, table turn times, and kitchen preparation metrics.
           </p>
+        </div>
+      </div>
+
+      {/* TODAY'S BILAN SUMMARY CARD (REVENUE & ORDERS) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Today's Revenue */}
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-5 rounded-2xl shadow-sm border border-emerald-500/30 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-emerald-100 uppercase tracking-wider block">
+              Today's Gross Revenue (Bilan)
+            </span>
+            <div className="text-3xl font-black mt-1">
+              ${todayRevenue.toFixed(2)}
+            </div>
+            <p className="text-[11px] text-emerald-200 mt-1 font-medium">
+              Calculated from completed orders today ({todayStr})
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+            <DollarSign className="w-7 h-7 text-white" />
+          </div>
+        </div>
+
+        {/* Today's Orders Count */}
+        <div className="bg-gradient-to-br from-slate-900 to-gray-800 text-white p-5 rounded-2xl shadow-sm border border-gray-700 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-gray-300 uppercase tracking-wider block">
+              Today's Completed Orders
+            </span>
+            <div className="text-3xl font-black mt-1">
+              {todayOrdersCount} <span className="text-sm font-bold text-gray-400">orders</span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1 font-medium">
+              Closed orders served today ({todayStr})
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+            <ShoppingBag className="w-7 h-7 text-white" />
+          </div>
         </div>
       </div>
 

@@ -12,9 +12,9 @@ namespace RestaurantOS.Launcher
 {
     static class Program
     {
-        private const string HubUrl = "http://127.0.0.1:3000/hub";
-        private const string ReadyUrl = "http://127.0.0.1:3000/api/ready";
-        private const string ReadyFallbackUrl = "http://localhost:3000/api/ready";
+        private const string HubUrl = "http://127.0.0.1:8989/hub";
+        private const string ReadyUrl = "http://127.0.0.1:8989/api/ready";
+        private const string ReadyFallbackUrl = "http://localhost:8989/api/ready";
         private const int MaxWaitSeconds = 40;
 
         [STAThread]
@@ -68,8 +68,8 @@ namespace RestaurantOS.Launcher
                 }
                 catch { }
 
-                // 3. Prevent Port 3000 Conflict: Check if an instance is already starting or running
-                if (IsPortInUse(3000) || IsExistingPidRunning(pidFile))
+                // 3. Prevent Port 8989 Conflict: Check if an instance is already starting or running
+                if (IsPortInUse(8989) || IsExistingPidRunning(pidFile))
                 {
                     // Wait up to 5 seconds for the existing instance to finish booting
                     DateTime waitStart = DateTime.UtcNow;
@@ -96,7 +96,7 @@ namespace RestaurantOS.Launcher
                         return;
                     }
 
-                    // Port 3000 is occupied by an unresponsive/orphaned process. Clean it up to allow fresh startup.
+                    // Port 8989 is occupied by an unresponsive/orphaned process. Clean it up to allow fresh startup.
                     KillOrphanedServerProcesses();
                     Thread.Sleep(1000);
                 }
@@ -132,7 +132,7 @@ namespace RestaurantOS.Launcher
                 };
 
                 psi.EnvironmentVariables["NODE_ENV"] = "production";
-                psi.EnvironmentVariables["PORT"] = "3000";
+                psi.EnvironmentVariables["PORT"] = "8989";
                 psi.EnvironmentVariables["RESTAURANTOS_DATA_DIR"] = dataDir;
 
                 Process process = new Process { StartInfo = psi };
@@ -208,7 +208,7 @@ namespace RestaurantOS.Launcher
 
                 if (!isReady)
                 {
-                    // Clean up child process to avoid leaving an orphaned zombie locking port 3000
+                    // Clean up child process to avoid leaving an orphaned zombie locking port 8989
                     try
                     {
                         if (process != null && !process.HasExited)

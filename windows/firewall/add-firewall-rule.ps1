@@ -1,42 +1,46 @@
-# RestaurantOS Local Hub - Windows Firewall Configuration
-# Grants inbound access to Port 3000 for LAN devices on Private and Domain networks
+# RestaurantOS Local Hub - Firewall Rule Helper
+# Must be executed as Administrator during Windows Installation
 
-param(
-    [switch]$Remove
+param (
+    [string]$RuleName = "RestaurantOS Local Hub (Inbound TCP 8989)",
+    [int]$Port = 8989
 )
 
-$RuleName = "RestaurantOS Local Hub"
-$Port = 3000
-
-# Check administrator privileges
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Error "Administrator privileges are required to configure Windows Firewall. Please run as Administrator."
+# Test Administrator Privilege
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Warning "This script requires Administrator privileges to configure Windows Firewall!"
     exit 1
 }
 
-if ($Remove) {
-    Write-Host "Removing Windows Firewall rule for RestaurantOS..." -ForegroundColor Yellow
-    netsh advfirewall firewall delete rule name="$RuleName" | Out-Null
-    Write-Host "Firewall rule removed." -ForegroundColor Green
+try {
+    # Check if rule already exists
+    $existingRule = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
+
+    if ($existingRule) {
+        Write-Host "Updating existing Windows Firewall rule '$RuleName' for port $Port..."
+        Set-NetFirewallRule -DisplayName $RuleName `
+                            -Direction Inbound `
+                            -Action Allow `
+                            -Protocol TCP `
+                            -LocalPort $Port `
+                            -Profile Any `
+                            -Enabled True
+    } else {
+        Write-Host "Creating new Windows Firewall rule '$RuleName' for port $Port..."
+        New-NetFirewallRule -DisplayName $RuleName `
+                            -Direction Inbound `
+                            -Action Allow `
+                            -Protocol TCP `
+                            -LocalPort $Port `
+                            -Profile Any `
+                            -Enabled True `
+                            -Description "Allows local LAN waiter tablets and kitchen displays to connect to RestaurantOS Local Hub."
+    }
+
+    Write-Host "Windows Firewall rule successfully configured."
     exit 0
-}
-
-Write-Host "Configuring Windows Firewall for RestaurantOS Local Hub (Port $Port)..." -ForegroundColor Cyan
-
-# Remove any old rule with same name
-netsh advfirewall firewall delete rule name="$RuleName" 2>&1 | Out-Null
-
-# Add inbound rule for TCP 3000 across all profiles, scoped to RestaurantOS binary executable for maximum security
-$NodeExe = Join-Path $AppDir "runtime\node.exe"
-if (Test-Path $NodeExe) {
-    $result = netsh advfirewall firewall add rule name="$RuleName" dir=in action=allow protocol=TCP localport=$Port program="$NodeExe" profile=private,domain description="Allows waiter, kitchen, and manager devices on the local restaurant network to connect to RestaurantOS Local Hub"
-} else {
-    $result = netsh advfirewall firewall add rule name="$RuleName" dir=in action=allow protocol=TCP localport=$Port profile=private,domain description="Allows waiter, kitchen, and manager devices on the local restaurant network to connect to RestaurantOS Local Hub"
-}
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "Windows Firewall rule successfully configured for RestaurantOS Local Hub on TCP port $Port (Private/Domain)." -ForegroundColor Green
-} else {
-    Write-Warning "Could not automatically register firewall rule. Error: $result"
+} catch {
+    Write-Error "Failed to configure Windows Firewall rule: $_"
+    exit 1
 }

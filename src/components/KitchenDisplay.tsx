@@ -14,7 +14,8 @@ import {
   ListOrdered,
   LayoutGrid,
   Printer,
-  Table as TableIcon
+  Table as TableIcon,
+  Zap
 } from 'lucide-react';
 
 interface Props {
@@ -165,8 +166,22 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
 
         {/* Action Controls & View Switcher */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Prominent 1-Click RUSH MODE Toggle */}
+          <button
+            onClick={() => setViewMode(viewMode === 'AGGREGATE' ? 'TICKETS' : 'AGGREGATE')}
+            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-md ${
+              viewMode === 'AGGREGATE'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white ring-2 ring-orange-400'
+                : 'bg-orange-500 hover:bg-orange-600 text-white'
+            }`}
+            title="Basculer instantanément en mode synthèse condensée pour le coup de feu"
+          >
+            <Zap size={16} className="animate-pulse text-amber-200" />
+            <span>{viewMode === 'AGGREGATE' ? 'Mode Normal (Tickets)' : '🔥 Mode RUSH (Synthèse)'}</span>
+          </button>
+
           {/* View Mode Toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+          <div className="hidden sm:flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
             <button
               onClick={() => setViewMode('TICKETS')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -432,7 +447,7 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
             <div>
               <h2 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
                 <ListOrdered size={20} className="text-orange-500" />
-                {t('kds.summaryHeader', 'KITCHEN PREP SUMMARY')}
+                {t('kds.summaryHeader', 'KITCHEN PREP SUMMARY (MODE RUSH)')}
               </h2>
               <p className="text-xs text-gray-500 font-medium mt-0.5">
                 {t('kds.aggregatedSubtitle', 'Scannable ticket-style list of all dishes across active tables')}

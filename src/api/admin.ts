@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { hashToken } from '../crypto';
 import { getFrontendStateTx } from '../db/queries';
-import { BACKUP_DIR, DB_PATH, ensureDirectories } from '../paths';
+import { BACKUP_DIR, DB_PATH, ensureDirectories, LOGS_DIR } from '../paths';
 import { LicensingService } from '../licensing/service';
 import { logger } from '../logger';
 
@@ -1807,6 +1807,19 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       };
     }).sort((a, b) => b.totalRevenue - a.totalRevenue);
 
+    // Read Operational Diagnostic Logs for CRM Analysis
+    const operationalNotes: string[] = [];
+    try {
+      const stderrPath = path.join(LOGS_DIR, 'hub-stderr.log');
+      if (fs.existsSync(stderrPath)) {
+        const lines = fs.readFileSync(stderrPath, 'utf-8').trim().split('\n');
+        const lastLines = lines.slice(-5).map(l => l.trim()).filter(Boolean);
+        if (lastLines.length > 0) {
+          operationalNotes.push(...lastLines);
+        }
+      }
+    } catch {}
+
     // Construct JSON Payload Version 3
     const rosReport = {
       header: {
@@ -1824,7 +1837,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
           endDate: now.toISOString()
         },
         generatedAt: now.toISOString(),
-        operationalNotes: []
+        operationalNotes
       },
       kpiSummary: {
         totalGrossRevenue: parseFloat(totalGrossRevenue.toFixed(2)),
