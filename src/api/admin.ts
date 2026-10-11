@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { hashToken } from '../crypto';
 import { getFrontendStateTx } from '../db/queries';
-import { BACKUP_DIR, DB_PATH, ensureDirectories, LOGS_DIR } from '../paths';
+import { BACKUP_DIR, DB_PATH, ensureDirectories, LOG_DIR } from '../paths';
 import { LicensingService } from '../licensing/service';
 import { logger } from '../logger';
 
@@ -1810,7 +1810,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     // Read Operational Diagnostic Logs for CRM Analysis
     const operationalNotes: string[] = [];
     try {
-      const stderrPath = path.join(LOGS_DIR, 'hub-stderr.log');
+      const stderrPath = path.join(LOG_DIR, 'hub-stderr.log');
       if (fs.existsSync(stderrPath)) {
         const lines = fs.readFileSync(stderrPath, 'utf-8').trim().split('\n');
         const lastLines = lines.slice(-5).map(l => l.trim()).filter(Boolean);

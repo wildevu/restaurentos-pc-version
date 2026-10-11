@@ -98,7 +98,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
     if (maxMins < 60) return `${maxMins}m`;
 
     const hours = Math.floor(maxMins / 60);
-    const mins = totalMinutes % 60;
+    const mins = maxMins % 60;
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
