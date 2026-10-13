@@ -7,7 +7,7 @@
 #define MyAppName "RestaurantOS Local Hub"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "RestaurantOS"
-#define MyAppURL "http://localhost:3000"
+#define MyAppURL "http://localhost:8989"
 #define MyAppExeName "RestaurantOS.exe"
 
 [Setup]
@@ -24,6 +24,7 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\RestaurantOS
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+DirExistsWarning=no
 
 ; Output Executable
 OutputDir=..\..\dist\installer
@@ -50,7 +51,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "autostart"; Description: "Start RestaurantOS Local Hub automatically when Windows boots"; GroupDescription: "System Services:"
-Name: "firewall"; Description: "Configure Windows Firewall rule for waiter & kitchen LAN devices (Port 3000)"; GroupDescription: "Network Configuration:"
+Name: "firewall"; Description: "Configure Windows Firewall rule for waiter & kitchen LAN devices (Port 8989)"; GroupDescription: "Network Configuration:"
 
 [Files]
 ; Application binaries and static PWA assets go to {app} (C:\Program Files\RestaurantOS)
