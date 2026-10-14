@@ -162,13 +162,19 @@ async function startServer() {
 
   let gracefulShutdown: (reason?: string) => Promise<void>;
 
-  // Correlation ID & Security Headers Middleware
+  // Correlation ID, CORS & Security Headers Middleware
   app.use((req: any, res: any, next) => {
     const reqId = req.headers['x-request-id'] || `req_${uuidv4().substring(0, 8)}`;
     req.id = reqId;
     res.setHeader('x-request-id', reqId);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-request-id');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
     next();
   });
 

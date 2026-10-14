@@ -447,7 +447,8 @@ adminRouter.post('/pairing/generate', async (req: any, res) => {
       createdAt: now,
     });
     
-    res.json({ token: rawToken });
+    const lanIps = req.app?.get('lanIps') || [];
+    res.json({ token: rawToken, lanIps });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

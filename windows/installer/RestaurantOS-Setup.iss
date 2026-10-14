@@ -123,6 +123,10 @@ Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChan
 Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [UninstallRun]
+; Forcefully terminate running RestaurantOS process instances before removing files
+Filename: "taskkill.exe"; Parameters: "/F /IM RestaurantOS.exe"; Flags: runhidden; RunOnceId: "KillApp"
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*{app}*' } | Stop-Process -Force -ErrorAction SilentlyContinue"""; Flags: runhidden; RunOnceId: "KillNode"
+
 ; Unregister Windows Service & Firewall rules before removing files
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden
 Filename: "{app}\windows\firewall\remove-firewall-rule.bat"; Flags: runhidden
