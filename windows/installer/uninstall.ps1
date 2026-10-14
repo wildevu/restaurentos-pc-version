@@ -21,7 +21,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 Write-Host "Stopping all active RestaurantOS background processes..."
 try {
     Get-Process -Name "RestaurantOS" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*RestaurantOS*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process -Name "node" -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*RestaurantOS*" -or $_.Path -like "*app*" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
 } catch {
     Write-Warning "Note stopping processes: $_"
@@ -30,6 +30,7 @@ try {
 # 2. Stop and remove Windows auto-start Scheduled Task or Service
 try {
     Write-Host "Unregistering RestaurantOS Local Hub startup tasks..."
+    Unregister-ScheduledTask -TaskName "RestaurantOS Local Hub" -Confirm:$false -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName "RestaurantOS-LocalHub" -Confirm:$false -ErrorAction SilentlyContinue
 } catch {}
 
