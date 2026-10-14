@@ -425,16 +425,17 @@ export function App() {
   });
   const [restaurant, setRestaurant] = useState<any>(null);
 
-  const [tables, setTables] = useState<Table[]>([]);
-  const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [activeTableId, setActiveTableId] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [pendingCommands, setPendingCommands] = useState(0);
-  const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
-  const stateVersionRef = useRef<number>(0);
+  // Auto-login persistence check on app boot
+  useEffect(() => {
+    const token = localStorage.getItem('restaurantos_auth_token');
+    if (token) {
+      checkStatus(token);
+    } else {
+      checkStatus(null);
+    }
+  }, []);
 
-  // Safety fallback timer so page refreshes never freeze on LOADING
+  // Safety fallback timer so page refreshes or updates never freeze on LOADING
   useEffect(() => {
     const fallbackTimer = setTimeout(() => {
       if (appState === 'LOADING') {
@@ -449,10 +450,6 @@ export function App() {
 
     return () => clearTimeout(fallbackTimer);
   }, [appState]);
-
-  useEffect(() => {
-    checkStatus();
-  }, []);
 
   useEffect(() => {
     const unsubQueue = subscribeToQueue(async () => {
@@ -479,6 +476,15 @@ export function App() {
       unsubOpt();
     };
   }, []);
+
+  const [tables, setTables] = useState<Table[]>([]);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [pendingCommands, setPendingCommands] = useState(0);
+  const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
+  const stateVersionRef = useRef<number>(0);
 
   const checkStatus = async (token = authToken, retriesLeft = 2) => {
     try {
@@ -507,7 +513,7 @@ export function App() {
           setAuthToken(null);
           token = null;
         } else {
-          // Server returned 5xx or transient error — keep user in app if already loaded
+          // Server returned 5xx or transient error — keep user in app if token exists
           setAppState('APP');
           initApp(token);
           return;

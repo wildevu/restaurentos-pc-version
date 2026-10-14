@@ -9,13 +9,12 @@ import {
   Flame, 
   CheckCheck, 
   Undo2, 
-  Volume2, 
-  VolumeX, 
   ListOrdered,
   LayoutGrid,
   Printer,
   Table as TableIcon,
-  Zap
+  Zap,
+  Check
 } from 'lucide-react';
 
 interface Props {
@@ -28,7 +27,6 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
   const { t } = useI18n();
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'PREPARING' | 'READY' | 'SERVED'>('ALL');
   const [viewMode, setViewMode] = useState<'TICKETS' | 'AGGREGATE'>('TICKETS');
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [now, setNow] = useState<number>(Date.now());
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
@@ -77,6 +75,17 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
       orderId,
       status: nextStatus
     });
+  };
+
+  // 1-Click Bump All Active Units of a Specific Dish to READY in Mode RUSH
+  const handleBumpDishToReady = async (dishName: string) => {
+    for (const order of activeOrders) {
+      for (const item of order.items) {
+        if (item.name === dishName && (item.kitchenStatus === 'PENDING' || item.kitchenStatus === 'PREPARING')) {
+          await handleUpdateItemStatus(item.id, 'READY');
+        }
+      }
+    }
   };
 
   const getElapsedMinutes = (createdAtStr?: string) => {
@@ -205,18 +214,6 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
               <span>{t('kds.prepSummaryView', 'Prep Summary')}</span>
             </button>
           </div>
-
-          {/* Sound Toggle */}
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`p-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors min-h-[36px] cursor-pointer ${
-              soundEnabled ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-400'
-            }`}
-            title={soundEnabled ? t('kds.soundOn', 'Chime On') : t('kds.soundOff', 'Muted')}
-          >
-            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            <span className="hidden sm:inline">{soundEnabled ? t('kds.soundOn', 'Chime On') : t('kds.soundOff', 'Muted')}</span>
-          </button>
         </div>
       </div>
 
@@ -439,18 +436,18 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
         )
       )}
 
-      {/* VIEW 2: REDESIGNED CLEAN TABLE-TICKET PREP SUMMARY VIEW */}
+      {/* VIEW 2: REDESIGNED CLEAN TABLE-TICKET PREP SUMMARY VIEW (MODE RUSH) */}
       {viewMode === 'AGGREGATE' && (
         <div className="space-y-4">
           {/* Header Card with Print option */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
-                <ListOrdered size={20} className="text-orange-500" />
-                {t('kds.summaryHeader', 'KITCHEN PREP SUMMARY (MODE RUSH)')}
+                <Zap size={20} className="text-orange-500" />
+                <span>KITCHEN PREP SUMMARY — 🔥 MODE RUSH</span>
               </h2>
               <p className="text-xs text-gray-500 font-medium mt-0.5">
-                {t('kds.aggregatedSubtitle', 'Scannable ticket-style list of all dishes across active tables')}
+                Consolidated dish prep totals across all active tables. Click "Prêt" to mark all active units of a dish ready.
               </p>
             </div>
 
@@ -463,160 +460,53 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
                 className="px-3.5 py-1.5 bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer min-h-[36px]"
               >
                 <Printer size={14} />
-                <span>{t('kds.printPrepSummary', 'Print Prep Summary')}</span>
+                <span>Print Prep Summary</span>
               </button>
             </div>
           </div>
 
-          {/* Consolidated Dish Aggregator Matrix */}
-          {aggregatedDishTotals.length > 0 && (
+          {/* Consolidated Dish Aggregator Matrix with Green Checkmark "Prêt" Button */}
+          {aggregatedDishTotals.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center text-gray-400">
+              <ChefHat size={48} className="mx-auto mb-3 opacity-30 text-gray-400" />
+              <h3 className="text-base font-black text-gray-700">All dishes have been prepared. No items currently cooking in Mode RUSH.</h3>
+            </div>
+          ) : (
             <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-xs">
               <h3 className="text-xs font-black text-gray-500 uppercase tracking-wider mb-3">
-                {t('kds.totalNeeded', 'Consolidated Dish Counts')}
+                Active Kitchen Dish Workload (Tap "Prêt" to Bump)
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {aggregatedDishTotals.map(dish => (
-                  <div key={dish.name} className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex flex-col justify-between">
-                    <div className="text-xs font-extrabold text-gray-900 truncate" title={dish.name}>
-                      {dish.name}
-                    </div>
-                    <div className="flex items-baseline justify-between mt-2">
-                      <span className="text-xl font-black text-orange-600">{dish.totalQty}</span>
-                      <div className="flex gap-1 text-[10px] font-bold">
-                        {dish.pendingQty > 0 && <span className="text-amber-700 bg-amber-100 px-1 rounded">{dish.pendingQty}P</span>}
-                        {dish.prepQty > 0 && <span className="text-orange-700 bg-orange-100 px-1 rounded">{dish.prepQty}C</span>}
-                        {dish.readyQty > 0 && <span className="text-emerald-700 bg-emerald-100 px-1 rounded">{dish.readyQty}R</span>}
+                  <div key={dish.name} className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col justify-between space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-extrabold text-sm text-gray-900 leading-tight">
+                        {dish.name}
                       </div>
+                      <span className="text-2xl font-black text-orange-600 shrink-0">
+                        {dish.totalQty}x
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 border-t border-gray-200/80">
+                      <div className="flex gap-1 text-[11px] font-bold">
+                        {dish.pendingQty > 0 && <span className="text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-md">{dish.pendingQty} En attente</span>}
+                        {dish.prepQty > 0 && <span className="text-orange-800 bg-orange-100 px-1.5 py-0.5 rounded-md">{dish.prepQty} En cours</span>}
+                        {dish.readyQty > 0 && <span className="text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-md">{dish.readyQty} Prêt</span>}
+                      </div>
+
+                      <button
+                        onClick={() => handleBumpDishToReady(dish.name)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                        title={`Marquer tous les ${dish.name} comme prêts`}
+                      >
+                        <Check size={14} />
+                        <span>Prêt</span>
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Active Tables List / Tickets in Clean Sequential Receipt Format */}
-          {activeOrders.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center text-gray-400">
-              <ChefHat size={48} className="mx-auto mb-3 opacity-30 text-gray-400" />
-              <h3 className="text-base font-black text-gray-700">{t('kds.noPrepNeeded', 'All dishes have been prepared. No items currently cooking.')}</h3>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activeOrders.map(order => {
-                const elapsedMins = getElapsedMinutes(order.createdAt);
-                const timerClass = getTimerBadgeStyle(elapsedMins);
-                const activeItemsInOrder = order.items.filter(i => i.kitchenStatus !== 'SERVED');
-
-                return (
-                  <div 
-                    key={order.id} 
-                    className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden"
-                  >
-                    {/* Table Receipt Header */}
-                    <div className="p-3.5 bg-gray-900 text-white flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center font-black text-sm">
-                          {order.tableNumber || '?'}
-                        </div>
-                        <div>
-                          <div className="font-black text-sm">
-                            {order.tableLabel || t('tables.tableNumber', `Table ${order.tableNumber || ''}`, { number: order.tableNumber || '' })}
-                          </div>
-                          <div className="text-[11px] text-gray-300 font-medium">
-                            {t('order.serverLabel', `Server: ${order.openedByUserName || 'Staff'}`, { name: order.openedByUserName || 'Staff' })}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <div className={`px-2.5 py-1 rounded-lg text-xs font-black border flex items-center gap-1 ${timerClass}`}>
-                          <Clock size={12} />
-                          <span>{elapsedMins}m</span>
-                        </div>
-                        <button
-                          onClick={() => handleBatchUpdateStatus(order.id, 'READY')}
-                          className="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-lg transition-colors cursor-pointer"
-                        >
-                          {t('kds.bumpAllReady', 'All Ready')}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Table Dish Items Table */}
-                    <div className="p-3 divide-y divide-gray-100">
-                      {activeItemsInOrder.map(item => {
-                        const isPending = item.kitchenStatus === 'PENDING';
-                        const isPreparing = item.kitchenStatus === 'PREPARING';
-                        const isReady = item.kitchenStatus === 'READY';
-
-                        return (
-                          <div key={item.id} className="py-2.5 first:pt-1 last:pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                              <span className="w-8 h-8 rounded-lg bg-gray-100 text-gray-900 font-black text-sm flex items-center justify-center shrink-0 border border-gray-200">
-                                {item.quantity}x
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-extrabold text-gray-900 text-sm">
-                                  {item.name}
-                                </div>
-                                {item.notes && (
-                                  <div className="text-xs font-black text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md mt-0.5 inline-block border border-amber-300">
-                                    ⚠️ {item.notes}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Status & 1-Click Action */}
-                            <div className="flex items-center gap-2 self-end sm:self-center">
-                              {isPending && (
-                                <span className="px-2.5 py-1 bg-amber-100 text-amber-800 rounded-lg text-xs font-extrabold">
-                                  {t('kds.pendingCount', 'Pending')}
-                                </span>
-                              )}
-                              {isPreparing && (
-                                <span className="px-2.5 py-1 bg-orange-100 text-orange-800 rounded-lg text-xs font-extrabold animate-pulse">
-                                  {t('kds.inPrepCount', 'In Prep')}
-                                </span>
-                              )}
-                              {isReady && (
-                                <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-extrabold flex items-center gap-1">
-                                  <CheckCircle2 size={12} /> {t('kds.readyCount', 'Ready')}
-                                </span>
-                              )}
-
-                              {isPending && (
-                                <button
-                                  onClick={() => handleUpdateItemStatus(item.id, 'PREPARING')}
-                                  className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-                                >
-                                  {t('kds.startPrep', 'Start Prep')}
-                                </button>
-                              )}
-                              {isPreparing && (
-                                <button
-                                  onClick={() => handleUpdateItemStatus(item.id, 'READY')}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-                                >
-                                  {t('kds.markReady', 'Ready')}
-                                </button>
-                              )}
-                              {isReady && (
-                                <button
-                                  onClick={() => handleUpdateItemStatus(item.id, 'SERVED')}
-                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-                                >
-                                  {t('kds.markServed', 'Served')}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>

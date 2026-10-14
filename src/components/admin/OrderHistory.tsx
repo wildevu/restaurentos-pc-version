@@ -16,8 +16,10 @@ import {
   TrendingUp,
   ShoppingBag
 } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 export function OrderHistory({ authToken }: { authToken?: string }) {
+  const { t, formatCurrency, currency } = useI18n();
   const [orders, setOrders] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,14 +136,14 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
               Today's Gross Revenue (Bilan)
             </span>
             <div className="text-3xl font-black mt-1">
-              ${todayRevenue.toFixed(2)}
+              {formatCurrency(todayRevenue)}
             </div>
             <p className="text-[11px] text-emerald-200 mt-1 font-medium">
               Calculated from completed orders today ({todayStr})
             </p>
           </div>
-          <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-            <DollarSign className="w-7 h-7 text-white" />
+          <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center shrink-0 font-black text-xl">
+            {currency}
           </div>
         </div>
 
@@ -294,7 +296,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                         {order.totalItems} item{order.totalItems === 1 ? '' : 's'}
                       </td>
                       <td className="py-3.5 px-4 font-black text-gray-900">
-                        ${order.totalAmount.toFixed(2)}
+                        {formatCurrency(order.totalAmount)}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <button
@@ -376,12 +378,12 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
                           </div>
                         )}
                         <div className="text-xs text-gray-400 mt-1">
-                          Unit: ${item.price.toFixed(2)} • Added by: {item.addedByName || 'Staff'}
+                          Unit: {formatCurrency(item.price)} • Added by: {item.addedByName || 'Staff'}
                         </div>
                       </div>
                     </div>
                     <div className="text-right font-black text-gray-900 text-sm">
-                      ${(item.price * item.quantity).toFixed(2)}
+                      {formatCurrency(item.price * item.quantity)}
                     </div>
                   </div>
                 ))
@@ -396,7 +398,7 @@ export function OrderHistory({ authToken }: { authToken?: string }) {
               </div>
               <div className="text-right">
                 <span className="text-xs text-gray-500 font-semibold block">Total Amount</span>
-                <span className="text-2xl font-black text-gray-900">${selectedOrder.totalAmount.toFixed(2)}</span>
+                <span className="text-2xl font-black text-gray-900">{formatCurrency(selectedOrder.totalAmount)}</span>
               </div>
             </div>
           </div>
