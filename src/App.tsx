@@ -341,23 +341,32 @@ function AppContent({
             </div>
           } />
           
-          {isOwnerOrManager && (
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route path="hub" element={<LocalHubStatus authToken={authToken!} />} />
-              <Route path="licensing" element={<LicenseManagement />} />
-              <Route path="consultant" element={<ConsultantModule authToken={authToken!} />} />
-              <Route path="settings" element={<RestaurantSettings authToken={authToken!} />} />
-              <Route path="staff" element={<StaffManagement authToken={authToken!} currentUser={user} />} />
-              <Route path="tables" element={<TableManagement authToken={authToken!} />} />
-              <Route path="devices" element={<DeviceManagement authToken={authToken!} />} />
-              <Route path="menu" element={<MenuManagement authToken={authToken!} />} />
-              <Route path="orders" element={<OrderHistory authToken={authToken!} />} />
-              <Route path="audit" element={<AuditLogs authToken={authToken!} />} />
-              <Route path="backups" element={<Backups authToken={authToken!} />} />
-              <Route path="health" element={<SystemHealth authToken={authToken!} />} />
-              <Route index element={<Navigate to="hub" replace />} />
-            </Route>
-          )}
+          <Route path="/admin" element={
+            isOwnerOrManager ? (
+              <AdminLayout />
+            ) : user ? (
+              <Navigate to="/" replace />
+            ) : (
+              <div className="flex-1 flex items-center justify-center font-bold text-gray-500 gap-2 p-12">
+                <RefreshCw size={20} className="animate-spin text-blue-600" />
+                <span>Verifying Authorization...</span>
+              </div>
+            )
+          }>
+            <Route path="hub" element={<LocalHubStatus authToken={authToken!} />} />
+            <Route path="licensing" element={<LicenseManagement />} />
+            <Route path="consultant" element={<ConsultantModule authToken={authToken!} />} />
+            <Route path="settings" element={<RestaurantSettings authToken={authToken!} />} />
+            <Route path="staff" element={<StaffManagement authToken={authToken!} currentUser={user} />} />
+            <Route path="tables" element={<TableManagement authToken={authToken!} />} />
+            <Route path="devices" element={<DeviceManagement authToken={authToken!} />} />
+            <Route path="menu" element={<MenuManagement authToken={authToken!} />} />
+            <Route path="orders" element={<OrderHistory authToken={authToken!} />} />
+            <Route path="audit" element={<AuditLogs authToken={authToken!} />} />
+            <Route path="backups" element={<Backups authToken={authToken!} />} />
+            <Route path="health" element={<SystemHealth authToken={authToken!} />} />
+            <Route index element={<Navigate to="hub" replace />} />
+          </Route>
           
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
