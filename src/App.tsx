@@ -686,9 +686,15 @@ export function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [authToken]);
 
-  const handleLogin = (token: string) => {
+  const handleLogin = (token: string, userData?: any) => {
     localStorage.setItem('restaurantos_auth_token', token);
     setAuthToken(token);
+    if (userData) {
+      setUser(userData);
+      setAppState('APP');
+      initApp(token);
+      return;
+    }
     checkStatus(token);
   };
 

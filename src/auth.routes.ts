@@ -414,28 +414,22 @@ authRouter.post('/pair', async (req, res) => {
 authRouter.post('/login', async (req, res) => {
   try {
     const payload = LoginPayloadSchema.parse(req.body);
-    const normalizedUsername = payload.username.trim();
-    const rateLimitKey = normalizedUsername.toLowerCase();
     
-    if (loginAttempts.has(rateLimitKey)) {
-      const attempt = loginAttempts.get(rateLimitKey)!;
+    if (loginAttempts.has(payload.username)) {
+      const attempt = loginAttempts.get(payload.username)!;
       if (Date.now() > attempt.resetAt) {
-        loginAttempts.delete(rateLimitKey);
+        loginAttempts.delete(payload.username);
       } else if (attempt.count >= MAX_ATTEMPTS) {
         return res.status(429).json({ error: 'Too many failed attempts. Try again later.' });
       }
     }
 
-    // Support case-insensitive username lookup
-    const userRecords = await db.select().from(users)
-      .where(sql`LOWER(${users.username}) = LOWER(${normalizedUsername})`)
-      .limit(1);
-
+    const userRecords = await db.select().from(users).where(eq(users.username, payload.username)).limit(1);
     if (userRecords.length === 0 || !userRecords[0].isActive || userRecords[0].disabledAt) {
-      // Record failed attempt
-      const attempt = loginAttempts.get(rateLimitKey) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
+      // Record failed attempt to mask existence
+      const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
       attempt.count++;
-      loginAttempts.set(rateLimitKey, attempt);
+      loginAttempts.set(payload.username, attempt);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -443,14 +437,14 @@ authRouter.post('/login', async (req, res) => {
     const isValid = verifyPassword(payload.password, user.passwordHash);
     
     if (!isValid) {
-      const attempt = loginAttempts.get(rateLimitKey) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
+      const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
       attempt.count++;
-      loginAttempts.set(rateLimitKey, attempt);
+      loginAttempts.set(payload.username, attempt);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     // Success! Clear rate limit.
-    loginAttempts.delete(rateLimitKey);
+    loginAttempts.delete(payload.username);
     
     const now = new Date();
     const token = generateToken();
