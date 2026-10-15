@@ -110,26 +110,27 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; I
 
 [Run]
 ; Silent MSVC Runtime Installation if required
-Filename: "{app}\windows\redist\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; Flags: runhidden; Check: VCRedistNeedsInstall
+Filename: "{app}\windows\redist\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; Flags: runhidden waituntilterminated; Check: VCRedistNeedsInstall
 
 ; Firewall Rule Registration
-Filename: "{app}\windows\firewall\add-firewall-rule.bat"; Flags: runhidden; Tasks: firewall
+Filename: "{app}\windows\firewall\add-firewall-rule.bat"; Flags: runhidden waituntilterminated; Tasks: firewall
 
 ; Auto-Start Task Registration
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\install-service.ps1"" -AppDir ""{app}"""; Flags: runhidden; Tasks: autostart
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\install-service.ps1"" -AppDir ""{app}"""; Flags: runhidden waituntilterminated; Tasks: autostart
 
 ; Launch App after Installation
-Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent unchecked; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [UninstallRun]
 ; Forcefully terminate running RestaurantOS process instances before removing files
-Filename: "taskkill.exe"; Parameters: "/F /IM RestaurantOS.exe"; Flags: runhidden; RunOnceId: "KillApp"
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '*{app}*' }} | Stop-Process -Force -ErrorAction SilentlyContinue"""; Flags: runhidden; RunOnceId: "KillNode"
+Filename: "taskkill.exe"; Parameters: "/F /IM RestaurantOS.exe"; Flags: runhidden waituntilterminated; RunOnceId: "KillApp"
+Filename: "taskkill.exe"; Parameters: "/F /IM node.exe"; Flags: runhidden waituntilterminated; RunOnceId: "KillNodeTaskkill"
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '*{app}*' -or $_.Path -like '*RestaurantOS*' }} | Stop-Process -Force -ErrorAction SilentlyContinue"""; Flags: runhidden waituntilterminated; RunOnceId: "KillNodePs"
 
 ; Unregister Windows Service & Firewall rules before removing files
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden
-Filename: "{app}\windows\firewall\remove-firewall-rule.bat"; Flags: runhidden
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden waituntilterminated
+Filename: "{app}\windows\firewall\remove-firewall-rule.bat"; Flags: runhidden waituntilterminated
 
 [Code]
 // Helper function to check if VC++ 2015-2022 x64 Redistributable is installed
