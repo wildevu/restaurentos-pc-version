@@ -8,7 +8,7 @@ title RestaurantOS Local Hub
 
 :: Set Production Environment Variables
 set NODE_ENV=production
-set PORT=3000
+set PORT=8989
 
 :: Resolve Application and Data Directories
 set APP_DIR=%~dp0

@@ -150,14 +150,14 @@ export function SystemHealth({ authToken }: { authToken?: string }) {
                   <div key={ip} className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-100 flex items-center justify-between">
                     <div>
                       <span className="text-[11px] font-bold text-emerald-700 block">Local IP Access</span>
-                      <span className="font-mono text-sm font-black text-gray-900">http://{ip}:3000</span>
+                      <span className="font-mono text-sm font-black text-gray-900">http://{ip}:8989</span>
                     </div>
                     <span className="px-2 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md uppercase">LAN Active</span>
                   </div>
                 ))
               ) : (
                 <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-600 font-medium">
-                  Localhost: <span className="font-mono font-bold text-gray-900">http://localhost:3000</span>
+                  Localhost: <span className="font-mono font-bold text-gray-900">http://localhost:8989</span>
                 </div>
               )}
             </div>
