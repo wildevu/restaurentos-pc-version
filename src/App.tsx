@@ -344,13 +344,8 @@ function AppContent({
           <Route path="/admin" element={
             isOwnerOrManager ? (
               <AdminLayout />
-            ) : user ? (
-              <Navigate to="/" replace />
             ) : (
-              <div className="flex-1 flex items-center justify-center font-bold text-gray-500 gap-2 p-12">
-                <RefreshCw size={20} className="animate-spin text-blue-600" />
-                <span>Verifying Authorization...</span>
-              </div>
+              <Navigate to="/" replace />
             )
           }>
             <Route path="hub" element={<LocalHubStatus authToken={authToken!} />} />
@@ -444,21 +439,6 @@ export function App() {
     }
   }, []);
 
-  // Safety fallback timer so page refreshes or updates never freeze on LOADING
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => {
-      if (appState === 'LOADING') {
-        const token = localStorage.getItem('restaurantos_auth_token');
-        if (token) {
-          setAppState('APP');
-        } else {
-          setAppState('LOGIN');
-        }
-      }
-    }, 3500);
-
-    return () => clearTimeout(fallbackTimer);
-  }, [appState]);
 
   useEffect(() => {
     const unsubQueue = subscribeToQueue(async () => {
@@ -495,12 +475,12 @@ export function App() {
   const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
   const stateVersionRef = useRef<number>(0);
 
-  const checkStatus = async (token = authToken, retriesLeft = 2) => {
+  const checkStatus = async (token = authToken, retriesLeft = 3) => {
     try {
       if (token) {
         // Verify token with timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const res = await fetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` },
           signal: controller.signal
@@ -509,29 +489,32 @@ export function App() {
 
         if (res.ok) {
           const data = await res.json();
-          setUser(data.user);
-          if (data.restaurant) {
-            setRestaurant(data.restaurant);
+          if (data.user) {
+            setUser(data.user);
+            if (data.restaurant) {
+              setRestaurant(data.restaurant);
+            }
+            setAppState('APP');
+            initApp(token);
+            return;
           }
-          setAppState('APP');
-          initApp(token);
-          return;
         } else if (res.status === 401 || res.status === 403) {
           // Token explicitly invalid/revoked by server
           localStorage.removeItem('restaurantos_auth_token');
           setAuthToken(null);
           token = null;
         } else {
-          // Server returned 5xx or transient error — keep user in app if token exists
-          setAppState('APP');
-          initApp(token);
-          return;
+          // Transient HTTP error (e.g. 502, 503) — retry if attempts remain
+          if (retriesLeft > 0) {
+            setTimeout(() => checkStatus(token, retriesLeft - 1), 1000);
+            return;
+          }
         }
       }
 
       // Check setup status from authoritative API
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       const setupRes = await fetch('/api/auth/status', { signal: controller.signal });
       clearTimeout(timeoutId);
 
@@ -546,13 +529,7 @@ export function App() {
       }
     } catch (err) {
       console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
-      if (token) {
-        setAppState('APP');
-        initApp(token);
-        return;
-      }
-
-      if (retriesLeft > 0) {
+      if (token && retriesLeft > 0) {
         setTimeout(() => checkStatus(token, retriesLeft - 1), 1000);
         return;
       }
