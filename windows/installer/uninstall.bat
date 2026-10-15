@@ -2,8 +2,7 @@
 :: RestaurantOS Local Hub - Batch Uninstaller Wrapper
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Administrator privileges required. Please Right-Click and choose "Run as Administrator".
-    pause
+    echo [ERROR] Administrator privileges required.
     exit /b 1
 )
 
