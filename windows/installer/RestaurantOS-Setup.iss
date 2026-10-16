@@ -123,14 +123,18 @@ Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChan
 Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent unchecked; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [UninstallRun]
-; Forcefully terminate running RestaurantOS process instances before removing files
-Filename: "taskkill.exe"; Parameters: "/F /IM RestaurantOS.exe"; Flags: runhidden waituntilterminated; RunOnceId: "KillApp"
-Filename: "taskkill.exe"; Parameters: "/F /IM node.exe"; Flags: runhidden waituntilterminated; RunOnceId: "KillNodeTaskkill"
-Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '*{app}*' -or $_.Path -like '*RestaurantOS*' }} | Stop-Process -Force -ErrorAction SilentlyContinue"""; Flags: runhidden waituntilterminated; RunOnceId: "KillNodePs"
+; Step 1: Remove scheduled task FIRST — prevents any auto-restart
+Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterTask"
 
-; Unregister Windows Service & Firewall rules before removing files
-Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden waituntilterminated
-Filename: "{app}\windows\firewall\remove-firewall-rule.bat"; Flags: runhidden waituntilterminated
+; Step 2: Kill only RestaurantOS's node and app processes (targeted by path)
+Filename: "taskkill.exe"; Parameters: "/F /IM RestaurantOS.exe"; Flags: runhidden waituntilterminated; RunOnceId: "KillApp"
+Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""Get-Process node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '*{app}*' -or $_.Path -like '*RestaurantOS*' }} | Stop-Process -Force -ErrorAction SilentlyContinue"""; Flags: runhidden waituntilterminated; RunOnceId: "KillNode"
+
+; Step 3: Wait for native DLL handles (e.g. index.node) to release
+Filename: "powershell.exe"; Parameters: "-NoProfile -Command ""Start-Sleep 4"""; Flags: runhidden waituntilterminated; RunOnceId: "WaitDll"
+
+; Step 4: Firewall cleanup
+Filename: "{app}\windows\firewall\remove-firewall-rule.bat"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveFirewall"
 
 [Code]
 // Helper function to check if VC++ 2015-2022 x64 Redistributable is installed

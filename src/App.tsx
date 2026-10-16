@@ -534,15 +534,20 @@ export function App() {
         return;
       }
 
-      // Fallback check to setup-status
+      // Fallback check to setup-status with AbortController signal
+      const fallbackCtrl = new AbortController();
+      const fallbackTimer = setTimeout(() => fallbackCtrl.abort(), 5000);
       try {
-        const fallbackRes = await fetch('/api/auth/setup-status');
+        const fallbackRes = await fetch('/api/auth/setup-status', { signal: fallbackCtrl.signal });
+        clearTimeout(fallbackTimer);
         const fallbackData = await fallbackRes.json();
         if (!fallbackData.isInitialized && !fallbackData.configured) {
           setAppState('SETUP');
           return;
         }
-      } catch (_) {}
+      } catch (_) {
+        clearTimeout(fallbackTimer);
+      }
       setAppState('LOGIN');
     }
   };

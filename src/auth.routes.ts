@@ -434,7 +434,7 @@ authRouter.post('/login', async (req, res) => {
     }
 
     const user = userRecords[0];
-    const isValid = verifyPassword(payload.password, user.passwordHash);
+    const isValid = await verifyPassword(payload.password, user.passwordHash);
     
     if (!isValid) {
       const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
