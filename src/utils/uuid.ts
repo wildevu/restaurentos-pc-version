@@ -1,18 +1,11 @@
-import crypto from 'crypto';
-
 /**
  * Universal UUID v4 generator.
- * Uses native crypto.randomUUID() across Node.js and modern browsers.
+ * Uses Web Crypto / Node Crypto API if available, with RFC 4122 fallback.
  */
 export function uuidv4(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
   }
-  // Browser standard Web Crypto API
-  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
-    return window.crypto.randomUUID();
-  }
-  // RFC 4122 compliant fallback
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;

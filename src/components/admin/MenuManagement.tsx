@@ -666,20 +666,6 @@ export function MenuManagement({ authToken }: { authToken: string }) {
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Cost Price / COGS ({currency}) <span className="text-gray-400 font-normal lowercase">(optional for margin analysis)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={itemCostPrice}
-                  onChange={e => setItemCostPrice(e.target.value)}
-                  placeholder="e.g. 3.20"
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
                   {t('menu.displayOrderLabel', 'Display Order')}
                 </label>
                 <input
@@ -772,20 +758,36 @@ export function MenuManagement({ authToken }: { authToken: string }) {
                   className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  {t('menu.priceLabel', `Price (${currency})`).replace('{currency}', currency)}
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={itemPrice}
-                  onChange={e => setItemPrice(e.target.value)}
-                  placeholder="e.g. 12.50"
-                  required
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    {t('menu.priceLabel', `Price (${currency})`).replace('{currency}', currency)} *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={itemPrice}
+                    onChange={e => setItemPrice(e.target.value)}
+                    placeholder="e.g. 12.50"
+                    required
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Cost Price / COGS ({currency})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={itemCostPrice}
+                    onChange={e => setItemCostPrice(e.target.value)}
+                    placeholder="e.g. 3.20"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">

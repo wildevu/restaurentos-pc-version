@@ -7,7 +7,7 @@
 #define MyAppName "RestaurantOS Local Hub"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "RestaurantOS"
-#define MyAppURL "http://localhost:3000"
+#define MyAppURL "http://localhost:8989"
 #define MyAppExeName "RestaurantOS.exe"
 
 [Setup]
@@ -24,6 +24,7 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\RestaurantOS
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+DirExistsWarning=no
 
 ; Output Executable
 OutputDir=..\..\dist\installer
@@ -50,7 +51,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "autostart"; Description: "Start RestaurantOS Local Hub automatically when Windows boots"; GroupDescription: "System Services:"
-Name: "firewall"; Description: "Configure Windows Firewall rule for waiter & kitchen LAN devices (Port 3000)"; GroupDescription: "Network Configuration:"
+Name: "firewall"; Description: "Configure Windows Firewall rule for waiter & kitchen LAN devices (Port 8989)"; GroupDescription: "Network Configuration:"
 
 [Files]
 ; Application binaries and static PWA assets go to {app} (C:\Program Files\RestaurantOS)
@@ -96,34 +97,44 @@ Name: "{commonappdata}\RestaurantOS\config"; Permissions: users-modify
 
 [Icons]
 ; Desktop & Start Menu Shortcuts pointing directly to the RestaurantOS Windows Application
-Name: "{group}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Name: "{group}\Open Local Hub Status"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Local Hub Status"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Data & Backups Folder"; Filename: "explorer.exe"; Parameters: """{commonappdata}\RestaurantOS"""; IconFilename: "shell32.dll,4"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\public\favicon.ico"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\RestaurantOS.exe"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Tasks: desktopicon; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 ; Fallback shortcuts to silent VBS launcher if RestaurantOS.exe is not present
-Name: "{group}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Name: "{group}\Open Local Hub Status"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; Tasks: desktopicon; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{group}\Open Local Hub Status"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; IconFilename: "{app}\public\favicon.ico"; WorkingDir: "{app}"; Tasks: desktopicon; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [Run]
 ; Silent MSVC Runtime Installation if required
-Filename: "{app}\windows\redist\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; Flags: runhidden; Check: VCRedistNeedsInstall
+Filename: "{app}\windows\redist\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; Flags: runhidden waituntilterminated; Check: VCRedistNeedsInstall
 
 ; Firewall Rule Registration
-Filename: "{app}\windows\firewall\add-firewall-rule.bat"; Flags: runhidden; Tasks: firewall
+Filename: "{app}\windows\firewall\add-firewall-rule.bat"; Flags: runhidden waituntilterminated; Tasks: firewall
 
 ; Auto-Start Task Registration
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\install-service.ps1"" -AppDir ""{app}"""; Flags: runhidden; Tasks: autostart
+Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\windows\service\install-service.ps1"" -AppDir ""{app}"""; Flags: runhidden waituntilterminated; Tasks: autostart
 
 ; Launch App after Installation
-Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
-Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Filename: "{app}\RestaurantOS.exe"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent unchecked; Check: FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
+Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: postinstall nowait skipifsilent unchecked; Check: not FileExists(ExpandConstant('{app}\RestaurantOS.exe'))
 
 [UninstallRun]
-; Unregister Windows Service & Firewall rules before removing files
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden
-Filename: "{app}\windows\firewall\remove-firewall-rule.bat"; Flags: runhidden
+; Step 1: Remove scheduled task FIRST — prevents any auto-restart
+Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterTask"
+
+; Step 2: Kill only RestaurantOS's node and app processes (targeted by path)
+Filename: "taskkill.exe"; Parameters: "/F /IM RestaurantOS.exe"; Flags: runhidden waituntilterminated; RunOnceId: "KillApp"
+Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""Get-Process node -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '*{app}*' -or $_.Path -like '*RestaurantOS*' }} | Stop-Process -Force -ErrorAction SilentlyContinue"""; Flags: runhidden waituntilterminated; RunOnceId: "KillNode"
+
+; Step 3: Wait for native DLL handles (e.g. index.node) to release
+Filename: "powershell.exe"; Parameters: "-NoProfile -Command ""Start-Sleep 4"""; Flags: runhidden waituntilterminated; RunOnceId: "WaitDll"
+
+; Step 4: Firewall cleanup
+Filename: "{app}\windows\firewall\remove-firewall-rule.bat"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveFirewall"
 
 [Code]
 // Helper function to check if VC++ 2015-2022 x64 Redistributable is installed

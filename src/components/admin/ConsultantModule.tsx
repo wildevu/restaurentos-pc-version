@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { config } from '../../config';
 import {
   Briefcase,
   Download,
@@ -13,8 +12,10 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  QrCode
+  QrCode,
+  Lock
 } from 'lucide-react';
+import { LegalDocsModal } from '../LegalDocsModal';
 
 interface ConsultantModuleProps {
   authToken?: string;
@@ -25,9 +26,11 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<number>(30); // 7, 30, or 90 days
   const [downloading, setDownloading] = useState(false);
+  const [consentAccepted, setConsentAccepted] = useState(true);
+  const [legalDocType, setLegalDocType] = useState<'PRIVACY' | 'TERMS' | null>(null);
 
-  const upgradeUrl = config.FOUNDER_UPGRADE_URL;
-  const uploadUrl = config.FOUNDER_UPLOAD_URL;
+  const upgradeUrl = 'https://restos-crm-platform.vercel.app/upgrade';
+  const uploadUrl = 'https://restos-crm-platform.vercel.app/upload';
 
   useEffect(() => {
     fetchLicenseStatus();
@@ -51,6 +54,11 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
   const isPremium = licenseStatus?.status === 'ACTIVE' && licenseStatus?.canOperate && licenseStatus?.licenseType === 'PREMIUM';
 
   const handleDownloadRosReport = async () => {
+    if (!consentAccepted) {
+      alert('Veuillez accepter les conditions de confidentialité avant d\'exporter le rapport .ros');
+      return;
+    }
+
     try {
       setDownloading(true);
       const res = await fetch(`/api/admin/reports/export-ros?days=${selectedPeriod}`, {
@@ -87,6 +95,9 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
 
   return (
     <div className="space-y-6">
+      {/* Offline Legal Viewer Modal */}
+      <LegalDocsModal type={legalDocType} onClose={() => setLegalDocType(null)} />
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-xs">
         <div>
@@ -151,11 +162,40 @@ export const ConsultantModule: React.FC<ConsultantModuleProps> = ({ authToken })
               ))}
             </div>
 
+            {/* Consent & Privacy Checkbox */}
+            <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 flex items-start gap-2.5 text-xs text-gray-700">
+              <input
+                type="checkbox"
+                id="rosConsentCheckbox"
+                checked={consentAccepted}
+                onChange={(e) => setConsentAccepted(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+              />
+              <label htmlFor="rosConsentCheckbox" className="leading-snug cursor-pointer">
+                J'accepte d'exporter et de transmettre ce rapport .ros pour analyse conformément aux{' '}
+                <button
+                  type="button"
+                  onClick={() => setLegalDocType('TERMS')}
+                  className="text-purple-700 underline font-bold cursor-pointer hover:text-purple-900 inline"
+                >
+                  Conditions d'Utilisation
+                </button>{' '}
+                et à la{' '}
+                <button
+                  type="button"
+                  onClick={() => setLegalDocType('PRIVACY')}
+                  className="text-purple-700 underline font-bold cursor-pointer hover:text-purple-900 inline"
+                >
+                  Politique de Confidentialité
+                </button>.
+              </label>
+            </div>
+
             <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center gap-4">
               <button
                 onClick={handleDownloadRosReport}
-                disabled={downloading}
-                className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                disabled={downloading || !consentAccepted}
+                className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-black text-sm rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
               >
                 <Download size={18} />
                 <span>{downloading ? 'Génération du Fichier .ros...' : '📊 Créer le Rapport (.ros)'}</span>

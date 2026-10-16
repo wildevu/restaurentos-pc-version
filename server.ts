@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { CommandPayloadSchema } from './src/schemas';
 import { processCommand, getFrontendStateTx } from './src/db/queries';
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '8989', 10);
 
 function getLocalLanIps(): string[] {
   const interfaces = os.networkInterfaces();
@@ -162,13 +162,19 @@ async function startServer() {
 
   let gracefulShutdown: (reason?: string) => Promise<void>;
 
-  // Correlation ID & Security Headers Middleware
+  // Correlation ID, CORS & Security Headers Middleware
   app.use((req: any, res: any, next) => {
     const reqId = req.headers['x-request-id'] || `req_${uuidv4().substring(0, 8)}`;
     req.id = reqId;
     res.setHeader('x-request-id', reqId);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-request-id');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
     next();
   });
 
@@ -439,7 +445,15 @@ async function startServer() {
     // Look for dist folder in current working directory or app directory
     const distPath = path.join(process.cwd(), 'dist');
       
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html') || filePath.endsWith('manifest.webmanifest') || filePath.endsWith('sw.js')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      }
+    }));
     app.get('*all', (req, res) => {
       const indexPath = path.join(distPath, 'index.html');
       if (fs.existsSync(indexPath)) {

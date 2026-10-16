@@ -12,7 +12,8 @@ export function TableManagement({ authToken }: { authToken: string }) {
   
   const [number, setNumber] = useState(1);
   const [label, setLabel] = useState('');
-  const [section, setSection] = useState('Main Dining');
+  const [sectionMode, setSectionMode] = useState<string>('Main Dining');
+  const [customSectionInput, setCustomSectionInput] = useState<string>('');
   const [displayOrder, setDisplayOrder] = useState(1);
   const [archived, setArchived] = useState(false);
   
@@ -41,14 +42,17 @@ export function TableManagement({ authToken }: { authToken: string }) {
     fetchTables();
   }, [authToken]);
 
-  const uniqueSections = Array.from(new Set(tables.map(t => t.section || 'Main Dining')));
+  const defaultSections = ['Main Dining', 'Patio', 'Bar', 'Terrace', 'Private Room', 'VIP'];
+  const uniqueSections = Array.from(new Set([...defaultSections, ...tables.map(t => (t.section || '').trim()).filter(Boolean)]));
 
   const handleOpenNew = () => {
     setEditingTable(null);
-    const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
+    const nextNum = tables.length > 0 ? Math.max(...tables.map(t => Number(t.number) || 0)) + 1 : 1;
     setNumber(nextNum);
-    setLabel('');
-    setSection(uniqueSections[0] || 'Main Dining');
+    setLabel(`Table ${nextNum}`);
+    const initialSection = selectedSectionFilter !== 'ALL' ? selectedSectionFilter : uniqueSections[0] || 'Main Dining';
+    setSectionMode(initialSection);
+    setCustomSectionInput('');
     setDisplayOrder(nextNum);
     setArchived(false);
     setShowModal(true);
@@ -56,10 +60,17 @@ export function TableManagement({ authToken }: { authToken: string }) {
   
   const handleOpenEdit = (table: any) => {
     setEditingTable(table);
-    setNumber(table.number);
-    setLabel(table.label || '');
-    setSection(table.section || 'Main Dining');
-    setDisplayOrder(table.displayOrder || table.number);
+    setNumber(Number(table.number) || 1);
+    setLabel(table.label || `Table ${table.number}`);
+    const tableSection = table.section || 'Main Dining';
+    if (uniqueSections.includes(tableSection)) {
+      setSectionMode(tableSection);
+      setCustomSectionInput('');
+    } else {
+      setSectionMode('__CUSTOM__');
+      setCustomSectionInput(tableSection);
+    }
+    setDisplayOrder(Number(table.displayOrder) || Number(table.number) || 1);
     setArchived(!!table.archivedAt);
     setShowModal(true);
   };
@@ -72,10 +83,15 @@ export function TableManagement({ authToken }: { authToken: string }) {
     const url = editingTable ? `/api/admin/tables/${editingTable.id}` : `/api/admin/tables`;
     const method = editingTable ? 'PUT' : 'POST';
     
+    const cleanLabel = label.trim() || `Table ${number}`;
+    const cleanSection = sectionMode === '__CUSTOM__'
+      ? (customSectionInput.trim() || 'Main Dining')
+      : (sectionMode.trim() || 'Main Dining');
+
     const body: any = {
       number: Number(number),
-      label: label.trim() || null,
-      section: section.trim() || 'Main Dining',
+      label: cleanLabel,
+      section: cleanSection,
       displayOrder: Number(displayOrder)
     };
     if (editingTable) {
@@ -194,7 +210,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
         </div>
         <button
           onClick={handleOpenNew}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 shadow-md shadow-amber-500/10 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 shadow-md shadow-amber-500/10 transition-colors cursor-pointer"
         >
           <Plus size={16} /> Add Table
         </button>
@@ -223,7 +239,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowArchivedFilter(!showArchivedFilter)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
               showArchivedFilter
                 ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 font-medium'
                 : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:text-neutral-200'
@@ -261,7 +277,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
                       <button
                         disabled={idx === 0}
                         onClick={() => handleMoveOrder(idx, 'up')}
-                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors"
+                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors cursor-pointer"
                         title="Move Up"
                       >
                         <ArrowUp size={14} />
@@ -269,7 +285,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
                       <button
                         disabled={idx === filteredTables.length - 1}
                         onClick={() => handleMoveOrder(idx, 'down')}
-                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors"
+                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors cursor-pointer"
                         title="Move Down"
                       >
                         <ArrowDown size={14} />
@@ -307,14 +323,14 @@ export function TableManagement({ authToken }: { authToken: string }) {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => handleOpenEdit(table)}
-                        className="p-1.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-700/50 rounded-lg transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-700/50 rounded-lg transition-colors cursor-pointer"
                         title="Edit Table"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => handleToggleArchive(table)}
-                        className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-700/50 rounded-lg transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-700/50 rounded-lg transition-colors cursor-pointer"
                         title={table.archivedAt ? 'Restore Table' : 'Archive Table'}
                       >
                         {table.archivedAt ? <RotateCcw size={15} /> : <Archive size={15} />}
@@ -322,7 +338,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
                       <button
                         disabled={table.status === 'ACTIVE'}
                         onClick={() => handleDelete(table)}
-                        className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-700/50 rounded-lg disabled:opacity-30 transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-700/50 rounded-lg disabled:opacity-30 transition-colors cursor-pointer disabled:cursor-not-allowed"
                         title="Delete Table"
                       >
                         <Trash2 size={15} />
@@ -349,26 +365,38 @@ export function TableManagement({ authToken }: { authToken: string }) {
                   type="number"
                   value={number}
                   onChange={e => setNumber(Number(e.target.value))}
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-bold"
                   required
                   min={1}
+                  placeholder="e.g. 1, 12, 101"
                 />
+                <span className="text-[10px] text-neutral-400 mt-1 block">Specify any custom table number. Numbers can be updated anytime.</span>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-neutral-300 mb-1">Dining Section / Area</label>
-                <input
-                  type="text"
-                  list="sections-list"
-                  value={section}
-                  onChange={e => setSection(e.target.value)}
-                  placeholder="e.g. Main Dining, Patio, Bar"
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-                  required
-                />
-                <datalist id="sections-list">
-                  {uniqueSections.map(s => <option key={s} value={s} />)}
-                </datalist>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">Dining Section / Area *</label>
+                <select
+                  value={sectionMode}
+                  onChange={e => setSectionMode(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-medium"
+                >
+                  {uniqueSections.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  <option value="__CUSTOM__">+ Custom Area...</option>
+                </select>
+
+                {sectionMode === '__CUSTOM__' && (
+                  <input
+                    type="text"
+                    value={customSectionInput}
+                    onChange={e => setCustomSectionInput(e.target.value)}
+                    placeholder="Enter custom dining area name"
+                    className="mt-2 w-full bg-neutral-900 border border-amber-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                    required
+                    autoFocus
+                  />
+                )}
               </div>
               
               <div>
@@ -411,13 +439,13 @@ export function TableManagement({ authToken }: { authToken: string }) {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs text-neutral-300 hover:bg-neutral-700 rounded-xl transition-colors"
+                  className="px-4 py-2 text-xs text-neutral-300 hover:bg-neutral-700 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 transition-colors"
+                  className="px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 transition-colors cursor-pointer"
                 >
                   Save Table
                 </button>

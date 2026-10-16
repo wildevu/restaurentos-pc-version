@@ -39,8 +39,11 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
       const data = await res.json();
       if (!res.ok) setError(data.error || 'Failed to generate token');
       else {
-        // Construct the URL that the QR will point to
-        const hubUrl = window.location.origin;
+        // Construct the URL that the QR will point to, prioritizing LAN IPv4 if available
+        let hubUrl = window.location.origin;
+        if (data.lanIps && data.lanIps.length > 0 && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+          hubUrl = `${window.location.protocol}//${data.lanIps[0]}:${window.location.port || '8989'}`;
+        }
         const pairUrl = `${hubUrl}/pair?token=${data.token}`;
         setPairingData({ token: data.token, url: pairUrl });
       }

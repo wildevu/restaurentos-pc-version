@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { ChefHat, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, RotateCcw, ShieldAlert } from 'lucide-react';
 
 interface LoginScreenProps {
-  onLogin: (token: string) => void;
+  onLogin: (token: string, user?: any) => void;
   onReset?: () => void;
   message?: string;
 }
 
-export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: string) => void; onReset?: () => void; message?: string }) {
+export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: string, user?: any) => void; onReset?: () => void; message?: string }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -28,19 +28,27 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
       localStorage.setItem('restaurantos_device_id', deviceId);
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, deviceId })
+        body: JSON.stringify({ username, password, deviceId }),
+        signal: controller.signal
       });
-      
+      clearTimeout(timeoutId);
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
       
-      onLogin(data.token);
+      onLogin(data.token, data.user);
     } catch (err: any) {
-      setError(err.message);
+      clearTimeout(timeoutId);
+      setError(err.name === 'AbortError'
+        ? 'Server did not respond. Please restart RestaurantOS.'
+        : err.message);
     } finally {
       setLoading(false);
     }
@@ -63,7 +71,7 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
       if (onReset) {
         onReset();
       } else {
-        window.location.reload();
+        window.location.href = '/';
       }
     } catch (err: any) {
       setError(err.message);

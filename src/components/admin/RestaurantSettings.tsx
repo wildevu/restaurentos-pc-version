@@ -50,7 +50,7 @@ export function RestaurantSettings({ authToken }: { authToken: string }) {
       if (!res.ok) throw new Error(data.error || 'Failed to reset development database');
 
       localStorage.removeItem('restaurantos_auth_token');
-      window.location.reload();
+      window.location.href = '/';
     } catch (err: any) {
       setError(err.message);
       setShowDevResetModal(false);

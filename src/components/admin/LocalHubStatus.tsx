@@ -61,7 +61,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
     return `${m}m`;
   };
 
-  const primaryUrl = status?.primaryLanUrl || (status?.lanIps?.[0] ? `http://${status.lanIps[0]}:3000` : 'http://localhost:3000');
+  const primaryUrl = status?.primaryLanUrl || (status?.lanIps?.[0] ? `http://${status.lanIps[0]}:8989` : 'http://localhost:8989');
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -239,9 +239,9 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {status.lanIps.map((ip: string) => (
                   <div key={ip} className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-gray-800">http://{ip}:3000</span>
+                    <span className="font-mono text-xs font-bold text-gray-800">http://{ip}:8989</span>
                     <button
-                      onClick={() => handleCopyUrl(`http://${ip}:3000`)}
+                      onClick={() => handleCopyUrl(`http://${ip}:8989`)}
                       className="text-blue-600 hover:text-blue-700 text-xs font-bold"
                     >
                       Copy

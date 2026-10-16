@@ -10,7 +10,9 @@ import fs from 'fs';
 import path from 'path';
 import { hashToken } from '../crypto';
 import { getFrontendStateTx } from '../db/queries';
-import { BACKUP_DIR, DB_PATH, ensureDirectories } from '../paths';
+import { BACKUP_DIR, DB_PATH, ensureDirectories, LOG_DIR } from '../paths';
+import { LicensingService } from '../licensing/service';
+import { logger } from '../logger';
 
 export const adminRouter = Router();
 
@@ -234,8 +236,8 @@ adminRouter.post('/tables', async (req: any, res) => {
   try {
     const schema = z.object({
       number: z.number().int().min(1),
-      label: z.string().optional(),
-      section: z.string().optional(),
+      label: z.string().nullable().optional(),
+      section: z.string().nullable().optional(),
       displayOrder: z.number().int().optional()
     });
     const parsed = schema.parse(req.body);
@@ -285,7 +287,7 @@ adminRouter.put('/tables/:id', async (req: any, res) => {
     const schema = z.object({
       number: z.number().int().min(1).optional(),
       label: z.string().nullable().optional(),
-      section: z.string().optional(),
+      section: z.string().nullable().optional(),
       displayOrder: z.number().int().optional(),
       archived: z.boolean().optional()
     });
@@ -445,7 +447,8 @@ adminRouter.post('/pairing/generate', async (req: any, res) => {
       createdAt: now,
     });
     
-    res.json({ token: rawToken });
+    const lanIps = req.app?.get('lanIps') || [];
+    res.json({ token: rawToken, lanIps });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -1168,7 +1171,8 @@ adminRouter.get('/orders/history', async (req: any, res) => {
         kitchenStatusUpdatedAt: i.kitchenStatusUpdatedAt,
         addedByUserId: i.addedByUserId,
         addedByName: i.addedByUserId ? userMap.get(i.addedByUserId) || 'Staff' : null,
-        createdAt: i.createdAt
+        createdAt: i.createdAt,
+        updatedAt: i.updatedAt
       }));
 
       const totalItems = items.reduce((sum: number, i: any) => sum + i.quantity, 0);
@@ -1234,7 +1238,8 @@ adminRouter.get('/orders/:id', async (req: any, res) => {
       kitchenStatusUpdatedAt: i.kitchenStatusUpdatedAt,
       addedByUserId: i.addedByUserId,
       addedByName: i.addedByUserId ? userMap.get(i.addedByUserId) || 'Staff' : null,
-      createdAt: i.createdAt
+      createdAt: i.createdAt,
+      updatedAt: i.updatedAt
     }));
 
     res.json({
@@ -1590,7 +1595,27 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
 
     const averageOrderValue = totalOrders > 0 ? parseFloat((totalGrossRevenue / totalOrders).toFixed(2)) : 0;
 
-    // 3. Granular itemSalesByDate with Category & Cost Price
+    // Calculate Kitchen Preparation Time across completed orders
+    let totalKitchenPrepMinutesSum = 0;
+    let totalKitchenItemsCount = 0;
+
+    for (const item of allOrderItems) {
+      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+        const start = new Date(item.createdAt).getTime();
+        const end = item.kitchenStatusUpdatedAt
+          ? new Date(item.kitchenStatusUpdatedAt).getTime()
+          : new Date(item.updatedAt).getTime();
+        const prepMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
+        totalKitchenPrepMinutesSum += prepMin;
+        totalKitchenItemsCount += 1;
+      }
+    }
+
+    const averageKitchenPrepTimeMinutes = totalKitchenItemsCount > 0
+      ? parseFloat((totalKitchenPrepMinutesSum / totalKitchenItemsCount).toFixed(1))
+      : 12;
+
+    // 3. Granular itemSalesByDate with Category & Cost Price & Kitchen Prep Metrics
     const itemSalesByDateMap: Record<string, any> = {};
     for (const item of allOrderItems) {
       const ord = allOrders.find(o => o.id === item.orderId);
@@ -1603,6 +1628,15 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
         const categoryName = menuMeta?.categoryName || 'OTHER';
         const costPrice = menuMeta?.costPrice ?? null;
 
+        let prepDurationMin = 10;
+        if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+          const start = new Date(item.createdAt).getTime();
+          const end = item.kitchenStatusUpdatedAt
+            ? new Date(item.kitchenStatusUpdatedAt).getTime()
+            : new Date(item.updatedAt).getTime();
+          prepDurationMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
+        }
+
         if (!itemSalesByDateMap[key]) {
           itemSalesByDateMap[key] = {
             date: dateStr,
@@ -1611,6 +1645,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
             quantitySold: 0,
             unitPrice: item.unitPriceSnapshot || 0,
             costPrice,
+            kitchenPrepTimeMinutes: prepDurationMin,
             revenue: 0
           };
         }
@@ -1696,14 +1731,15 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       .sort((a, b) => b.tablesManaged - a.tablesManaged);
 
     // 6. Hourly Sales
-    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number }> = {};
+    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number, covers: number }> = {};
     for (let h = 0; h < 24; h++) {
-      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0 };
+      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0, covers: 0 };
     }
 
     for (const ord of allOrders) {
       const h = new Date(ord.createdAt).getHours();
       hourlyMap[h].orderCount += 1;
+      hourlyMap[h].covers += ord.covers || 1;
     }
 
     for (const item of allOrderItems) {
@@ -1715,25 +1751,33 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     }
 
     // Rules 1 & 2: Clamp orderCount >= 0; if orderCount == 0 then force revenue = 0
-    const salesByHour = Object.values(hourlyMap).map(h => {
+    const dailyHourlySales = Object.values(hourlyMap).map(h => {
       const clampedOrders = Math.max(0, h.orderCount);
       const cleanRevenue = clampedOrders === 0 ? 0 : Math.max(0, h.revenue);
       return {
         hour: h.hour,
         revenue: parseFloat(cleanRevenue.toFixed(2)),
-        orderCount: clampedOrders
+        orderCount: clampedOrders,
+        covers: clampedOrders === 0 ? 0 : Math.max(0, h.covers)
       };
     });
 
     // Legacy menu engineering list for back-compat
-    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number }> = {};
+    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number, totalPrepMin: number, prepCount: number }> = {};
     for (const item of allOrderItems) {
       const name = item.productNameSnapshot || 'Item';
       if (!itemSalesMap[name]) {
-        itemSalesMap[name] = { itemName: name, quantitySold: 0, unitPrice: item.unitPriceSnapshot || 0, totalRevenue: 0 };
+        itemSalesMap[name] = { itemName: name, quantitySold: 0, unitPrice: item.unitPriceSnapshot || 0, totalRevenue: 0, totalPrepMin: 0, prepCount: 0 };
       }
       itemSalesMap[name].quantitySold += item.quantity || 1;
       itemSalesMap[name].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+
+      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+        const start = new Date(item.createdAt).getTime();
+        const end = item.kitchenStatusUpdatedAt ? new Date(item.kitchenStatusUpdatedAt).getTime() : new Date(item.updatedAt).getTime();
+        itemSalesMap[name].totalPrepMin += Math.max(1, Math.round((end - start) / (1000 * 60)));
+        itemSalesMap[name].prepCount += 1;
+      }
     }
 
     const itemSalesList = Object.values(itemSalesMap);
@@ -1750,14 +1794,32 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       else if (isHighPopularity && !isHighRevenue) classification = 'PLOWHORSE';
       else if (!isHighPopularity && isHighRevenue) classification = 'PUZZLE';
 
+      const avgItemPrepTimeMinutes = item.prepCount > 0
+        ? parseFloat((item.totalPrepMin / item.prepCount).toFixed(1))
+        : 10;
+
       return {
         itemName: item.itemName,
         quantitySold: item.quantitySold,
         unitPrice: item.unitPrice,
         totalRevenue: parseFloat(item.totalRevenue.toFixed(2)),
+        averagePrepTimeMinutes: avgItemPrepTimeMinutes,
         classification
       };
     }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    // Read Operational Diagnostic Logs for CRM Analysis
+    const operationalNotes: string[] = [];
+    try {
+      const stderrPath = path.join(LOG_DIR, 'hub-stderr.log');
+      if (fs.existsSync(stderrPath)) {
+        const lines = fs.readFileSync(stderrPath, 'utf-8').trim().split('\n');
+        const lastLines = lines.slice(-5).map(l => l.trim()).filter(Boolean);
+        if (lastLines.length > 0) {
+          operationalNotes.push(...lastLines);
+        }
+      }
+    } catch {}
 
     // Construct JSON Payload Version 3
     const rosReport = {
@@ -1776,7 +1838,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
           endDate: now.toISOString()
         },
         generatedAt: now.toISOString(),
-        operationalNotes: []
+        operationalNotes
       },
       kpiSummary: {
         totalGrossRevenue: parseFloat(totalGrossRevenue.toFixed(2)),
@@ -1785,11 +1847,12 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
         totalCovers,
         averageOrderValue,
         averageTurnTimeMinutes,
+        averageKitchenPrepTimeMinutes,
         paymentMethod: 'CASH_ONLY'
       },
       staffPerformance,
       menuEngineering,
-      salesByHour,
+      dailyHourlySales,
       itemSalesByDate,
       coversByDate,
       tableTurnMetrics
@@ -1896,4 +1959,3 @@ export function startAutoBackupScheduler() {
   setTimeout(runAutoBackup, 30000);
   setInterval(runAutoBackup, intervalMs);
 }
-

@@ -6,6 +6,7 @@ interface LicenseStatusData {
   status: 'ACTIVE' | 'EXPIRED' | 'UNLICENSED' | 'CLOCK_ROLLBACK_DETECTED';
   isLicensed: boolean;
   canOperate: boolean;
+  licenseType?: 'STANDARD' | 'PREMIUM';
   installationId: string;
   restaurantId?: string;
   licenseId?: string;
@@ -26,9 +27,9 @@ export const LicenseManagement: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (isSilent = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const res = await fetch('/api/licensing/status');
       if (res.ok) {
         const data = await res.json();
@@ -37,7 +38,7 @@ export const LicenseManagement: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch license status', err);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -73,7 +74,10 @@ export const LicenseManagement: React.FC = () => {
       } else {
         setSuccessMessage(t('licensing.activationSuccess'));
         setLicenseKeyInput('');
-        setStatus(data.status);
+        if (data.statusInfo) {
+          setStatus(data.statusInfo);
+        }
+        await fetchStatus(true);
       }
     } catch (err: any) {
       setErrorMessage(err.message || t('licensing.activationFailed'));
@@ -96,9 +100,20 @@ export const LicenseManagement: React.FC = () => {
     switch (status.status) {
       case 'ACTIVE':
         return (
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm font-semibold border border-emerald-200">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>{t('licensing.active')}</span>
+          <div className="inline-flex items-center gap-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm font-semibold border border-emerald-200">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>{t('licensing.active')}</span>
+            </div>
+            {status.licenseType && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-black tracking-wider uppercase border shadow-2xs ${
+                status.licenseType === 'PREMIUM'
+                  ? 'bg-purple-100 text-purple-800 border-purple-300'
+                  : 'bg-blue-100 text-blue-800 border-blue-300'
+              }`}>
+                {status.licenseType}
+              </span>
+            )}
           </div>
         );
       case 'EXPIRED':
@@ -143,7 +158,9 @@ export const LicenseManagement: React.FC = () => {
           {status?.status === 'ACTIVE' && status.remainingDays !== undefined && (
             <div className="text-left sm:text-right">
               <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{t('licensing.remainingDays')}</span>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{status.remainingDays} <span className="text-sm font-normal text-slate-500">{t('licensing.days')}</span></p>
+              <div className="flex items-center gap-2 mt-1 sm:justify-end">
+                <p className="text-2xl font-bold text-slate-900">{status.remainingDays} <span className="text-sm font-normal text-slate-500">{t('licensing.days')}</span></p>
+              </div>
             </div>
           )}
         </div>

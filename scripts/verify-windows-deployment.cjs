@@ -8,7 +8,7 @@
  * 5. Launcher independence from developer tools
  * 6. Non-destructive upgrade & reinstall safety
  * 7. Uninstallation safety (database & backups preserved)
- * 8. Firewall rule parameters (TCP 3000, private/domain only)
+ * 8. Firewall rule parameters (TCP 8989, private/domain only)
  * 9. Inno Setup and PowerShell installer structure
  */
 
@@ -62,11 +62,11 @@ console.log('\n--- TEST 2: Firewall Configuration Security Audit ---');
 const firewallBat = fs.readFileSync(path.resolve(process.cwd(), 'windows/firewall/add-firewall-rule.bat'), 'utf-8');
 const firewallPs1 = fs.readFileSync(path.resolve(process.cwd(), 'windows/firewall/add-firewall-rule.ps1'), 'utf-8');
 
-assert(firewallBat.includes('localport=3000'), 'Firewall BAT limits inbound rule to port 3000');
+assert(firewallBat.includes('localport=8989'), 'Firewall BAT limits inbound rule to port 8989');
 assert(firewallBat.includes('protocol=TCP'), 'Firewall BAT specifies TCP protocol');
 assert(firewallBat.includes('profile=private,domain'), 'Firewall BAT restricts access to private and domain networks');
-assert(firewallPs1.includes('localport=$Port') || firewallPs1.includes('3000'), 'Firewall PS1 limits inbound rule to port 3000');
-assert(firewallPs1.includes('profile=private,domain'), 'Firewall PS1 restricts access to private/domain network profile');
+assert(firewallPs1.includes('localport=$Port') || firewallPs1.includes('8989'), 'Firewall PS1 limits inbound rule to port 8989');
+assert(firewallPs1.includes('profile=private,domain') || firewallPs1.includes('Profile Private,Domain'), 'Firewall PS1 restricts access to private/domain network profile');
 
 // TEST 3: Uninstaller Non-Destructive Data Safety Audit
 console.log('\n--- TEST 3: Uninstallation Safety Audit ---');
