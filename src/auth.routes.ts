@@ -424,12 +424,15 @@ authRouter.post('/login', async (req, res) => {
       }
     }
 
-    const userRecords = await db.select().from(users).where(eq(users.username, payload.username)).limit(1);
+    const inputUsername = payload.username.trim();
+    const allUsers = await db.select().from(users);
+    const userRecords = allUsers.filter(u => u.username.toLowerCase() === inputUsername.toLowerCase());
+
     if (userRecords.length === 0 || !userRecords[0].isActive || userRecords[0].disabledAt) {
       // Record failed attempt to mask existence
-      const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
+      const attempt = loginAttempts.get(inputUsername) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
       attempt.count++;
-      loginAttempts.set(payload.username, attempt);
+      loginAttempts.set(inputUsername, attempt);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 

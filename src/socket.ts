@@ -7,6 +7,7 @@ export let socket: Socket = io({
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
   timeout: 10000,
+  transports: ['polling', 'websocket'], // Allow HTTP polling fallback over local Wi-Fi
 });
 
 export function connectSocket(token: string) {
