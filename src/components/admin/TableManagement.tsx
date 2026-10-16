@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Archive, CheckCircle, ArrowUp, ArrowDown, Trash2, RotateCcw, Filter, LayoutGrid, Layers, AlertCircle } from 'lucide-react';
-import { parseTableNumbersInput } from '../SetupScreen';
+import { Plus, Edit2, Archive, CheckCircle, ArrowUp, ArrowDown, Trash2, RotateCcw, Filter, LayoutGrid } from 'lucide-react';
 
 export function TableManagement({ authToken }: { authToken: string }) {
   const [tables, setTables] = useState<any[]>([]);
@@ -13,17 +12,10 @@ export function TableManagement({ authToken }: { authToken: string }) {
   
   const [number, setNumber] = useState(1);
   const [label, setLabel] = useState('');
-  const [section, setSection] = useState('Main Dining');
+  const [sectionMode, setSectionMode] = useState<string>('Main Dining');
+  const [customSectionInput, setCustomSectionInput] = useState<string>('');
   const [displayOrder, setDisplayOrder] = useState(1);
   const [archived, setArchived] = useState(false);
-
-  // Batch Category Table Setup State
-  const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchSection, setBatchSection] = useState('');
-  const [batchNumbersInput, setBatchNumbersInput] = useState('');
-  const [batchLabelPrefix, setBatchLabelPrefix] = useState('Table');
-  const [batchError, setBatchError] = useState('');
-  const [batchSubmitting, setBatchSubmitting] = useState(false);
   
   // Filter state
   const [selectedSectionFilter, setSelectedSectionFilter] = useState('ALL');
@@ -50,14 +42,17 @@ export function TableManagement({ authToken }: { authToken: string }) {
     fetchTables();
   }, [authToken]);
 
-  const uniqueSections = Array.from(new Set(tables.map(t => t.section || 'Main Dining')));
+  const defaultSections = ['Main Dining', 'Patio', 'Bar', 'Terrace', 'Private Room', 'VIP'];
+  const uniqueSections = Array.from(new Set([...defaultSections, ...tables.map(t => (t.section || '').trim()).filter(Boolean)]));
 
   const handleOpenNew = () => {
     setEditingTable(null);
-    const nextNum = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1;
+    const nextNum = tables.length > 0 ? Math.max(...tables.map(t => Number(t.number) || 0)) + 1 : 1;
     setNumber(nextNum);
-    setLabel('');
-    setSection(uniqueSections[0] || 'Main Dining');
+    setLabel(`Table ${nextNum}`);
+    const initialSection = selectedSectionFilter !== 'ALL' ? selectedSectionFilter : uniqueSections[0] || 'Main Dining';
+    setSectionMode(initialSection);
+    setCustomSectionInput('');
     setDisplayOrder(nextNum);
     setArchived(false);
     setShowModal(true);
@@ -65,10 +60,17 @@ export function TableManagement({ authToken }: { authToken: string }) {
   
   const handleOpenEdit = (table: any) => {
     setEditingTable(table);
-    setNumber(table.number);
-    setLabel(table.label || '');
-    setSection(table.section || 'Main Dining');
-    setDisplayOrder(table.displayOrder || table.number);
+    setNumber(Number(table.number) || 1);
+    setLabel(table.label || `Table ${table.number}`);
+    const tableSection = table.section || 'Main Dining';
+    if (uniqueSections.includes(tableSection)) {
+      setSectionMode(tableSection);
+      setCustomSectionInput('');
+    } else {
+      setSectionMode('__CUSTOM__');
+      setCustomSectionInput(tableSection);
+    }
+    setDisplayOrder(Number(table.displayOrder) || Number(table.number) || 1);
     setArchived(!!table.archivedAt);
     setShowModal(true);
   };
@@ -81,10 +83,15 @@ export function TableManagement({ authToken }: { authToken: string }) {
     const url = editingTable ? `/api/admin/tables/${editingTable.id}` : `/api/admin/tables`;
     const method = editingTable ? 'PUT' : 'POST';
     
+    const cleanLabel = label.trim() || `Table ${number}`;
+    const cleanSection = sectionMode === '__CUSTOM__'
+      ? (customSectionInput.trim() || 'Main Dining')
+      : (sectionMode.trim() || 'Main Dining');
+
     const body: any = {
       number: Number(number),
-      label: label.trim() || null,
-      section: section.trim() || 'Main Dining',
+      label: cleanLabel,
+      section: cleanSection,
       displayOrder: Number(displayOrder)
     };
     if (editingTable) {
@@ -183,53 +190,6 @@ export function TableManagement({ authToken }: { authToken: string }) {
     }
   };
 
-  const handleBatchSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBatchError('');
-    const trimmedSection = batchSection.trim();
-    if (!trimmedSection) {
-      setBatchError('Please specify a category / section name.');
-      return;
-    }
-
-    const parsedNumbers = parseTableNumbersInput(batchNumbersInput);
-    if (parsedNumbers.length === 0) {
-      setBatchError('Please enter valid table numbers (e.g. 11-15 or 20, 21, 22).');
-      return;
-    }
-
-    setBatchSubmitting(true);
-    try {
-      const res = await fetch('/api/admin/tables/batch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({
-          section: trimmedSection,
-          tableNumbers: parsedNumbers,
-          labelPrefix: batchLabelPrefix.trim() || undefined
-        })
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Failed to create tables');
-      }
-
-      setSuccessMsg(`Successfully created ${parsedNumbers.length} tables in category "${trimmedSection}"!`);
-      setShowBatchModal(false);
-      setBatchSection('');
-      setBatchNumbersInput('');
-      fetchTables();
-    } catch (err: any) {
-      setBatchError(err.message);
-    } finally {
-      setBatchSubmitting(false);
-    }
-  };
-
   const filteredTables = tables.filter(t => {
     if (!showArchivedFilter && t.archivedAt) return false;
     if (showArchivedFilter && !t.archivedAt) return false;
@@ -248,23 +208,12 @@ export function TableManagement({ authToken }: { authToken: string }) {
             Configure tables, dining areas/sections, sequence order, and availability.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setBatchError('');
-              setShowBatchModal(true);
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-neutral-800 border border-neutral-700 hover:border-neutral-600 text-neutral-200 hover:text-white font-medium text-xs rounded-xl transition-colors cursor-pointer"
-          >
-            <Layers size={15} className="text-amber-400" /> Add by Category
-          </button>
-          <button
-            onClick={handleOpenNew}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 shadow-md shadow-amber-500/10 transition-colors cursor-pointer"
-          >
-            <Plus size={16} /> Add Single Table
-          </button>
-        </div>
+        <button
+          onClick={handleOpenNew}
+          className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 shadow-md shadow-amber-500/10 transition-colors cursor-pointer"
+        >
+          <Plus size={16} /> Add Table
+        </button>
       </div>
 
       {error && <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs">{error}</div>}
@@ -290,7 +239,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowArchivedFilter(!showArchivedFilter)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
               showArchivedFilter
                 ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 font-medium'
                 : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:text-neutral-200'
@@ -328,7 +277,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
                       <button
                         disabled={idx === 0}
                         onClick={() => handleMoveOrder(idx, 'up')}
-                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors"
+                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors cursor-pointer"
                         title="Move Up"
                       >
                         <ArrowUp size={14} />
@@ -336,7 +285,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
                       <button
                         disabled={idx === filteredTables.length - 1}
                         onClick={() => handleMoveOrder(idx, 'down')}
-                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors"
+                        className="p-1 text-neutral-400 hover:text-white disabled:opacity-20 disabled:hover:text-neutral-400 transition-colors cursor-pointer"
                         title="Move Down"
                       >
                         <ArrowDown size={14} />
@@ -374,14 +323,14 @@ export function TableManagement({ authToken }: { authToken: string }) {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => handleOpenEdit(table)}
-                        className="p-1.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-700/50 rounded-lg transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-amber-400 hover:bg-neutral-700/50 rounded-lg transition-colors cursor-pointer"
                         title="Edit Table"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button
                         onClick={() => handleToggleArchive(table)}
-                        className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-700/50 rounded-lg transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-700/50 rounded-lg transition-colors cursor-pointer"
                         title={table.archivedAt ? 'Restore Table' : 'Archive Table'}
                       >
                         {table.archivedAt ? <RotateCcw size={15} /> : <Archive size={15} />}
@@ -389,7 +338,7 @@ export function TableManagement({ authToken }: { authToken: string }) {
                       <button
                         disabled={table.status === 'ACTIVE'}
                         onClick={() => handleDelete(table)}
-                        className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-700/50 rounded-lg disabled:opacity-30 transition-colors"
+                        className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-700/50 rounded-lg disabled:opacity-30 transition-colors cursor-pointer disabled:cursor-not-allowed"
                         title="Delete Table"
                       >
                         <Trash2 size={15} />
@@ -416,26 +365,38 @@ export function TableManagement({ authToken }: { authToken: string }) {
                   type="number"
                   value={number}
                   onChange={e => setNumber(Number(e.target.value))}
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-bold"
                   required
                   min={1}
+                  placeholder="e.g. 1, 12, 101"
                 />
+                <span className="text-[10px] text-neutral-400 mt-1 block">Specify any custom table number. Numbers can be updated anytime.</span>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-neutral-300 mb-1">Dining Section / Area</label>
-                <input
-                  type="text"
-                  list="sections-list"
-                  value={section}
-                  onChange={e => setSection(e.target.value)}
-                  placeholder="e.g. Main Dining, Patio, Bar"
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-                  required
-                />
-                <datalist id="sections-list">
-                  {uniqueSections.map(s => <option key={s} value={s} />)}
-                </datalist>
+                <label className="block text-xs font-medium text-neutral-300 mb-1">Dining Section / Area *</label>
+                <select
+                  value={sectionMode}
+                  onChange={e => setSectionMode(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 font-medium"
+                >
+                  {uniqueSections.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  <option value="__CUSTOM__">+ Custom Area...</option>
+                </select>
+
+                {sectionMode === '__CUSTOM__' && (
+                  <input
+                    type="text"
+                    value={customSectionInput}
+                    onChange={e => setCustomSectionInput(e.target.value)}
+                    placeholder="Enter custom dining area name"
+                    className="mt-2 w-full bg-neutral-900 border border-amber-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                    required
+                    autoFocus
+                  />
+                )}
               </div>
               
               <div>
@@ -478,116 +439,15 @@ export function TableManagement({ authToken }: { authToken: string }) {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-xs text-neutral-300 hover:bg-neutral-700 rounded-xl transition-colors"
+                  className="px-4 py-2 text-xs text-neutral-300 hover:bg-neutral-700 rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 transition-colors"
+                  className="px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 transition-colors cursor-pointer"
                 >
                   Save Table
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Add by Category / Batch Modal */}
-      {showBatchModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-neutral-800 border border-neutral-700 rounded-2xl w-full max-w-md p-6 shadow-xl">
-            <h3 className="text-base font-bold text-white mb-1 flex items-center gap-2">
-              <Layers className="w-5 h-5 text-amber-400" />
-              Add Tables by Category
-            </h3>
-            <p className="text-xs text-neutral-400 mb-4">
-              Select or type a dining category and specify table numbers manually.
-            </p>
-
-            {batchError && (
-              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{batchError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleBatchSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-neutral-300 mb-1">
-                  Dining Area / Category *
-                </label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    required
-                    value={batchSection}
-                    onChange={e => setBatchSection(e.target.value)}
-                    placeholder="e.g. Patio, VIP Lounge, Terrace, Bar"
-                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                  />
-                  {uniqueSections.length > 0 && (
-                    <select
-                      onChange={e => {
-                        if (e.target.value) setBatchSection(e.target.value);
-                      }}
-                      className="bg-neutral-900 border border-neutral-700 rounded-lg px-2 text-xs text-neutral-300 focus:outline-none focus:border-amber-500"
-                    >
-                      <option value="">Choose existing...</option>
-                      {uniqueSections.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-neutral-300 mb-1">
-                  Table Numbers (Manual or Ranges) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={batchNumbersInput}
-                  onChange={e => setBatchNumbersInput(e.target.value)}
-                  placeholder="e.g. 20-25 or 101, 102, 103"
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
-                />
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Enter comma-separated numbers (1, 2, 3) or hyphenated ranges (10-15).
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-neutral-300 mb-1">
-                  Table Label Prefix (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={batchLabelPrefix}
-                  onChange={e => setBatchLabelPrefix(e.target.value)}
-                  placeholder="Table (or T, Bar, Booth)"
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div className="flex gap-3 justify-end pt-4 mt-2 border-t border-neutral-700">
-                <button
-                  type="button"
-                  disabled={batchSubmitting}
-                  onClick={() => setShowBatchModal(false)}
-                  className="px-4 py-2 text-xs text-neutral-300 hover:bg-neutral-700 rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={batchSubmitting}
-                  className="px-4 py-2 bg-amber-500 text-neutral-950 font-semibold text-xs rounded-xl hover:bg-amber-400 transition-colors disabled:opacity-50"
-                >
-                  {batchSubmitting ? 'Creating Tables...' : 'Add Tables'}
                 </button>
               </div>
             </form>

@@ -49,6 +49,7 @@ export interface Order {
   tableNumber?: number;
   tableLabel?: string | null;
   tableSection?: string | null;
+  covers?: number;
   status: 'OPEN' | 'CLOSED';
   currencySnapshot?: string | null;
   openedByUserId?: string | null;

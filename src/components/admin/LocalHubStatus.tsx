@@ -61,7 +61,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
     return `${m}m`;
   };
 
-  const primaryUrl = status?.primaryLanUrl || (status?.lanIps?.[0] ? `http://${status.lanIps[0]}:3000` : 'http://localhost:3000');
+  const primaryUrl = status?.primaryLanUrl || (status?.lanIps?.[0] ? `http://${status.lanIps[0]}:8989` : 'http://localhost:8989');
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -110,7 +110,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                     <span className="text-xs font-black text-emerald-600 uppercase tracking-wider">Hub Active & Running</span>
                   </div>
                   <h3 className="text-xl font-black text-gray-900 mt-0.5">{status.restaurantName}</h3>
-                  <span className="text-xs font-medium text-gray-400">RESTOS v{status.version} • Uptime {formatUptime(status.uptimeSeconds)}</span>
+                  <span className="text-xs font-medium text-gray-400">RestaurantOS Local Hub v{status.version} • Uptime {formatUptime(status.uptimeSeconds)}</span>
                 </div>
               </div>
 
@@ -239,9 +239,9 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {status.lanIps.map((ip: string) => (
                   <div key={ip} className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-gray-800">http://{ip}:3000</span>
+                    <span className="font-mono text-xs font-bold text-gray-800">http://{ip}:8989</span>
                     <button
-                      onClick={() => handleCopyUrl(`http://${ip}:3000`)}
+                      onClick={() => handleCopyUrl(`http://${ip}:8989`)}
                       className="text-blue-600 hover:text-blue-700 text-xs font-bold"
                     >
                       Copy

@@ -5,8 +5,9 @@ export const SetupPayloadSchema = z.object({
   language: z.string().default('en'),
   currency: z.string().length(3, 'Currency code must be exactly 3 characters (e.g. USD, EUR, GBP)').default('USD'),
   timezone: z.string().default('UTC'),
+  seatingCapacity: z.number().int().min(1).default(30),
   logo: z.string().optional(),
-  tableCount: z.number().int().min(1).max(500).optional(),
+  tableCount: z.number().int().min(1).max(100).optional(),
   sections: z.array(z.string()).optional(),
   initialTables: z.array(z.object({
     number: z.number().int().min(1),
@@ -58,7 +59,7 @@ export const CommandPayloadSchema = z.object({
   payload: z.any()
 });
 
-export const OpenTablePayload = z.object({ tableId: z.string() });
+export const OpenTablePayload = z.object({ tableId: z.string(), covers: z.number().int().min(1).optional().default(1) });
 export const CloseTablePayload = z.object({ tableId: z.string() });
 export const AddItemPayload = z.object({ tableId: z.string(), menuItemId: z.string(), notes: z.string().max(255).optional() });
 export const UpdateItemPayload = z.object({ tableId: z.string(), orderItemId: z.string() });

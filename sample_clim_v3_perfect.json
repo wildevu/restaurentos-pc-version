@@ -1,0 +1,1531 @@
+{
+  "header": {
+    "version": 3,
+    "product": "restaurantos",
+    "exportId": "exp_clim_2025_05_07_v3",
+    "installationId": "inst_clim_98765432101234",
+    "restaurantName": "Restaurant Clim",
+    "currency": "DZD",
+    "seatingCapacity": 45,
+    "hasCostData": true,
+    "period": {
+      "days": 7,
+      "startDate": "2025-05-01T00:00:00.000Z",
+      "endDate": "2025-05-07T23:59:59.000Z"
+    },
+    "generatedAt": "2025-05-08T08:00:00.000Z",
+    "operationalNotes": []
+  },
+  "kpiSummary": {
+    "totalGrossRevenue": 673480,
+    "totalOrders": 308,
+    "totalTablesServed": 308,
+    "averageOrderValue": 2186.62,
+    "averageTurnTimeMinutes": 46.5,
+    "paymentMethod": "CASH_ONLY"
+  },
+  "dailyHourlySales": [
+    {
+      "date": "2025-05-01",
+      "hour": 11,
+      "revenue": 4558,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 12,
+      "revenue": 18232,
+      "orderCount": 8
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 13,
+      "revenue": 22790,
+      "orderCount": 10
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 14,
+      "revenue": 9116,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 18,
+      "revenue": 7293,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 19,
+      "revenue": 10939,
+      "orderCount": 5
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 20,
+      "revenue": 10939,
+      "orderCount": 5
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 21,
+      "revenue": 4558,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-01",
+      "hour": 22,
+      "revenue": 2735,
+      "orderCount": 1
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 11,
+      "revenue": 6592,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 12,
+      "revenue": 26366,
+      "orderCount": 12
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 13,
+      "revenue": 32958,
+      "orderCount": 15
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 14,
+      "revenue": 13183,
+      "orderCount": 6
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 18,
+      "revenue": 10546,
+      "orderCount": 5
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 19,
+      "revenue": 15820,
+      "orderCount": 7
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 20,
+      "revenue": 15820,
+      "orderCount": 7
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 21,
+      "revenue": 6592,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-02",
+      "hour": 22,
+      "revenue": 3953,
+      "orderCount": 0
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 11,
+      "revenue": 8283,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 12,
+      "revenue": 33132,
+      "orderCount": 14
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 13,
+      "revenue": 41415,
+      "orderCount": 18
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 14,
+      "revenue": 16566,
+      "orderCount": 7
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 18,
+      "revenue": 13253,
+      "orderCount": 6
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 19,
+      "revenue": 19879,
+      "orderCount": 9
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 20,
+      "revenue": 19879,
+      "orderCount": 9
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 21,
+      "revenue": 8283,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-03",
+      "hour": 22,
+      "revenue": 4970,
+      "orderCount": 1
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 11,
+      "revenue": 3794,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 12,
+      "revenue": 15176,
+      "orderCount": 7
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 13,
+      "revenue": 18970,
+      "orderCount": 9
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 14,
+      "revenue": 7588,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 18,
+      "revenue": 6070,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 19,
+      "revenue": 9106,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 20,
+      "revenue": 9106,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 21,
+      "revenue": 3794,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-04",
+      "hour": 22,
+      "revenue": 2276,
+      "orderCount": 1
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 11,
+      "revenue": 3017,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 12,
+      "revenue": 12068,
+      "orderCount": 6
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 13,
+      "revenue": 15085,
+      "orderCount": 8
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 14,
+      "revenue": 6034,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 18,
+      "revenue": 4827,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 19,
+      "revenue": 7241,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 20,
+      "revenue": 7241,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 21,
+      "revenue": 3017,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-05",
+      "hour": 22,
+      "revenue": 1810,
+      "orderCount": -1
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 11,
+      "revenue": 3388,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 12,
+      "revenue": 13552,
+      "orderCount": 7
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 13,
+      "revenue": 16940,
+      "orderCount": 9
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 14,
+      "revenue": 6776,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 18,
+      "revenue": 5421,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 19,
+      "revenue": 8131,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 20,
+      "revenue": 8131,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 21,
+      "revenue": 3388,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-06",
+      "hour": 22,
+      "revenue": 2033,
+      "orderCount": 0
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 11,
+      "revenue": 4043,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 12,
+      "revenue": 16170,
+      "orderCount": 8
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 13,
+      "revenue": 20213,
+      "orderCount": 10
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 14,
+      "revenue": 8085,
+      "orderCount": 4
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 18,
+      "revenue": 6468,
+      "orderCount": 3
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 19,
+      "revenue": 9702,
+      "orderCount": 5
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 20,
+      "revenue": 9702,
+      "orderCount": 5
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 21,
+      "revenue": 4043,
+      "orderCount": 2
+    },
+    {
+      "date": "2025-05-07",
+      "hour": 22,
+      "revenue": 2424,
+      "orderCount": -1
+    }
+  ],
+  "itemSalesByDate": [
+    {
+      "date": "2025-05-01",
+      "itemName": "Burger Clim Special",
+      "category": "MAIN",
+      "quantitySold": 20,
+      "unitPrice": 850,
+      "costPrice": 320,
+      "revenue": 17000
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Pizza Quatre Fromages",
+      "category": "MAIN",
+      "quantitySold": 14,
+      "unitPrice": 950,
+      "costPrice": 380,
+      "revenue": 13300
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Pizza Royale",
+      "category": "MAIN",
+      "quantitySold": 10,
+      "unitPrice": 1100,
+      "costPrice": 420,
+      "revenue": 11000
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Chicken Sandwich",
+      "category": "MAIN",
+      "quantitySold": 12,
+      "unitPrice": 650,
+      "costPrice": 220,
+      "revenue": 7800
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Salade César",
+      "category": "STARTER",
+      "quantitySold": 8,
+      "unitPrice": 700,
+      "costPrice": 250,
+      "revenue": 5600
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Entrecôte Grillée",
+      "category": "MAIN",
+      "quantitySold": 4,
+      "unitPrice": 2200,
+      "costPrice": 1100,
+      "revenue": 8800
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Frites Portion",
+      "category": "SIDE",
+      "quantitySold": 25,
+      "unitPrice": 250,
+      "costPrice": 70,
+      "revenue": 6250
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Soupe de Poisson",
+      "category": "STARTER",
+      "quantitySold": 1,
+      "unitPrice": 600,
+      "costPrice": 280,
+      "revenue": 600
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Canette Jus 33cl",
+      "category": "DRINK_SOFT",
+      "quantitySold": 35,
+      "unitPrice": 150,
+      "costPrice": 80,
+      "revenue": 5250
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Eau Minérale 1.5L",
+      "category": "DRINK_SOFT",
+      "quantitySold": 20,
+      "unitPrice": 100,
+      "costPrice": 45,
+      "revenue": 2000
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Tiramisu Maison",
+      "category": "DESSERT",
+      "quantitySold": 12,
+      "unitPrice": 450,
+      "costPrice": 160,
+      "revenue": 5400
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Fondant au Chocolat",
+      "category": "DESSERT",
+      "quantitySold": 8,
+      "unitPrice": 500,
+      "costPrice": 180,
+      "revenue": 4000
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Thé Glacé",
+      "category": "DRINK_SOFT",
+      "quantitySold": 10,
+      "unitPrice": 200,
+      "costPrice": 60,
+      "revenue": 2000
+    },
+    {
+      "date": "2025-05-01",
+      "itemName": "Espresso",
+      "category": "DRINK_HOT",
+      "quantitySold": 18,
+      "unitPrice": 120,
+      "costPrice": 30,
+      "revenue": 2160
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Burger Clim Special",
+      "category": "MAIN",
+      "quantitySold": 28,
+      "unitPrice": 850,
+      "costPrice": 320,
+      "revenue": 23800
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Pizza Quatre Fromages",
+      "category": "MAIN",
+      "quantitySold": 22,
+      "unitPrice": 950,
+      "costPrice": 380,
+      "revenue": 20900
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Pizza Royale",
+      "category": "MAIN",
+      "quantitySold": 15,
+      "unitPrice": 1100,
+      "costPrice": 420,
+      "revenue": 16500
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Chicken Sandwich",
+      "category": "MAIN",
+      "quantitySold": 16,
+      "unitPrice": 650,
+      "costPrice": 220,
+      "revenue": 10400
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Salade César",
+      "category": "STARTER",
+      "quantitySold": 11,
+      "unitPrice": 700,
+      "costPrice": 250,
+      "revenue": 7700
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Entrecôte Grillée",
+      "category": "MAIN",
+      "quantitySold": 6,
+      "unitPrice": 2200,
+      "costPrice": 1100,
+      "revenue": 13200
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Frites Portion",
+      "category": "SIDE",
+      "quantitySold": 35,
+      "unitPrice": 250,
+      "costPrice": 70,
+      "revenue": 8750
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Soupe de Poisson",
+      "category": "STARTER",
+      "quantitySold": 4,
+      "unitPrice": 600,
+      "costPrice": 280,
+      "revenue": 2400
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Canette Jus 33cl",
+      "category": "DRINK_SOFT",
+      "quantitySold": 50,
+      "unitPrice": 150,
+      "costPrice": 80,
+      "revenue": 7500
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Eau Minérale 1.5L",
+      "category": "DRINK_SOFT",
+      "quantitySold": 28,
+      "unitPrice": 100,
+      "costPrice": 45,
+      "revenue": 2800
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Tiramisu Maison",
+      "category": "DESSERT",
+      "quantitySold": 16,
+      "unitPrice": 450,
+      "costPrice": 160,
+      "revenue": 7200
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Fondant au Chocolat",
+      "category": "DESSERT",
+      "quantitySold": 10,
+      "unitPrice": 500,
+      "costPrice": 180,
+      "revenue": 5000
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Thé Glacé",
+      "category": "DRINK_SOFT",
+      "quantitySold": 14,
+      "unitPrice": 200,
+      "costPrice": 60,
+      "revenue": 2800
+    },
+    {
+      "date": "2025-05-02",
+      "itemName": "Espresso",
+      "category": "DRINK_HOT",
+      "quantitySold": 24,
+      "unitPrice": 120,
+      "costPrice": 30,
+      "revenue": 2880
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Burger Clim Special",
+      "category": "MAIN",
+      "quantitySold": 34,
+      "unitPrice": 850,
+      "costPrice": 320,
+      "revenue": 28900
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Pizza Quatre Fromages",
+      "category": "MAIN",
+      "quantitySold": 28,
+      "unitPrice": 950,
+      "costPrice": 380,
+      "revenue": 26600
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Pizza Royale",
+      "category": "MAIN",
+      "quantitySold": 18,
+      "unitPrice": 1100,
+      "costPrice": 420,
+      "revenue": 19800
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Chicken Sandwich",
+      "category": "MAIN",
+      "quantitySold": 20,
+      "unitPrice": 650,
+      "costPrice": 220,
+      "revenue": 13000
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Salade César",
+      "category": "STARTER",
+      "quantitySold": 14,
+      "unitPrice": 700,
+      "costPrice": 250,
+      "revenue": 9800
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Entrecôte Grillée",
+      "category": "MAIN",
+      "quantitySold": 9,
+      "unitPrice": 2200,
+      "costPrice": 1100,
+      "revenue": 19800
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Frites Portion",
+      "category": "SIDE",
+      "quantitySold": 42,
+      "unitPrice": 250,
+      "costPrice": 70,
+      "revenue": 10500
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Soupe de Poisson",
+      "category": "STARTER",
+      "quantitySold": 5,
+      "unitPrice": 600,
+      "costPrice": 280,
+      "revenue": 3000
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Canette Jus 33cl",
+      "category": "DRINK_SOFT",
+      "quantitySold": 62,
+      "unitPrice": 150,
+      "costPrice": 80,
+      "revenue": 9300
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Eau Minérale 1.5L",
+      "category": "DRINK_SOFT",
+      "quantitySold": 34,
+      "unitPrice": 100,
+      "costPrice": 45,
+      "revenue": 3400
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Tiramisu Maison",
+      "category": "DESSERT",
+      "quantitySold": 20,
+      "unitPrice": 450,
+      "costPrice": 160,
+      "revenue": 9000
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Fondant au Chocolat",
+      "category": "DESSERT",
+      "quantitySold": 12,
+      "unitPrice": 500,
+      "costPrice": 180,
+      "revenue": 6000
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Thé Glacé",
+      "category": "DRINK_SOFT",
+      "quantitySold": 16,
+      "unitPrice": 200,
+      "costPrice": 60,
+      "revenue": 3200
+    },
+    {
+      "date": "2025-05-03",
+      "itemName": "Espresso",
+      "category": "DRINK_HOT",
+      "quantitySold": 28,
+      "unitPrice": 120,
+      "costPrice": 30,
+      "revenue": 3360
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Burger Clim Special",
+      "category": "MAIN",
+      "quantitySold": 18,
+      "unitPrice": 850,
+      "costPrice": 320,
+      "revenue": 15300
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Pizza Quatre Fromages",
+      "category": "MAIN",
+      "quantitySold": 13,
+      "unitPrice": 950,
+      "costPrice": 380,
+      "revenue": 12350
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Pizza Royale",
+      "category": "MAIN",
+      "quantitySold": 8,
+      "unitPrice": 1100,
+      "costPrice": 420,
+      "revenue": 8800
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Chicken Sandwich",
+      "category": "MAIN",
+      "quantitySold": 10,
+      "unitPrice": 650,
+      "costPrice": 220,
+      "revenue": 6500
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Salade César",
+      "category": "STARTER",
+      "quantitySold": 7,
+      "unitPrice": 700,
+      "costPrice": 250,
+      "revenue": 4900
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Entrecôte Grillée",
+      "category": "MAIN",
+      "quantitySold": 3,
+      "unitPrice": 2200,
+      "costPrice": 1100,
+      "revenue": 6600
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Frites Portion",
+      "category": "SIDE",
+      "quantitySold": 22,
+      "unitPrice": 250,
+      "costPrice": 70,
+      "revenue": 5500
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Soupe de Poisson",
+      "category": "STARTER",
+      "quantitySold": 0,
+      "unitPrice": 600,
+      "costPrice": 280,
+      "revenue": 0
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Canette Jus 33cl",
+      "category": "DRINK_SOFT",
+      "quantitySold": 30,
+      "unitPrice": 150,
+      "costPrice": 80,
+      "revenue": 4500
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Eau Minérale 1.5L",
+      "category": "DRINK_SOFT",
+      "quantitySold": 16,
+      "unitPrice": 100,
+      "costPrice": 45,
+      "revenue": 1600
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Tiramisu Maison",
+      "category": "DESSERT",
+      "quantitySold": 9,
+      "unitPrice": 450,
+      "costPrice": 160,
+      "revenue": 4050
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Fondant au Chocolat",
+      "category": "DESSERT",
+      "quantitySold": 5,
+      "unitPrice": 500,
+      "costPrice": 180,
+      "revenue": 2500
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Thé Glacé",
+      "category": "DRINK_SOFT",
+      "quantitySold": 8,
+      "unitPrice": 200,
+      "costPrice": 60,
+      "revenue": 1600
+    },
+    {
+      "date": "2025-05-04",
+      "itemName": "Espresso",
+      "category": "DRINK_HOT",
+      "quantitySold": 14,
+      "unitPrice": 120,
+      "costPrice": 30,
+      "revenue": 1680
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Burger Clim Special",
+      "category": "MAIN",
+      "quantitySold": 15,
+      "unitPrice": 850,
+      "costPrice": 320,
+      "revenue": 12750
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Pizza Quatre Fromages",
+      "category": "MAIN",
+      "quantitySold": 11,
+      "unitPrice": 950,
+      "costPrice": 380,
+      "revenue": 10450
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Pizza Royale",
+      "category": "MAIN",
+      "quantitySold": 6,
+      "unitPrice": 1100,
+      "costPrice": 420,
+      "revenue": 6600
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Chicken Sandwich",
+      "category": "MAIN",
+      "quantitySold": 8,
+      "unitPrice": 650,
+      "costPrice": 220,
+      "revenue": 5200
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Salade César",
+      "category": "STARTER",
+      "quantitySold": 5,
+      "unitPrice": 700,
+      "costPrice": 250,
+      "revenue": 3500
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Entrecôte Grillée",
+      "category": "MAIN",
+      "quantitySold": 2,
+      "unitPrice": 2200,
+      "costPrice": 1100,
+      "revenue": 4400
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Frites Portion",
+      "category": "SIDE",
+      "quantitySold": 18,
+      "unitPrice": 250,
+      "costPrice": 70,
+      "revenue": 4500
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Soupe de Poisson",
+      "category": "STARTER",
+      "quantitySold": 0,
+      "unitPrice": 600,
+      "costPrice": 280,
+      "revenue": 0
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Canette Jus 33cl",
+      "category": "DRINK_SOFT",
+      "quantitySold": 25,
+      "unitPrice": 150,
+      "costPrice": 80,
+      "revenue": 3750
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Eau Minérale 1.5L",
+      "category": "DRINK_SOFT",
+      "quantitySold": 14,
+      "unitPrice": 100,
+      "costPrice": 45,
+      "revenue": 1400
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Tiramisu Maison",
+      "category": "DESSERT",
+      "quantitySold": 7,
+      "unitPrice": 450,
+      "costPrice": 160,
+      "revenue": 3150
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Fondant au Chocolat",
+      "category": "DESSERT",
+      "quantitySold": 4,
+      "unitPrice": 500,
+      "costPrice": 180,
+      "revenue": 2000
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Thé Glacé",
+      "category": "DRINK_SOFT",
+      "quantitySold": 6,
+      "unitPrice": 200,
+      "costPrice": 60,
+      "revenue": 1200
+    },
+    {
+      "date": "2025-05-05",
+      "itemName": "Espresso",
+      "category": "DRINK_HOT",
+      "quantitySold": 12,
+      "unitPrice": 120,
+      "costPrice": 30,
+      "revenue": 1440
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Burger Clim Special",
+      "category": "MAIN",
+      "quantitySold": 17,
+      "unitPrice": 850,
+      "costPrice": 320,
+      "revenue": 14450
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Pizza Quatre Fromages",
+      "category": "MAIN",
+      "quantitySold": 12,
+      "unitPrice": 950,
+      "costPrice": 380,
+      "revenue": 11400
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Pizza Royale",
+      "category": "MAIN",
+      "quantitySold": 7,
+      "unitPrice": 1100,
+      "costPrice": 420,
+      "revenue": 7700
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Chicken Sandwich",
+      "category": "MAIN",
+      "quantitySold": 9,
+      "unitPrice": 650,
+      "costPrice": 220,
+      "revenue": 5850
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Salade César",
+      "category": "STARTER",
+      "quantitySold": 6,
+      "unitPrice": 700,
+      "costPrice": 250,
+      "revenue": 4200
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Entrecôte Grillée",
+      "category": "MAIN",
+      "quantitySold": 2,
+      "unitPrice": 2200,
+      "costPrice": 1100,
+      "revenue": 4400
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Frites Portion",
+      "category": "SIDE",
+      "quantitySold": 20,
+      "unitPrice": 250,
+      "costPrice": 70,
+      "revenue": 5000
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Soupe de Poisson",
+      "category": "STARTER",
+      "quantitySold": 0,
+      "unitPrice": 600,
+      "costPrice": 280,
+      "revenue": 0
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Canette Jus 33cl",
+      "category": "DRINK_SOFT",
+      "quantitySold": 28,
+      "unitPrice": 150,
+      "costPrice": 80,
+      "revenue": 4200
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Eau Minérale 1.5L",
+      "category": "DRINK_SOFT",
+      "quantitySold": 15,
+      "unitPrice": 100,
+      "costPrice": 45,
+      "revenue": 1500
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Tiramisu Maison",
+      "category": "DESSERT",
+      "quantitySold": 8,
+      "unitPrice": 450,
+      "costPrice": 160,
+      "revenue": 3600
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Fondant au Chocolat",
+      "category": "DESSERT",
+      "quantitySold": 5,
+      "unitPrice": 500,
+      "costPrice": 180,
+      "revenue": 2500
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Thé Glacé",
+      "category": "DRINK_SOFT",
+      "quantitySold": 7,
+      "unitPrice": 200,
+      "costPrice": 60,
+      "revenue": 1400
+    },
+    {
+      "date": "2025-05-06",
+      "itemName": "Espresso",
+      "category": "DRINK_HOT",
+      "quantitySold": 13,
+      "unitPrice": 120,
+      "costPrice": 30,
+      "revenue": 1560
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Burger Clim Special",
+      "category": "MAIN",
+      "quantitySold": 19,
+      "unitPrice": 850,
+      "costPrice": 320,
+      "revenue": 16150
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Pizza Quatre Fromages",
+      "category": "MAIN",
+      "quantitySold": 14,
+      "unitPrice": 950,
+      "costPrice": 380,
+      "revenue": 13300
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Pizza Royale",
+      "category": "MAIN",
+      "quantitySold": 8,
+      "unitPrice": 1100,
+      "costPrice": 420,
+      "revenue": 8800
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Chicken Sandwich",
+      "category": "MAIN",
+      "quantitySold": 11,
+      "unitPrice": 650,
+      "costPrice": 220,
+      "revenue": 7150
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Salade César",
+      "category": "STARTER",
+      "quantitySold": 7,
+      "unitPrice": 700,
+      "costPrice": 250,
+      "revenue": 4900
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Entrecôte Grillée",
+      "category": "MAIN",
+      "quantitySold": 3,
+      "unitPrice": 2200,
+      "costPrice": 1100,
+      "revenue": 6600
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Frites Portion",
+      "category": "SIDE",
+      "quantitySold": 23,
+      "unitPrice": 250,
+      "costPrice": 70,
+      "revenue": 5750
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Soupe de Poisson",
+      "category": "STARTER",
+      "quantitySold": 1,
+      "unitPrice": 600,
+      "costPrice": 280,
+      "revenue": 600
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Canette Jus 33cl",
+      "category": "DRINK_SOFT",
+      "quantitySold": 32,
+      "unitPrice": 150,
+      "costPrice": 80,
+      "revenue": 4800
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Eau Minérale 1.5L",
+      "category": "DRINK_SOFT",
+      "quantitySold": 17,
+      "unitPrice": 100,
+      "costPrice": 45,
+      "revenue": 1700
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Tiramisu Maison",
+      "category": "DESSERT",
+      "quantitySold": 10,
+      "unitPrice": 450,
+      "costPrice": 160,
+      "revenue": 4500
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Fondant au Chocolat",
+      "category": "DESSERT",
+      "quantitySold": 6,
+      "unitPrice": 500,
+      "costPrice": 180,
+      "revenue": 3000
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Thé Glacé",
+      "category": "DRINK_SOFT",
+      "quantitySold": 9,
+      "unitPrice": 200,
+      "costPrice": 60,
+      "revenue": 1800
+    },
+    {
+      "date": "2025-05-07",
+      "itemName": "Espresso",
+      "category": "DRINK_HOT",
+      "quantitySold": 15,
+      "unitPrice": 120,
+      "costPrice": 30,
+      "revenue": 1800
+    }
+  ],
+  "staffPerformanceByDate": [
+    {
+      "date": "2025-05-01",
+      "userName": "Karim A.",
+      "tablesManaged": 15,
+      "revenue": 34641
+    },
+    {
+      "date": "2025-05-01",
+      "userName": "Sarah M.",
+      "tablesManaged": 11,
+      "revenue": 25525
+    },
+    {
+      "date": "2025-05-01",
+      "userName": "Yassine K.",
+      "tablesManaged": 8,
+      "revenue": 18232
+    },
+    {
+      "date": "2025-05-01",
+      "userName": "Amine B.",
+      "tablesManaged": 6,
+      "revenue": 12762
+    },
+    {
+      "date": "2025-05-02",
+      "userName": "Karim A.",
+      "tablesManaged": 22,
+      "revenue": 50095
+    },
+    {
+      "date": "2025-05-02",
+      "userName": "Sarah M.",
+      "tablesManaged": 16,
+      "revenue": 36912
+    },
+    {
+      "date": "2025-05-02",
+      "userName": "Yassine K.",
+      "tablesManaged": 12,
+      "revenue": 26366
+    },
+    {
+      "date": "2025-05-02",
+      "userName": "Amine B.",
+      "tablesManaged": 8,
+      "revenue": 18457
+    },
+    {
+      "date": "2025-05-03",
+      "userName": "Karim A.",
+      "tablesManaged": 27,
+      "revenue": 62951
+    },
+    {
+      "date": "2025-05-03",
+      "userName": "Sarah M.",
+      "tablesManaged": 20,
+      "revenue": 46385
+    },
+    {
+      "date": "2025-05-03",
+      "userName": "Yassine K.",
+      "tablesManaged": 14,
+      "revenue": 33132
+    },
+    {
+      "date": "2025-05-03",
+      "userName": "Amine B.",
+      "tablesManaged": 11,
+      "revenue": 23192
+    },
+    {
+      "date": "2025-05-04",
+      "userName": "Karim A.",
+      "tablesManaged": 14,
+      "revenue": 28834
+    },
+    {
+      "date": "2025-05-04",
+      "userName": "Sarah M.",
+      "tablesManaged": 10,
+      "revenue": 21246
+    },
+    {
+      "date": "2025-05-04",
+      "userName": "Yassine K.",
+      "tablesManaged": 7,
+      "revenue": 15176
+    },
+    {
+      "date": "2025-05-04",
+      "userName": "Amine B.",
+      "tablesManaged": 5,
+      "revenue": 10624
+    },
+    {
+      "date": "2025-05-05",
+      "userName": "Karim A.",
+      "tablesManaged": 11,
+      "revenue": 22929
+    },
+    {
+      "date": "2025-05-05",
+      "userName": "Sarah M.",
+      "tablesManaged": 8,
+      "revenue": 16895
+    },
+    {
+      "date": "2025-05-05",
+      "userName": "Yassine K.",
+      "tablesManaged": 6,
+      "revenue": 12068
+    },
+    {
+      "date": "2025-05-05",
+      "userName": "Amine B.",
+      "tablesManaged": 5,
+      "revenue": 8448
+    },
+    {
+      "date": "2025-05-06",
+      "userName": "Karim A.",
+      "tablesManaged": 13,
+      "revenue": 25749
+    },
+    {
+      "date": "2025-05-06",
+      "userName": "Sarah M.",
+      "tablesManaged": 10,
+      "revenue": 18973
+    },
+    {
+      "date": "2025-05-06",
+      "userName": "Yassine K.",
+      "tablesManaged": 7,
+      "revenue": 13552
+    },
+    {
+      "date": "2025-05-06",
+      "userName": "Amine B.",
+      "tablesManaged": 4,
+      "revenue": 9486
+    },
+    {
+      "date": "2025-05-07",
+      "userName": "Karim A.",
+      "tablesManaged": 14,
+      "revenue": 30723
+    },
+    {
+      "date": "2025-05-07",
+      "userName": "Sarah M.",
+      "tablesManaged": 11,
+      "revenue": 22638
+    },
+    {
+      "date": "2025-05-07",
+      "userName": "Yassine K.",
+      "tablesManaged": 8,
+      "revenue": 16170
+    },
+    {
+      "date": "2025-05-07",
+      "userName": "Amine B.",
+      "tablesManaged": 5,
+      "revenue": 11319
+    }
+  ],
+  "ticketSizeDistribution": [
+    {
+      "category": "SMALL_TICKET (<50% AOV)",
+      "thresholdMax": 1093,
+      "orderCount": 51,
+      "percentage": 16.6
+    },
+    {
+      "category": "STANDARD_TICKET (50-120% AOV)",
+      "thresholdMax": 2624,
+      "orderCount": 154,
+      "percentage": 50
+    },
+    {
+      "category": "LARGE_TICKET (120-250% AOV)",
+      "thresholdMax": 5467,
+      "orderCount": 82,
+      "percentage": 26.6
+    },
+    {
+      "category": "VIP_GROUP_TICKET (>250% AOV)",
+      "thresholdMax": null,
+      "orderCount": 21,
+      "percentage": 6.8
+    }
+  ],
+  "tableTurnMetrics": [
+    {
+      "date": "2025-05-01",
+      "averageTurnTimeMinutes": 44.2,
+      "tablesWithLongTurns": 2,
+      "peakHourAvgTurnTime": 51
+    },
+    {
+      "date": "2025-05-02",
+      "averageTurnTimeMinutes": 48.5,
+      "tablesWithLongTurns": 4,
+      "peakHourAvgTurnTime": 56.2
+    },
+    {
+      "date": "2025-05-03",
+      "averageTurnTimeMinutes": 52,
+      "tablesWithLongTurns": 6,
+      "peakHourAvgTurnTime": 60.5
+    },
+    {
+      "date": "2025-05-04",
+      "averageTurnTimeMinutes": 43.1,
+      "tablesWithLongTurns": 1,
+      "peakHourAvgTurnTime": 49
+    },
+    {
+      "date": "2025-05-05",
+      "averageTurnTimeMinutes": 41.5,
+      "tablesWithLongTurns": 1,
+      "peakHourAvgTurnTime": 46.8
+    },
+    {
+      "date": "2025-05-06",
+      "averageTurnTimeMinutes": 42.8,
+      "tablesWithLongTurns": 2,
+      "peakHourAvgTurnTime": 48.2
+    },
+    {
+      "date": "2025-05-07",
+      "averageTurnTimeMinutes": 44,
+      "tablesWithLongTurns": 2,
+      "peakHourAvgTurnTime": 50.1
+    }
+  ]
+}

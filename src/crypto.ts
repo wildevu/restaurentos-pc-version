@@ -17,22 +17,27 @@ export function hashPassword(password: string): string {
 }
 
 /**
- * Verify a password against a scrypt or bcrypt hash.
+ * Verify a password against a scrypt or bcrypt hash asynchronously.
  */
-export function verifyPassword(password: string, hash: string): boolean {
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   try {
     if (hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$')) {
-      return bcrypt.compareSync(password, hash);
+      return await bcrypt.compare(password, hash);
     }
 
     const [salt, key] = hash.split(':');
     if (!salt || !key) return false;
     
     const keyBuffer = Buffer.from(key, 'hex');
-    const derivedKey = crypto.scryptSync(password, salt, KEY_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+    const derivedKey = await new Promise<Buffer>((resolve, reject) => {
+      crypto.scrypt(password, salt, KEY_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P }, (err, buf) => {
+        if (err) reject(err);
+        else resolve(buf);
+      });
+    });
     
     return crypto.timingSafeEqual(keyBuffer, derivedKey);
-  } catch (err) {
+  } catch {
     return false;
   }
 }

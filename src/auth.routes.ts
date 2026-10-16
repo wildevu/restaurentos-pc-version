@@ -31,8 +31,8 @@ export const authRouter = Router();
 // In-memory rate limiting logic
 const loginAttempts = new Map<string, { count: number, resetAt: number }>();
 const pairAttempts = new Map<string, { count: number, resetAt: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 5 * 60 * 1000;
+const MAX_ATTEMPTS = 15;
+const LOCKOUT_MS = 2 * 60 * 1000;
 
 // Auth Status check - returns configured / unconfigured state
 authRouter.get(['/status', '/setup-status'], async (req, res) => {
@@ -144,7 +144,9 @@ authRouter.post('/setup', async (req, res) => {
     }
 
     const payload = SetupPayloadSchema.parse(req.body);
-    const restaurantId = uuidv4();
+    const restaurantId = (licenseStatus.restaurantId && licenseStatus.restaurantId !== 'default')
+      ? licenseStatus.restaurantId
+      : uuidv4();
     const ownerId = uuidv4();
     const sessionId = uuidv4();
     const now = new Date();
@@ -160,6 +162,7 @@ authRouter.post('/setup', async (req, res) => {
         language: payload.language || 'en',
         currency: payload.currency.toUpperCase(),
         timezone: payload.timezone,
+        seatingCapacity: payload.seatingCapacity || 30,
         logo: payload.logo || null,
         createdAt: now,
         updatedAt: now,
@@ -197,6 +200,7 @@ authRouter.post('/setup', async (req, res) => {
 
       // 4. Create Initial Tables if requested or provided
       if (payload.initialTables && payload.initialTables.length > 0) {
+        logger.info(`[Setup] Creating ${payload.initialTables.length} custom numbered tables...`);
         for (let i = 0; i < payload.initialTables.length; i++) {
           const t = payload.initialTables[i];
           await tx.insert(tables).values({
@@ -227,15 +231,7 @@ authRouter.post('/setup', async (req, res) => {
         }
       }
 
-      // 5. Create default categories for fresh start
-      const defaultCategories = ['Starters', 'Mains', 'Desserts', 'Beverages'];
-      for (let i = 0; i < defaultCategories.length; i++) {
-        await tx.insert(menuCategories).values({
-          id: uuidv4(),
-          name: defaultCategories[i],
-          displayOrder: i + 1,
-        });
-      }
+      // 5. Menu categories start completely clean — client creates or imports their menu
 
       // 6. Create Initial Session for immediate seamless login
       await tx.insert(sessions).values({
@@ -438,7 +434,7 @@ authRouter.post('/login', async (req, res) => {
     }
 
     const user = userRecords[0];
-    const isValid = verifyPassword(payload.password, user.passwordHash);
+    const isValid = await verifyPassword(payload.password, user.passwordHash);
     
     if (!isValid) {
       const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };

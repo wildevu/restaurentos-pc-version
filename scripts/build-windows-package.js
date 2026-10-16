@@ -182,10 +182,8 @@ async function buildPackage() {
   // Copy top-level launcher and installers
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'launch-hub.bat'), path.join(APP_OUT, 'launch-hub.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'Launch-RestaurantOS.vbs'), path.join(APP_OUT, 'Launch-RestaurantOS.vbs'));
-  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'Troubleshoot-RestaurantOS.bat'), path.join(APP_OUT, 'Troubleshoot-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'RestaurantOS.cs'), path.join(APP_OUT, 'RestaurantOS.cs'));
   
-  fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'launcher', 'Troubleshoot-RestaurantOS.bat'), path.join(PKG_DIR, 'Troubleshoot-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.bat'), path.join(PKG_DIR, 'Install-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'uninstall.bat'), path.join(PKG_DIR, 'Uninstall-RestaurantOS.bat'));
   fs.copyFileSync(path.join(ROOT_DIR, 'windows', 'installer', 'install.ps1'), path.join(PKG_DIR, 'install.ps1'));
@@ -309,7 +307,7 @@ async function buildPackage() {
   const configTemplate = `# RestaurantOS Local Hub Configuration
 # Placed in C:\\ProgramData\\RestaurantOS\\config\\restaurantos.env
 NODE_ENV=production
-PORT=3000
+PORT=8989
 # DB_PATH=C:\\ProgramData\\RestaurantOS\\data\\restaurantos.db
 # BACKUP_DIR=C:\\ProgramData\\RestaurantOS\\backups
 # LOG_DIR=C:\\ProgramData\\RestaurantOS\\logs
@@ -333,13 +331,13 @@ RestaurantOS includes everything required to run out of the box:
 3. The installer will:
    - Install binaries into: C:\\Program Files\\RestaurantOS\\
    - Provision data and backups at: C:\\ProgramData\\RestaurantOS\\
-   - Configure Windows Firewall for Port 3000 on private Wi-Fi
+   - Configure Windows Firewall for Port 8989 on private Wi-Fi
    - Configure RestaurantOS to start automatically on Windows boot
-   - Open your browser to http://localhost:3000/hub
+   - Open your browser to http://localhost:8989/hub
 
 ## Connecting Waiters & Kitchen Displays
 - Connect your waiter tablets and phones to the same restaurant Wi-Fi.
-- Open the browser on any phone/tablet and navigate to: http://<LAN_IP>:3000
+- Open the browser on any phone/tablet and navigate to: http://<LAN_IP>:8989
 - Or scan the QR Code displayed on the RestaurantOS Local Hub Status screen!
 - Add the app to your home screen (PWA).
 

@@ -24,14 +24,17 @@ export interface CanonicalLicensePayload {
   installationId: string;
   durationDays: number;
   issuedAt: string;
+  licenseType?: 'STANDARD' | 'PREMIUM';
 }
 
 export function canonicalizePayload(payload: CanonicalLicensePayload): string {
+  const licenseTypeVal = (payload.licenseType || 'STANDARD').toUpperCase().trim();
   const canonicalObject = {
     durationDays: Math.floor(payload.durationDays),
     installationId: String(payload.installationId).trim(),
     issuedAt: String(payload.issuedAt).trim(),
     licenseId: String(payload.licenseId).trim(),
+    licenseType: licenseTypeVal === 'PREMIUM' ? 'PREMIUM' : 'STANDARD',
     product: String(payload.product).trim(),
     restaurantId: String(payload.restaurantId).trim(),
     v: Math.floor(payload.v),
