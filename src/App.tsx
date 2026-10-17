@@ -571,6 +571,12 @@ export function App() {
         if (data.restaurant) {
           setRestaurant(data.restaurant);
         }
+      } else if (res.status === 402 || res.status === 403) {
+        // Expired or invalid license response
+        const errorData = await res.json().catch(() => ({}));
+        if (errorData.code === 'LICENSE_REQUIRED' || errorData.error?.includes('license')) {
+          fetchLicenseStatus(); // Immediately trigger license status update to display renewal modal
+        }
       }
 
       // Unbind previous listeners before reconnecting

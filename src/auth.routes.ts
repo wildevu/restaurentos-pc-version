@@ -302,7 +302,7 @@ authRouter.post('/pair', async (req, res) => {
       if (Date.now() > attempt.resetAt) {
         pairAttempts.delete(clientKey);
       } else if (attempt.count >= MAX_ATTEMPTS) {
-        return res.status(429).json({ error: 'Too many failed pairing attempts. Please wait 5 minutes.' });
+        return res.status(429).json({ error: 'Too many failed pairing attempts. Please wait 2 minutes.' });
       }
     }
 
@@ -414,22 +414,20 @@ authRouter.post('/pair', async (req, res) => {
 authRouter.post('/login', async (req, res) => {
   try {
     const payload = LoginPayloadSchema.parse(req.body);
-    
-    if (loginAttempts.has(payload.username)) {
-      const attempt = loginAttempts.get(payload.username)!;
+    const inputUsername = payload.username.trim();
+
+    // Check rate limiter reset window
+    if (loginAttempts.has(inputUsername)) {
+      const attempt = loginAttempts.get(inputUsername)!;
       if (Date.now() > attempt.resetAt) {
-        loginAttempts.delete(payload.username);
-      } else if (attempt.count >= MAX_ATTEMPTS) {
-        return res.status(429).json({ error: 'Too many failed attempts. Try again later.' });
+        loginAttempts.delete(inputUsername);
       }
     }
 
-    const inputUsername = payload.username.trim();
-    const allUsers = await db.select().from(users);
-    const userRecords = allUsers.filter(u => u.username.toLowerCase() === inputUsername.toLowerCase());
+    const userRecords = await db.select().from(users).where(eq(users.username, inputUsername)).limit(1);
 
     if (userRecords.length === 0 || !userRecords[0].isActive || userRecords[0].disabledAt) {
-      // Record failed attempt to mask existence
+      await verifyPassword(payload.password, '$2b$10$abcdefghijklmnopqrstuu');
       const attempt = loginAttempts.get(inputUsername) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
       attempt.count++;
       loginAttempts.set(inputUsername, attempt);
@@ -438,16 +436,21 @@ authRouter.post('/login', async (req, res) => {
 
     const user = userRecords[0];
     const isValid = await verifyPassword(payload.password, user.passwordHash);
-    
+
+    // Rate limit check applies ONLY on failed password attempts
     if (!isValid) {
-      const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
+      const attempt = loginAttempts.get(inputUsername) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
       attempt.count++;
-      loginAttempts.set(payload.username, attempt);
+      loginAttempts.set(inputUsername, attempt);
+
+      if (attempt.count >= MAX_ATTEMPTS) {
+        return res.status(429).json({ error: 'Too many failed attempts. Try again in 2 minutes.' });
+      }
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Success! Clear rate limit.
-    loginAttempts.delete(payload.username);
+    // Success! Correct password provided — clear rate limit map.
+    loginAttempts.delete(inputUsername);
     
     const now = new Date();
     const token = generateToken();
