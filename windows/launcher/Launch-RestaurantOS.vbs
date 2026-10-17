@@ -21,7 +21,7 @@ If Not fso.FileExists(nodeExe) Then nodeExe = "node.exe"
 serverScript = appDir & "\server.cjs"
 
 WshShell.Environment("PROCESS")("NODE_ENV") = "production"
-WshShell.Environment("PROCESS")("PORT") = "3000"
+WshShell.Environment("PROCESS")("PORT") = "8989"
 WshShell.Environment("PROCESS")("RESTAURANTOS_DATA_DIR") = dataDir
 
 ' Launch silently with 0 (hidden window)

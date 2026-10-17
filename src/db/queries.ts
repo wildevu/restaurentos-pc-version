@@ -196,7 +196,9 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
     // 2. Business Logic
     switch (command.type) {
       case 'OPEN_TABLE': {
-        const { tableId } = OpenTablePayload.parse(command.payload);
+        const parsedPayload = OpenTablePayload.parse(command.payload);
+        const { tableId } = parsedPayload;
+        const covers = parsedPayload.covers || 1;
         const t = await tx.select().from(tables).where(eq(tables.id, tableId)).get();
         if (!t) throw new CommandError('Table not found');
         if (t.status !== 'EMPTY') throw new CommandError('Table is already active');
@@ -207,6 +209,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         await tx.insert(orders).values({
           id: orderId,
           tableId,
+          covers,
           status: 'OPEN',
           currencySnapshot: rest?.currency || 'USD',
           openedByUserId: user.id,

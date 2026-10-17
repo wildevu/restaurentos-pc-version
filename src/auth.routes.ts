@@ -31,8 +31,8 @@ export const authRouter = Router();
 // In-memory rate limiting logic
 const loginAttempts = new Map<string, { count: number, resetAt: number }>();
 const pairAttempts = new Map<string, { count: number, resetAt: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS = 5 * 60 * 1000;
+const MAX_ATTEMPTS = 15;
+const LOCKOUT_MS = 2 * 60 * 1000;
 
 // Auth Status check - returns configured / unconfigured state
 authRouter.get(['/status', '/setup-status'], async (req, res) => {
@@ -144,7 +144,9 @@ authRouter.post('/setup', async (req, res) => {
     }
 
     const payload = SetupPayloadSchema.parse(req.body);
-    const restaurantId = uuidv4();
+    const restaurantId = (licenseStatus.restaurantId && licenseStatus.restaurantId !== 'default')
+      ? licenseStatus.restaurantId
+      : uuidv4();
     const ownerId = uuidv4();
     const sessionId = uuidv4();
     const now = new Date();
@@ -160,6 +162,7 @@ authRouter.post('/setup', async (req, res) => {
         language: payload.language || 'en',
         currency: payload.currency.toUpperCase(),
         timezone: payload.timezone,
+        seatingCapacity: payload.seatingCapacity || 30,
         logo: payload.logo || null,
         createdAt: now,
         updatedAt: now,
@@ -197,6 +200,7 @@ authRouter.post('/setup', async (req, res) => {
 
       // 4. Create Initial Tables if requested or provided
       if (payload.initialTables && payload.initialTables.length > 0) {
+        logger.info(`[Setup] Creating ${payload.initialTables.length} custom numbered tables...`);
         for (let i = 0; i < payload.initialTables.length; i++) {
           const t = payload.initialTables[i];
           await tx.insert(tables).values({
@@ -227,15 +231,7 @@ authRouter.post('/setup', async (req, res) => {
         }
       }
 
-      // 5. Create default categories for fresh start
-      const defaultCategories = ['Starters', 'Mains', 'Desserts', 'Beverages'];
-      for (let i = 0; i < defaultCategories.length; i++) {
-        await tx.insert(menuCategories).values({
-          id: uuidv4(),
-          name: defaultCategories[i],
-          displayOrder: i + 1,
-        });
-      }
+      // 5. Menu categories start completely clean — client creates or imports their menu
 
       // 6. Create Initial Session for immediate seamless login
       await tx.insert(sessions).values({
@@ -306,7 +302,7 @@ authRouter.post('/pair', async (req, res) => {
       if (Date.now() > attempt.resetAt) {
         pairAttempts.delete(clientKey);
       } else if (attempt.count >= MAX_ATTEMPTS) {
-        return res.status(429).json({ error: 'Too many failed pairing attempts. Please wait 5 minutes.' });
+        return res.status(429).json({ error: 'Too many failed pairing attempts. Please wait 2 minutes.' });
       }
     }
 
@@ -418,37 +414,43 @@ authRouter.post('/pair', async (req, res) => {
 authRouter.post('/login', async (req, res) => {
   try {
     const payload = LoginPayloadSchema.parse(req.body);
-    
-    if (loginAttempts.has(payload.username)) {
-      const attempt = loginAttempts.get(payload.username)!;
+    const inputUsername = payload.username.trim();
+
+    // Check rate limiter reset window
+    if (loginAttempts.has(inputUsername)) {
+      const attempt = loginAttempts.get(inputUsername)!;
       if (Date.now() > attempt.resetAt) {
-        loginAttempts.delete(payload.username);
-      } else if (attempt.count >= MAX_ATTEMPTS) {
-        return res.status(429).json({ error: 'Too many failed attempts. Try again later.' });
+        loginAttempts.delete(inputUsername);
       }
     }
 
-    const userRecords = await db.select().from(users).where(eq(users.username, payload.username)).limit(1);
+    const userRecords = await db.select().from(users).where(eq(users.username, inputUsername)).limit(1);
+
     if (userRecords.length === 0 || !userRecords[0].isActive || userRecords[0].disabledAt) {
-      // Record failed attempt to mask existence
-      const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
+      await verifyPassword(payload.password, '$2b$10$abcdefghijklmnopqrstuu');
+      const attempt = loginAttempts.get(inputUsername) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
       attempt.count++;
-      loginAttempts.set(payload.username, attempt);
+      loginAttempts.set(inputUsername, attempt);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const user = userRecords[0];
-    const isValid = verifyPassword(payload.password, user.passwordHash);
-    
+    const isValid = await verifyPassword(payload.password, user.passwordHash);
+
+    // Rate limit check applies ONLY on failed password attempts
     if (!isValid) {
-      const attempt = loginAttempts.get(payload.username) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
+      const attempt = loginAttempts.get(inputUsername) || { count: 0, resetAt: Date.now() + LOCKOUT_MS };
       attempt.count++;
-      loginAttempts.set(payload.username, attempt);
+      loginAttempts.set(inputUsername, attempt);
+
+      if (attempt.count >= MAX_ATTEMPTS) {
+        return res.status(429).json({ error: 'Too many failed attempts. Try again in 2 minutes.' });
+      }
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Success! Clear rate limit.
-    loginAttempts.delete(payload.username);
+    // Success! Correct password provided — clear rate limit map.
+    loginAttempts.delete(inputUsername);
     
     const now = new Date();
     const token = generateToken();

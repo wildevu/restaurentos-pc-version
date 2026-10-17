@@ -97,11 +97,11 @@ if (-not (Test-Path $rootLauncher)) {
     }
 }
 
-# 6. Configure Windows Firewall (TCP Port 3000 on Private/Domain Profiles)
-Write-Log "Configuring Windows Firewall for restaurant LAN access on port 3000..."
+# 6. Configure Windows Firewall (TCP Port 8989 on Private, Domain, and Public Profiles)
+Write-Log "Configuring Windows Firewall for restaurant LAN access on port 8989..."
 try {
     netsh advfirewall firewall delete rule name="RestaurantOS Local Hub" 2>&1 | Out-Null
-    netsh advfirewall firewall add rule name="RestaurantOS Local Hub" dir=in action=allow protocol=TCP localport=3000 profile=private,domain description="Allows waiter, kitchen, and manager devices to connect to RestaurantOS Local Hub" | Out-Null
+    netsh advfirewall firewall add rule name="RestaurantOS Local Hub" dir=in action=allow protocol=TCP localport=8989 profile=private,domain,public description="Allows waiter, kitchen, and manager devices to connect to RestaurantOS Local Hub" | Out-Null
     Write-Log "Windows Firewall configured successfully." "Green"
 } catch {
     Write-Warning "Could not configure firewall automatically: $_"
@@ -130,7 +130,7 @@ try {
     $DesktopPath = [Environment]::GetFolderPath("CommonDesktopDirectory")
     if (Test-Path $DesktopPath) {
         $Shortcut = $WScriptShell.CreateShortcut((Join-Path $DesktopPath "RestaurantOS Local Hub.lnk"))
-        $Shortcut.TargetPath = "http://localhost:3000/hub"
+        $Shortcut.TargetPath = "http://localhost:8989/hub"
         $Shortcut.Description = "Open RestaurantOS Local Hub Access & Status Screen"
         $Shortcut.Save()
     }
@@ -142,7 +142,7 @@ try {
         New-Item -Path $ProgramsPath -ItemType Directory -Force | Out-Null
     }
     $StartShortcut = $WScriptShell.CreateShortcut((Join-Path $ProgramsPath "RestaurantOS Local Hub.lnk"))
-    $StartShortcut.TargetPath = "http://localhost:3000/hub"
+    $StartShortcut.TargetPath = "http://localhost:8989/hub"
     $StartShortcut.Description = "Open RestaurantOS Local Hub Access & Status Screen"
     $StartShortcut.Save()
     
@@ -161,10 +161,10 @@ Write-Log "   RESTAURANTOS LOCAL HUB INSTALLED SUCCESSFULLY!               " "Gr
 Write-Log "================================================================" "Green"
 Write-Log "Application directory: $InstallPath"
 Write-Log "Database & Backups:   $DataPath"
-Write-Log "Local Web Address:    http://localhost:3000"
-Write-Log "Hub Status Screen:    http://localhost:3000/hub"
+Write-Log "Local Web Address:    http://localhost:8989"
+Write-Log "Hub Status Screen:    http://localhost:8989/hub"
 Write-Log "================================================================" "Green"
 
 if (-not $Silent) {
-    Start-Process "http://localhost:3000/hub"
+    Start-Process "http://localhost:8989/hub"
 }

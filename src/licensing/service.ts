@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { db } from '../db';
 import { installations, licenses, auditEvents, restaurants } from '../db/schema';
@@ -9,6 +9,7 @@ export interface LicenseStatusInfo {
   status: 'ACTIVE' | 'EXPIRED' | 'UNLICENSED' | 'CLOCK_ROLLBACK_DETECTED';
   isLicensed: boolean;
   canOperate: boolean;
+  licenseType?: 'STANDARD' | 'PREMIUM';
   installationId: string;
   restaurantId?: string;
   licenseId?: string;
@@ -130,6 +131,7 @@ export class LicensingService {
         status: 'EXPIRED',
         isLicensed: false,
         canOperate: false,
+        licenseType: (active.licenseType as 'STANDARD' | 'PREMIUM') || 'STANDARD',
         installationId: inst.id,
         restaurantId: inst.restaurantId || undefined,
         licenseId: active.id,
@@ -144,6 +146,7 @@ export class LicensingService {
       status: 'ACTIVE',
       isLicensed: true,
       canOperate: true,
+      licenseType: (active.licenseType as 'STANDARD' | 'PREMIUM') || 'STANDARD',
       installationId: inst.id,
       restaurantId: inst.restaurantId || undefined,
       licenseId: active.id,
@@ -180,46 +183,55 @@ export class LicensingService {
     const payload = verification.payload;
     const now = new Date();
     const activatedAt = now;
-    const issuedAtMs = new Date(payload.issuedAt).getTime();
+
+    // 1. Check existing active license for remaining time & premium status stacking
+    const existingActiveList = await db.select().from(licenses)
+      .where(and(eq(licenses.installationId, inst.id), eq(licenses.status, 'ACTIVE')));
+
+    let baseStartTimeMs = now.getTime();
+    let isPremiumType = payload.licenseType === 'PREMIUM';
+
+    if (existingActiveList.length > 0) {
+      const currentActive = existingActiveList[0];
+      const currentExpiresMs = new Date(currentActive.expiresAt).getTime();
+
+      if (currentExpiresMs > now.getTime()) {
+        // Stack remaining days onto new license duration!
+        baseStartTimeMs = currentExpiresMs;
+      }
+
+      if (currentActive.licenseType === 'PREMIUM') {
+        isPremiumType = true;
+      }
+    }
+
     const durationMs = payload.durationDays * 24 * 60 * 60 * 1000;
-    const expiresAt = new Date(issuedAtMs + durationMs);
+    const expiresAt = new Date(baseStartTimeMs + durationMs);
+    const finalLicenseType = isPremiumType ? 'PREMIUM' : (payload.licenseType || 'STANDARD');
 
     // 2. Mark previous ACTIVE licenses as SUPERSEDED
     await db.update(licenses)
       .set({ status: 'SUPERSEDED' })
       .where(eq(licenses.installationId, inst.id));
 
-    // 3. Persist the new active license record (upsert to handle re-activation smoothly)
-    const existingLicense = await db.select().from(licenses).where(eq(licenses.id, payload.licenseId)).limit(1);
-    if (existingLicense.length > 0) {
-      await db.update(licenses).set({
-        rawLicenseKey: rawKey.trim(),
-        product: payload.product,
-        version: payload.v,
-        restaurantId: payload.restaurantId || inst.restaurantId || 'default',
-        installationId: inst.id,
-        durationDays: payload.durationDays,
-        issuedAt: new Date(payload.issuedAt),
-        activatedAt,
-        expiresAt,
-        status: 'ACTIVE',
-      }).where(eq(licenses.id, payload.licenseId));
-    } else {
-      await db.insert(licenses).values({
-        id: payload.licenseId,
-        rawLicenseKey: rawKey.trim(),
-        product: payload.product,
-        version: payload.v,
-        restaurantId: payload.restaurantId || inst.restaurantId || 'default',
-        installationId: inst.id,
-        durationDays: payload.durationDays,
-        issuedAt: new Date(payload.issuedAt),
-        activatedAt,
-        expiresAt,
-        status: 'ACTIVE',
-        createdAt: now,
-      });
-    }
+    // 3. Persist the new active license record (always lock to permanent inst.restaurantId if already initialized)
+    const effectiveRestaurantId = inst.restaurantId || (payload.restaurantId && payload.restaurantId !== 'default' ? payload.restaurantId : 'default');
+
+    await db.insert(licenses).values({
+      id: payload.licenseId,
+      rawLicenseKey: rawKey.trim(),
+      product: payload.product,
+      version: payload.v,
+      licenseType: finalLicenseType,
+      restaurantId: effectiveRestaurantId,
+      installationId: inst.id,
+      durationDays: payload.durationDays,
+      issuedAt: new Date(payload.issuedAt),
+      activatedAt,
+      expiresAt,
+      status: 'ACTIVE',
+      createdAt: now,
+    });
 
     // 4. Record persistent audit event
     await db.insert(auditEvents).values({
@@ -245,5 +257,13 @@ export class LicensingService {
 
     const statusInfo = await this.getStatus();
     return { success: true, statusInfo };
+  }
+
+  /**
+   * Helper function to check if the active license has Premium features enabled.
+   */
+  static async hasPremiumAccess(): Promise<boolean> {
+    const status = await this.getStatus();
+    return status.status === 'ACTIVE' && status.canOperate && status.licenseType === 'PREMIUM';
   }
 }

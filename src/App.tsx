@@ -8,7 +8,7 @@ import { CashierDisplay } from './components/CashierDisplay';
 import { SetupScreen } from './components/SetupScreen';
 import { LoginScreen } from './components/LoginScreen';
 import { PairingScreen } from './components/PairingScreen';
-import { RestosLogo } from './components/RestosLogo';
+import { ExpiredLicenseModal } from './components/ExpiredLicenseModal';
 import { I18nProvider, useI18n } from './i18n';
 import { 
   ChefHat, 
@@ -38,7 +38,8 @@ import {
   Backups,
   SystemHealth,
   LocalHubStatus,
-  LicenseManagement
+  LicenseManagement,
+  ConsultantModule
 } from './components/admin';
 
 import { 
@@ -68,27 +69,18 @@ function AppContent({
   pendingCommands, 
   rejectedCommands, 
   handleLogout, 
-  handleLogin 
+  handleLogin,
+  checkStatus,
+  licenseStatus,
+  fetchLicenseStatus
 }: any) {
   const [showRejectedModal, setShowRejectedModal] = useState(false);
-  const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const location = useLocation();
   const { t, language, setLanguage } = useI18n();
 
   useEffect(() => {
-    const checkLicense = async () => {
-      try {
-        const res = await fetch('/api/licensing/status');
-        if (res.ok) {
-          const data = await res.json();
-          setLicenseStatus(data);
-        }
-      } catch (err) {
-        console.error('License check error', err);
-      }
-    };
-    checkLicense();
-    const interval = setInterval(checkLicense, 60000);
+    fetchLicenseStatus();
+    const interval = setInterval(fetchLicenseStatus, 120000);
     return () => clearInterval(interval);
   }, []);
 
@@ -101,6 +93,8 @@ function AppContent({
   const isCashierUser = user?.role === 'CASHIER';
   const isWaiterUser = user?.role === 'WAITER';
   const isOwnerOrManager = user?.role === 'OWNER' || user?.role === 'MANAGER';
+
+  const isExpired = licenseStatus && !licenseStatus.canOperate;
 
   const getRoleBadgeStyle = (role: string) => {
     switch (role) {
@@ -126,19 +120,31 @@ function AppContent({
         onClose={() => setShowRejectedModal(false)} 
       />
 
+      {/* Expired License Renewal Modal Window */}
+      <ExpiredLicenseModal
+        installationId={licenseStatus?.installationId || ''}
+        isOpen={!!isExpired}
+        isOwnerOrManager={isOwnerOrManager}
+        onActivated={() => {
+          fetchLicenseStatus();
+          checkStatus();
+        }}
+      />
+
       <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs z-20">
         <div className="flex items-center gap-4 sm:gap-6">
-          <Link to="/" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity">
+          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             {restaurant?.logo ? (
-              <div className="flex items-center gap-2.5">
-                <img src={restaurant.logo} alt="Restaurant Logo" className="w-8 h-8 rounded-lg object-cover shadow-xs" />
-                <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">
-                  {restaurant.name}
-                </h1>
-              </div>
+              <img src={restaurant.logo} alt="Restaurant Logo" className="w-8 h-8 rounded-lg object-cover shadow-xs" />
             ) : (
-              <RestosLogo className="h-7 w-auto" />
+              <img src="/logo.svg" alt="RestaurantOS Logo" className="w-8 h-8" />
             )}
+            <div>
+              <h1 className="text-base font-black tracking-tight text-gray-900 leading-none">
+                {restaurant?.name && !restaurant.name.startsWith('inst_') ? restaurant.name : 'RestaurantOS'}
+              </h1>
+              <span className="text-[10px] font-bold text-gray-400 tracking-wider uppercase">Local Hub</span>
+            </div>
           </Link>
 
           {/* Role-Based Desktop Navigation Links */}
@@ -271,30 +277,6 @@ function AppContent({
         </div>
       </header>
 
-      {/* License Warning Banner */}
-      {licenseStatus && !licenseStatus.canOperate && (
-        <div id="license-global-warning-banner" className="bg-amber-500 text-white px-4 py-2.5 flex items-center justify-between shadow-xs z-30">
-          <div className="flex items-center gap-2.5 text-xs sm:text-sm font-semibold">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <span>
-              {licenseStatus.status === 'EXPIRED'
-                ? t('licensing.expiredBannerMessage')
-                : licenseStatus.status === 'CLOCK_ROLLBACK_DETECTED'
-                ? t('licensing.clockRollbackMessage')
-                : t('licensing.unlicensedBannerMessage')}
-            </span>
-          </div>
-          {isOwnerOrManager && (
-            <Link
-              to="/admin/licensing"
-              className="ml-4 px-3 py-1 bg-white text-amber-900 hover:bg-amber-50 text-xs font-bold rounded-md shadow-xs transition-colors shrink-0"
-            >
-              {t('licensing.activateBtn')}
-            </Link>
-          )}
-        </div>
-      )}
-
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-0 bg-gray-50 overflow-y-auto">
         <Routes>
@@ -348,22 +330,27 @@ function AppContent({
             </div>
           } />
           
-          {isOwnerOrManager && (
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route path="hub" element={<LocalHubStatus authToken={authToken!} />} />
-              <Route path="licensing" element={<LicenseManagement />} />
-              <Route path="settings" element={<RestaurantSettings authToken={authToken!} />} />
-              <Route path="staff" element={<StaffManagement authToken={authToken!} currentUser={user} />} />
-              <Route path="tables" element={<TableManagement authToken={authToken!} />} />
-              <Route path="devices" element={<DeviceManagement authToken={authToken!} />} />
-              <Route path="menu" element={<MenuManagement authToken={authToken!} />} />
-              <Route path="orders" element={<OrderHistory authToken={authToken!} />} />
-              <Route path="audit" element={<AuditLogs authToken={authToken!} />} />
-              <Route path="backups" element={<Backups authToken={authToken!} />} />
-              <Route path="health" element={<SystemHealth authToken={authToken!} />} />
-              <Route index element={<Navigate to="hub" replace />} />
-            </Route>
-          )}
+          <Route path="/admin" element={
+            isOwnerOrManager ? (
+              <AdminLayout />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }>
+            <Route path="hub" element={<LocalHubStatus authToken={authToken!} />} />
+            <Route path="licensing" element={<LicenseManagement />} />
+            <Route path="consultant" element={<ConsultantModule authToken={authToken!} />} />
+            <Route path="settings" element={<RestaurantSettings authToken={authToken!} />} />
+            <Route path="staff" element={<StaffManagement authToken={authToken!} currentUser={user} />} />
+            <Route path="tables" element={<TableManagement authToken={authToken!} />} />
+            <Route path="devices" element={<DeviceManagement authToken={authToken!} />} />
+            <Route path="menu" element={<MenuManagement authToken={authToken!} />} />
+            <Route path="orders" element={<OrderHistory authToken={authToken!} />} />
+            <Route path="audit" element={<AuditLogs authToken={authToken!} />} />
+            <Route path="backups" element={<Backups authToken={authToken!} />} />
+            <Route path="health" element={<SystemHealth authToken={authToken!} />} />
+            <Route index element={<Navigate to="hub" replace />} />
+          </Route>
           
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -431,18 +418,16 @@ export function App() {
   });
   const [restaurant, setRestaurant] = useState<any>(null);
 
-  const [tables, setTables] = useState<Table[]>([]);
-  const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [activeTableId, setActiveTableId] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [pendingCommands, setPendingCommands] = useState(0);
-  const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
-  const stateVersionRef = useRef<number>(0);
-
+  // Auto-login persistence check on app boot
   useEffect(() => {
-    checkStatus();
+    const token = localStorage.getItem('restaurantos_auth_token');
+    if (token) {
+      checkStatus(token);
+    } else {
+      checkStatus(null);
+    }
   }, []);
+
 
   useEffect(() => {
     const unsubQueue = subscribeToQueue(async () => {
@@ -470,60 +455,125 @@ export function App() {
     };
   }, []);
 
-  const checkStatus = async (token = authToken) => {
-    try {
-      if (token) {
-        // Verify token
-        const res = await fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setUser(data.user);
-          if (data.restaurant) {
-            setRestaurant(data.restaurant);
-          }
-          setAppState('APP');
-          initApp(token);
-          return;
-        } else {
-          // Token invalid, clear it
-          localStorage.removeItem('restaurantos_auth_token');
-          setAuthToken(null);
-        }
-      }
+  const [tables, setTables] = useState<Table[]>([]);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [pendingCommands, setPendingCommands] = useState(0);
+  const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const stateVersionRef = useRef<number>(0);
 
-      // Check setup status from authoritative API
-      const setupRes = await fetch('/api/auth/status');
-      const setupData = await setupRes.json();
-      if (setupData.restaurant) {
-        setRestaurant(setupData.restaurant);
-      }
-      if (!setupData.configured && !setupData.isInitialized) {
-        setAppState('SETUP');
-      } else {
-        setAppState('LOGIN');
+  const fetchLicenseStatus = async () => {
+    try {
+      const res = await fetch('/api/licensing/status');
+      if (res.ok) {
+        const data = await res.json();
+        setLicenseStatus(prev => {
+          // Deep equality check: skip state update if payload is identical
+          if (JSON.stringify(prev) === JSON.stringify(data)) {
+            return prev;
+          }
+          return data;
+        });
       }
     } catch (err) {
-      console.error('Failed to check status', err);
-      // Fallback check to setup-status
-      try {
-        const fallbackRes = await fetch('/api/auth/setup-status');
-        const fallbackData = await fallbackRes.json();
-        if (!fallbackData.isInitialized && !fallbackData.configured) {
-          setAppState('SETUP');
-          return;
-        }
-      } catch (_) {}
-      setAppState('LOGIN');
+      console.error('License check error', err);
     }
   };
 
-  const initApp = async (token: string) => {
+  const checkStatus = async (token = authToken, retriesLeft = 3) => {
     try {
+      if (token) {
+        // Verify token with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setUser(data.user);
+            if (data.restaurant) {
+              setRestaurant(data.restaurant);
+            }
+            setAppState('APP');
+            initApp(token);
+            return;
+          }
+        } else if (res.status === 401 || res.status === 403) {
+          // Token explicitly invalid/revoked by server — this is the ONLY case to clear local credentials
+          localStorage.removeItem('restaurantos_auth_token');
+          setAuthToken(null);
+          token = null;
+        } else {
+          // Transient HTTP error (e.g. 502, 503, connection dropped) — DO NOT clear token or reset to LOGIN!
+          if (retriesLeft > 0) {
+            setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
+          }
+          return;
+        }
+      }
+
+      // Genuine absence of token — check setup/login status
+      if (!token) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const setupRes = await fetch('/api/auth/status', { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        const setupData = await setupRes.json();
+        if (setupData.restaurant) {
+          setRestaurant(setupData.restaurant);
+        }
+        if (!setupData.configured && !setupData.isInitialized) {
+          setAppState('SETUP');
+        } else {
+          setAppState('LOGIN');
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
+      if (token && retriesLeft > 0) {
+        setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
+        return;
+      }
+
+      // If we genuinely have no token, fall back to login/setup check
+      if (!token) {
+        const fallbackCtrl = new AbortController();
+        const fallbackTimer = setTimeout(() => fallbackCtrl.abort(), 5000);
+        try {
+          const fallbackRes = await fetch('/api/auth/setup-status', { signal: fallbackCtrl.signal });
+          clearTimeout(fallbackTimer);
+          const fallbackData = await fallbackRes.json();
+          if (!fallbackData.isInitialized && !fallbackData.configured) {
+            setAppState('SETUP');
+            return;
+          }
+        } catch (_) {
+          clearTimeout(fallbackTimer);
+        }
+        setAppState('LOGIN');
+      }
+    }
+  };
+
+  const initApp = async (token: string, retriesLeft = 3) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       const res = await fetch('/api/state', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const data = await res.json();
         if (data.stateVersion !== undefined) stateVersionRef.current = data.stateVersion;
@@ -533,11 +583,30 @@ export function App() {
         if (data.restaurant) {
           setRestaurant(data.restaurant);
         }
+      } else if (res.status === 402 || res.status === 403) {
+        // Expired or invalid license response
+        const errorData = await res.json().catch(() => ({}));
+        if (errorData.code === 'LICENSE_REQUIRED' || errorData.error?.includes('license')) {
+          fetchLicenseStatus(); // Immediately trigger license status update to display renewal modal
+        }
       }
+
+      // Unbind previous listeners before reconnecting
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
+      socket.off('AUTH_REVOKED');
+      socket.off('STATE_UPDATE');
 
       connectSocket(token);
 
+      let disconnectTimer: any = null;
+
       socket.on('connect', () => {
+        if (disconnectTimer) {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = null;
+        }
         setIsConnected(true);
         socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current }, async (res: any) => {
           let latestTables: any[] = [];
@@ -571,9 +640,19 @@ export function App() {
         });
       });
       
-      socket.on('disconnect', () => setIsConnected(false));
+      socket.on('disconnect', () => {
+        if (!disconnectTimer) {
+          disconnectTimer = setTimeout(() => {
+            setIsConnected(false);
+          }, 3000);
+        }
+      });
       socket.on('connect_error', () => {
-        setIsConnected(false);
+        if (!disconnectTimer) {
+          disconnectTimer = setTimeout(() => {
+            setIsConnected(false);
+          }, 3000);
+        }
       });
       
       socket.on('AUTH_REVOKED', (payload: any) => {
@@ -595,13 +674,50 @@ export function App() {
         }
       });
     } catch (err) {
-      console.error("Init error", err);
+      console.error(`Init error (retries left: ${retriesLeft})`, err);
+      if (retriesLeft > 0) {
+        setTimeout(() => initApp(token, retriesLeft - 1), 1000);
+      }
     }
   };
 
-  const handleLogin = (token: string) => {
+  // Sleep / Standby Recovery & Tab Visibility Re-Sync Listener
+  useEffect(() => {
+    const handleWakeAndSync = () => {
+      const savedToken = localStorage.getItem('restaurantos_auth_token') || authToken;
+      if (savedToken) {
+        // Force socket reconnection and state re-sync on wake or return online using storage token fallback
+        connectSocket(savedToken);
+        initApp(savedToken);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleWakeAndSync();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleWakeAndSync);
+    window.addEventListener('focus', handleWakeAndSync);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleWakeAndSync);
+      window.removeEventListener('focus', handleWakeAndSync);
+    };
+  }, [authToken]);
+
+  const handleLogin = (token: string, userData?: any) => {
     localStorage.setItem('restaurantos_auth_token', token);
     setAuthToken(token);
+    if (userData) {
+      setUser(userData);
+      setAppState('APP');
+      initApp(token);
+      return;
+    }
     checkStatus(token);
   };
 
@@ -623,7 +739,12 @@ export function App() {
   };
 
   if (appState === 'LOADING') {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center font-bold text-gray-500">Loading RestaurantOS...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-bold text-gray-500 gap-3">
+        <RefreshCw size={24} className="animate-spin text-blue-600" />
+        <span>Loading RestaurantOS...</span>
+      </div>
+    );
   }
 
   if (appState === 'SETUP') {
@@ -635,17 +756,6 @@ export function App() {
   }
 
   if (appState === 'LOGIN') {
-    // Allow unauthenticated access to the pairing screen
-    if (window.location.pathname.startsWith('/pair')) {
-      return (
-        <I18nProvider restaurant={restaurant} initialLanguage={restaurant?.language || 'en'}>
-          <BrowserRouter>
-            <PairingScreen onLogin={handleLogin} />
-          </BrowserRouter>
-        </I18nProvider>
-      );
-    }
-
     return (
       <I18nProvider restaurant={restaurant} initialLanguage={restaurant?.language || 'en'}>
         <LoginScreen onLogin={handleLogin} onReset={() => checkStatus(null)} />
@@ -670,6 +780,9 @@ export function App() {
           rejectedCommands={rejectedCommands}
           handleLogout={handleLogout}
           handleLogin={handleLogin}
+          checkStatus={checkStatus}
+          licenseStatus={licenseStatus}
+          fetchLicenseStatus={fetchLicenseStatus}
         />
       </BrowserRouter>
     </I18nProvider>

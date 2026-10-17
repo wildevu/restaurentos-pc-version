@@ -50,7 +50,7 @@ export function RestaurantSettings({ authToken }: { authToken: string }) {
       if (!res.ok) throw new Error(data.error || 'Failed to reset development database');
 
       localStorage.removeItem('restaurantos_auth_token');
-      window.location.reload();
+      window.location.href = '/';
     } catch (err: any) {
       setError(err.message);
       setShowDevResetModal(false);
@@ -91,6 +91,7 @@ export function RestaurantSettings({ authToken }: { authToken: string }) {
           language: settings.language || 'en',
           currency: settings.currency,
           timezone: settings.timezone,
+          seatingCapacity: Number(settings.seatingCapacity) || 30,
           logo: settings.logo || null
         })
       });
@@ -189,6 +190,20 @@ export function RestaurantSettings({ authToken }: { authToken: string }) {
                 type="text"
                 value={settings.timezone || 'UTC'}
                 onChange={e => setSettings({ ...settings, timezone: e.target.value })}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:bg-white focus:border-amber-500 outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                Total Seating Capacity (Seats)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={settings.seatingCapacity || 30}
+                onChange={e => setSettings({ ...settings, seatingCapacity: Number(e.target.value) })}
                 className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 focus:bg-white focus:border-amber-500 outline-none"
                 required
               />

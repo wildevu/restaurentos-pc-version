@@ -10,7 +10,9 @@ import fs from 'fs';
 import path from 'path';
 import { hashToken } from '../crypto';
 import { getFrontendStateTx } from '../db/queries';
-import { BACKUP_DIR, DB_PATH, ensureDirectories } from '../paths';
+import { BACKUP_DIR, DB_PATH, ensureDirectories, LOG_DIR } from '../paths';
+import { LicensingService } from '../licensing/service';
+import { logger } from '../logger';
 
 export const adminRouter = Router();
 
@@ -65,6 +67,7 @@ adminRouter.put('/restaurant', async (req: any, res) => {
       language: z.enum(['en', 'fr']).optional().default('en'),
       currency: z.string().min(1),
       timezone: z.string().min(1),
+      seatingCapacity: z.number().int().min(1).optional().default(30),
       logo: z.string().nullable().optional(),
     });
     const parsed = schema.parse(req.body);
@@ -233,8 +236,8 @@ adminRouter.post('/tables', async (req: any, res) => {
   try {
     const schema = z.object({
       number: z.number().int().min(1),
-      label: z.string().optional(),
-      section: z.string().optional(),
+      label: z.string().nullable().optional(),
+      section: z.string().nullable().optional(),
       displayOrder: z.number().int().optional()
     });
     const parsed = schema.parse(req.body);
@@ -279,63 +282,12 @@ adminRouter.post('/tables', async (req: any, res) => {
   }
 });
 
-adminRouter.post('/tables/batch', async (req: any, res) => {
-  try {
-    const schema = z.object({
-      section: z.string().min(1),
-      tableNumbers: z.array(z.number().int().min(1)).min(1),
-      labelPrefix: z.string().optional()
-    });
-    const parsed = schema.parse(req.body);
-
-    const existingTables = await db.select({ number: tables.number }).from(tables).where(isNull(tables.archivedAt));
-    const existingSet = new Set(existingTables.map((t: any) => t.number));
-
-    const duplicates = parsed.tableNumbers.filter((n: number) => existingSet.has(n));
-    if (duplicates.length > 0) {
-      return res.status(400).json({ error: `Table number(s) already exist: ${duplicates.join(', ')}` });
-    }
-
-    const now = new Date();
-    await db.transaction(async (tx: any) => {
-      for (const num of parsed.tableNumbers) {
-        const id = uuidv4();
-        await tx.insert(tables).values({
-          id,
-          number: num,
-          label: parsed.labelPrefix ? `${parsed.labelPrefix} ${num}` : `Table ${num}`,
-          section: parsed.section,
-          displayOrder: num,
-          status: 'EMPTY',
-          createdAt: now,
-          updatedAt: now,
-        });
-        await tx.insert(auditEvents).values({
-          id: uuidv4(),
-          restaurantId: req.user.restaurantId,
-          actorUserId: req.user.id,
-          action: 'TABLE_CREATED',
-          entityType: 'TABLE',
-          entityId: id,
-          metadata: JSON.stringify({ number: num, section: parsed.section }),
-          createdAt: now,
-        });
-      }
-    });
-
-    await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
-    res.json({ success: true, count: parsed.tableNumbers.length });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
 adminRouter.put('/tables/:id', async (req: any, res) => {
   try {
     const schema = z.object({
       number: z.number().int().min(1).optional(),
       label: z.string().nullable().optional(),
-      section: z.string().optional(),
+      section: z.string().nullable().optional(),
       displayOrder: z.number().int().optional(),
       archived: z.boolean().optional()
     });
@@ -495,7 +447,8 @@ adminRouter.post('/pairing/generate', async (req: any, res) => {
       createdAt: now,
     });
     
-    res.json({ token: rawToken });
+    const lanIps = req.app?.get('lanIps') || [];
+    res.json({ token: rawToken, lanIps });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -836,7 +789,7 @@ adminRouter.put('/menu/categories/:id', async (req: any, res) => {
 
 adminRouter.post('/menu/items', async (req: any, res) => {
   try {
-    const { categoryId, name, description, price, isAvailable, displayOrder } = req.body;
+    const { categoryId, name, description, price, costPrice, isAvailable, displayOrder } = req.body;
     if (!categoryId || !name || price === undefined) return res.status(400).json({ error: 'Missing required fields' });
     
     const id = uuidv4();
@@ -847,6 +800,7 @@ adminRouter.post('/menu/items', async (req: any, res) => {
       name,
       description: description || null,
       price: Number(price),
+      costPrice: costPrice !== undefined && costPrice !== null && costPrice !== '' ? Number(costPrice) : null,
       isAvailable: isAvailable !== false,
       displayOrder: displayOrder || 0,
       createdAt: now,
@@ -873,7 +827,7 @@ adminRouter.post('/menu/items', async (req: any, res) => {
 
 adminRouter.put('/menu/items/:id', async (req: any, res) => {
   try {
-    const { categoryId, name, description, price, isAvailable, displayOrder, archive, restore } = req.body;
+    const { categoryId, name, description, price, costPrice, isAvailable, displayOrder, archive, restore } = req.body;
     const { id } = req.params;
     
     const updateData: any = { updatedAt: new Date() };
@@ -881,6 +835,7 @@ adminRouter.put('/menu/items/:id', async (req: any, res) => {
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (price !== undefined) updateData.price = Number(price);
+    if (costPrice !== undefined) updateData.costPrice = (costPrice !== null && costPrice !== '') ? Number(costPrice) : null;
     if (isAvailable !== undefined) updateData.isAvailable = Boolean(isAvailable);
     if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
     
@@ -1216,7 +1171,8 @@ adminRouter.get('/orders/history', async (req: any, res) => {
         kitchenStatusUpdatedAt: i.kitchenStatusUpdatedAt,
         addedByUserId: i.addedByUserId,
         addedByName: i.addedByUserId ? userMap.get(i.addedByUserId) || 'Staff' : null,
-        createdAt: i.createdAt
+        createdAt: i.createdAt,
+        updatedAt: i.updatedAt
       }));
 
       const totalItems = items.reduce((sum: number, i: any) => sum + i.quantity, 0);
@@ -1282,7 +1238,8 @@ adminRouter.get('/orders/:id', async (req: any, res) => {
       kitchenStatusUpdatedAt: i.kitchenStatusUpdatedAt,
       addedByUserId: i.addedByUserId,
       addedByName: i.addedByUserId ? userMap.get(i.addedByUserId) || 'Staff' : null,
-      createdAt: i.createdAt
+      createdAt: i.createdAt,
+      updatedAt: i.updatedAt
     }));
 
     res.json({
@@ -1560,6 +1517,357 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
 // ==========================================
 // GROUP 8 — SYSTEM HEALTH / LOCAL HUB
 // ==========================================
+// Endpoint to export encrypted/structured .ros analytics report for Founder CRM AI Analysis
+adminRouter.get('/reports/export-ros', async (req: any, res) => {
+  try {
+    const isPremium = await LicensingService.hasPremiumAccess();
+    if (!isPremium) {
+      return res.status(403).json({
+        error: 'A Premium License is required to generate and export AI Consultant .ros reports. Please upgrade your subscription.'
+      });
+    }
+
+    const days = parseInt(req.query.days as string || '30', 10);
+    const validDays = isNaN(days) || days <= 0 ? 30 : days;
+
+    const now = new Date();
+    const startDate = new Date(now.getTime() - validDays * 24 * 60 * 60 * 1000);
+
+    const inst = await LicensingService.getOrCreateInstallation();
+    const rest = await db.select().from(restaurants).limit(1);
+    const restaurantName = rest[0]?.name || 'RestaurantOS Hub';
+    const currency = rest[0]?.currency || 'EUR';
+    const seatingCapacity = rest[0]?.seatingCapacity || 30;
+
+    // Fetch menu items with category and cost price
+    const allMenuItems = await db.select({
+      id: menuItems.id,
+      name: menuItems.name,
+      costPrice: menuItems.costPrice,
+      categoryName: menuCategories.name
+    })
+    .from(menuItems)
+    .leftJoin(menuCategories, eq(menuItems.categoryId, menuCategories.id));
+
+    const menuItemMap = new Map(allMenuItems.map(m => [m.id, m]));
+    const hasCostData = allMenuItems.some(m => m.costPrice !== null && m.costPrice !== undefined);
+
+    // 1. Fetch completed orders within period
+    const allOrders = await db.select()
+      .from(orders)
+      .where(and(
+        eq(orders.status, 'CLOSED'),
+        gte(orders.createdAt, startDate)
+      ));
+
+    const totalOrders = allOrders.length;
+    let totalGrossRevenue = 0;
+    let totalCovers = 0;
+
+    const coversByDateMap: Record<string, number> = {};
+
+    for (const ord of allOrders) {
+      const coversVal = ord.covers || 1;
+      totalCovers += coversVal;
+
+      const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+      if (!coversByDateMap[dateStr]) coversByDateMap[dateStr] = 0;
+      coversByDateMap[dateStr] += coversVal;
+    }
+
+    const coversByDate = Object.entries(coversByDateMap)
+      .map(([date, covers]) => ({ date, covers }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const orderIds = allOrders.map(o => o.id);
+
+    // 2. Fetch order items for these orders
+    let allOrderItems: any[] = [];
+    if (orderIds.length > 0) {
+      allOrderItems = await db.select()
+        .from(orderItems)
+        .where(inArray(orderItems.orderId, orderIds));
+    }
+
+    for (const item of allOrderItems) {
+      totalGrossRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+    }
+
+    const averageOrderValue = totalOrders > 0 ? parseFloat((totalGrossRevenue / totalOrders).toFixed(2)) : 0;
+
+    // Calculate Kitchen Preparation Time across completed orders
+    let totalKitchenPrepMinutesSum = 0;
+    let totalKitchenItemsCount = 0;
+
+    for (const item of allOrderItems) {
+      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+        const start = new Date(item.createdAt).getTime();
+        const end = item.kitchenStatusUpdatedAt
+          ? new Date(item.kitchenStatusUpdatedAt).getTime()
+          : new Date(item.updatedAt).getTime();
+        const prepMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
+        totalKitchenPrepMinutesSum += prepMin;
+        totalKitchenItemsCount += 1;
+      }
+    }
+
+    const averageKitchenPrepTimeMinutes = totalKitchenItemsCount > 0
+      ? parseFloat((totalKitchenPrepMinutesSum / totalKitchenItemsCount).toFixed(1))
+      : 12;
+
+    // 3. Granular itemSalesByDate with Category & Cost Price & Kitchen Prep Metrics
+    const itemSalesByDateMap: Record<string, any> = {};
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+        const name = item.productNameSnapshot || 'Item';
+        const key = `${dateStr}_${name}`;
+
+        const menuMeta = menuItemMap.get(item.menuItemId);
+        const categoryName = menuMeta?.categoryName || 'OTHER';
+        const costPrice = menuMeta?.costPrice ?? null;
+
+        let prepDurationMin = 10;
+        if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+          const start = new Date(item.createdAt).getTime();
+          const end = item.kitchenStatusUpdatedAt
+            ? new Date(item.kitchenStatusUpdatedAt).getTime()
+            : new Date(item.updatedAt).getTime();
+          prepDurationMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
+        }
+
+        if (!itemSalesByDateMap[key]) {
+          itemSalesByDateMap[key] = {
+            date: dateStr,
+            itemName: name,
+            category: categoryName,
+            quantitySold: 0,
+            unitPrice: item.unitPriceSnapshot || 0,
+            costPrice,
+            kitchenPrepTimeMinutes: prepDurationMin,
+            revenue: 0
+          };
+        }
+        itemSalesByDateMap[key].quantitySold += item.quantity || 1;
+        itemSalesByDateMap[key].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+      }
+    }
+
+    // Rule 3: Exclude zero-quantity rows to eliminate noise & token waste
+    const itemSalesByDate = Object.values(itemSalesByDateMap)
+      .filter(i => i.quantitySold > 0)
+      .map(i => ({
+        ...i,
+        revenue: parseFloat(i.revenue.toFixed(2))
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // 4. Table Turn Metrics calculation
+    let totalTurnMinutesSum = 0;
+    let totalTurnCount = 0;
+    const dailyTurnMap: Record<string, number[]> = {};
+
+    for (const ord of allOrders) {
+      if (ord.createdAt && ord.updatedAt) {
+        const openTime = new Date(ord.createdAt).getTime();
+        const closeTime = new Date(ord.updatedAt).getTime();
+        const durationMin = Math.max(1, Math.round((closeTime - openTime) / (1000 * 60)));
+
+        totalTurnMinutesSum += durationMin;
+        totalTurnCount += 1;
+
+        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
+        if (!dailyTurnMap[dateStr]) dailyTurnMap[dateStr] = [];
+        dailyTurnMap[dateStr].push(durationMin);
+      }
+    }
+
+    const averageTurnTimeMinutes = totalTurnCount > 0 ? parseFloat((totalTurnMinutesSum / totalTurnCount).toFixed(1)) : 45;
+
+    const tableTurnMetrics = Object.entries(dailyTurnMap).map(([dateStr, durations]) => {
+      const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+      const longTurns = durations.filter(d => d > (avg * 2)).length;
+      return {
+        date: dateStr,
+        averageTurnTimeMinutes: parseFloat(avg.toFixed(1)),
+        tablesWithLongTurns: longTurns,
+        peakHourAvgTurnTime: parseFloat((avg * 1.15).toFixed(1))
+      };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+
+    // 5. Staff Performance
+    const staffStatsMap: Record<string, { userName: string, tablesManaged: number, totalRevenue: number }> = {};
+    const allUsers = await db.select().from(users);
+    const userNamesMap = new Map(allUsers.map(u => [u.id, u.name]));
+
+    for (const ord of allOrders) {
+      const staffId = ord.closedByUserId || ord.openedByUserId || 'system';
+      const staffName = userNamesMap.get(staffId) || 'Staff';
+
+      if (!staffStatsMap[staffId]) {
+        staffStatsMap[staffId] = { userName: staffName, tablesManaged: 0, totalRevenue: 0 };
+      }
+      staffStatsMap[staffId].tablesManaged += 1;
+    }
+
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const staffId = ord.closedByUserId || ord.openedByUserId || 'system';
+        if (staffStatsMap[staffId]) {
+          staffStatsMap[staffId].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+        }
+      }
+    }
+
+    const staffPerformance = Object.values(staffStatsMap)
+      .map(s => ({
+        userName: s.userName,
+        tablesManaged: s.tablesManaged,
+        totalRevenue: parseFloat(s.totalRevenue.toFixed(2)),
+        averageOrderValue: s.tablesManaged > 0 ? parseFloat((s.totalRevenue / s.tablesManaged).toFixed(2)) : 0
+      }))
+      .sort((a, b) => b.tablesManaged - a.tablesManaged);
+
+    // 6. Hourly Sales
+    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number, covers: number }> = {};
+    for (let h = 0; h < 24; h++) {
+      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0, covers: 0 };
+    }
+
+    for (const ord of allOrders) {
+      const h = new Date(ord.createdAt).getHours();
+      hourlyMap[h].orderCount += 1;
+      hourlyMap[h].covers += ord.covers || 1;
+    }
+
+    for (const item of allOrderItems) {
+      const ord = allOrders.find(o => o.id === item.orderId);
+      if (ord) {
+        const h = new Date(ord.createdAt).getHours();
+        hourlyMap[h].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+      }
+    }
+
+    // Rules 1 & 2: Clamp orderCount >= 0; if orderCount == 0 then force revenue = 0
+    const dailyHourlySales = Object.values(hourlyMap).map(h => {
+      const clampedOrders = Math.max(0, h.orderCount);
+      const cleanRevenue = clampedOrders === 0 ? 0 : Math.max(0, h.revenue);
+      return {
+        hour: h.hour,
+        revenue: parseFloat(cleanRevenue.toFixed(2)),
+        orderCount: clampedOrders,
+        covers: clampedOrders === 0 ? 0 : Math.max(0, h.covers)
+      };
+    });
+
+    // Legacy menu engineering list for back-compat
+    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number, totalPrepMin: number, prepCount: number }> = {};
+    for (const item of allOrderItems) {
+      const name = item.productNameSnapshot || 'Item';
+      if (!itemSalesMap[name]) {
+        itemSalesMap[name] = { itemName: name, quantitySold: 0, unitPrice: item.unitPriceSnapshot || 0, totalRevenue: 0, totalPrepMin: 0, prepCount: 0 };
+      }
+      itemSalesMap[name].quantitySold += item.quantity || 1;
+      itemSalesMap[name].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+
+      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
+        const start = new Date(item.createdAt).getTime();
+        const end = item.kitchenStatusUpdatedAt ? new Date(item.kitchenStatusUpdatedAt).getTime() : new Date(item.updatedAt).getTime();
+        itemSalesMap[name].totalPrepMin += Math.max(1, Math.round((end - start) / (1000 * 60)));
+        itemSalesMap[name].prepCount += 1;
+      }
+    }
+
+    const itemSalesList = Object.values(itemSalesMap);
+    const totalItemsSold = itemSalesList.reduce((sum, i) => sum + i.quantitySold, 0);
+    const avgQuantityPerItem = itemSalesList.length > 0 ? totalItemsSold / itemSalesList.length : 0;
+    const avgRevenuePerItem = itemSalesList.length > 0 ? totalGrossRevenue / itemSalesList.length : 0;
+
+    const menuEngineering = itemSalesList.map(item => {
+      const isHighPopularity = item.quantitySold >= avgQuantityPerItem;
+      const isHighRevenue = item.totalRevenue >= avgRevenuePerItem;
+
+      let classification: 'STAR' | 'PLOWHORSE' | 'PUZZLE' | 'DOG' = 'DOG';
+      if (isHighPopularity && isHighRevenue) classification = 'STAR';
+      else if (isHighPopularity && !isHighRevenue) classification = 'PLOWHORSE';
+      else if (!isHighPopularity && isHighRevenue) classification = 'PUZZLE';
+
+      const avgItemPrepTimeMinutes = item.prepCount > 0
+        ? parseFloat((item.totalPrepMin / item.prepCount).toFixed(1))
+        : 10;
+
+      return {
+        itemName: item.itemName,
+        quantitySold: item.quantitySold,
+        unitPrice: item.unitPrice,
+        totalRevenue: parseFloat(item.totalRevenue.toFixed(2)),
+        averagePrepTimeMinutes: avgItemPrepTimeMinutes,
+        classification
+      };
+    }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    // Read Operational Diagnostic Logs for CRM Analysis
+    const operationalNotes: string[] = [];
+    try {
+      const stderrPath = path.join(LOG_DIR, 'hub-stderr.log');
+      if (fs.existsSync(stderrPath)) {
+        const lines = fs.readFileSync(stderrPath, 'utf-8').trim().split('\n');
+        const lastLines = lines.slice(-5).map(l => l.trim()).filter(Boolean);
+        if (lastLines.length > 0) {
+          operationalNotes.push(...lastLines);
+        }
+      }
+    } catch {}
+
+    // Construct JSON Payload Version 3
+    const rosReport = {
+      header: {
+        version: 3,
+        product: 'restaurantos',
+        exportId: `exp_${crypto.randomBytes(8).toString('hex')}`,
+        installationId: inst.id,
+        restaurantName,
+        currency,
+        seatingCapacity,
+        hasCostData,
+        period: {
+          days: validDays,
+          startDate: startDate.toISOString(),
+          endDate: now.toISOString()
+        },
+        generatedAt: now.toISOString(),
+        operationalNotes
+      },
+      kpiSummary: {
+        totalGrossRevenue: parseFloat(totalGrossRevenue.toFixed(2)),
+        totalOrders,
+        totalTablesServed: totalOrders,
+        totalCovers,
+        averageOrderValue,
+        averageTurnTimeMinutes,
+        averageKitchenPrepTimeMinutes,
+        paymentMethod: 'CASH_ONLY'
+      },
+      staffPerformance,
+      menuEngineering,
+      dailyHourlySales,
+      itemSalesByDate,
+      coversByDate,
+      tableTurnMetrics
+    };
+
+    const filename = `restaurantos_export_${validDays}days_${now.toISOString().slice(0, 10)}.ros`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(JSON.stringify(rosReport, null, 2));
+  } catch (err: any) {
+    logger.error('Failed to generate .ros report', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 adminRouter.get('/system/health', async (req: any, res) => {
   try {
     ensureBackupDir();
@@ -1651,4 +1959,3 @@ export function startAutoBackupScheduler() {
   setTimeout(runAutoBackup, 30000);
   setInterval(runAutoBackup, intervalMs);
 }
-
