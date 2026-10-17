@@ -70,24 +70,13 @@ function AppContent({
   rejectedCommands, 
   handleLogout, 
   handleLogin,
-  checkStatus
+  checkStatus,
+  licenseStatus,
+  fetchLicenseStatus
 }: any) {
   const [showRejectedModal, setShowRejectedModal] = useState(false);
-  const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const location = useLocation();
   const { t, language, setLanguage } = useI18n();
-
-  const fetchLicenseStatus = async () => {
-    try {
-      const res = await fetch('/api/licensing/status');
-      if (res.ok) {
-        const data = await res.json();
-        setLicenseStatus(data);
-      }
-    } catch (err) {
-      console.error('License check error', err);
-    }
-  };
 
   useEffect(() => {
     fetchLicenseStatus();
@@ -473,7 +462,20 @@ export function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [pendingCommands, setPendingCommands] = useState(0);
   const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const stateVersionRef = useRef<number>(0);
+
+  const fetchLicenseStatus = async () => {
+    try {
+      const res = await fetch('/api/licensing/status');
+      if (res.ok) {
+        const data = await res.json();
+        setLicenseStatus(data);
+      }
+    } catch (err) {
+      console.error('License check error', err);
+    }
+  };
 
   const checkStatus = async (token = authToken, retriesLeft = 3) => {
     try {
@@ -768,6 +770,8 @@ export function App() {
           handleLogout={handleLogout}
           handleLogin={handleLogin}
           checkStatus={checkStatus}
+          licenseStatus={licenseStatus}
+          fetchLicenseStatus={fetchLicenseStatus}
         />
       </BrowserRouter>
     </I18nProvider>
