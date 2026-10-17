@@ -80,7 +80,7 @@ function AppContent({
 
   useEffect(() => {
     fetchLicenseStatus();
-    const interval = setInterval(fetchLicenseStatus, 60000);
+    const interval = setInterval(fetchLicenseStatus, 120000);
     return () => clearInterval(interval);
   }, []);
 
@@ -470,7 +470,13 @@ export function App() {
       const res = await fetch('/api/licensing/status');
       if (res.ok) {
         const data = await res.json();
-        setLicenseStatus(data);
+        setLicenseStatus(prev => {
+          // Deep equality check: skip state update if payload is identical
+          if (JSON.stringify(prev) === JSON.stringify(data)) {
+            return prev;
+          }
+          return data;
+        });
       }
     } catch (err) {
       console.error('License check error', err);
@@ -501,56 +507,60 @@ export function App() {
             return;
           }
         } else if (res.status === 401 || res.status === 403) {
-          // Token explicitly invalid/revoked by server
+          // Token explicitly invalid/revoked by server — this is the ONLY case to clear local credentials
           localStorage.removeItem('restaurantos_auth_token');
           setAuthToken(null);
           token = null;
         } else {
-          // Transient HTTP error (e.g. 502, 503) — retry if attempts remain
+          // Transient HTTP error (e.g. 502, 503, connection dropped) — DO NOT clear token or reset to LOGIN!
           if (retriesLeft > 0) {
-            setTimeout(() => checkStatus(token, retriesLeft - 1), 1000);
-            return;
+            setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
           }
+          return;
         }
       }
 
-      // Check setup status from authoritative API
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const setupRes = await fetch('/api/auth/status', { signal: controller.signal });
-      clearTimeout(timeoutId);
+      // Genuine absence of token — check setup/login status
+      if (!token) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const setupRes = await fetch('/api/auth/status', { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-      const setupData = await setupRes.json();
-      if (setupData.restaurant) {
-        setRestaurant(setupData.restaurant);
-      }
-      if (!setupData.configured && !setupData.isInitialized) {
-        setAppState('SETUP');
-      } else {
-        setAppState('LOGIN');
+        const setupData = await setupRes.json();
+        if (setupData.restaurant) {
+          setRestaurant(setupData.restaurant);
+        }
+        if (!setupData.configured && !setupData.isInitialized) {
+          setAppState('SETUP');
+        } else {
+          setAppState('LOGIN');
+        }
       }
     } catch (err) {
       console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
       if (token && retriesLeft > 0) {
-        setTimeout(() => checkStatus(token, retriesLeft - 1), 1000);
+        setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
         return;
       }
 
-      // Fallback check to setup-status with AbortController signal
-      const fallbackCtrl = new AbortController();
-      const fallbackTimer = setTimeout(() => fallbackCtrl.abort(), 5000);
-      try {
-        const fallbackRes = await fetch('/api/auth/setup-status', { signal: fallbackCtrl.signal });
-        clearTimeout(fallbackTimer);
-        const fallbackData = await fallbackRes.json();
-        if (!fallbackData.isInitialized && !fallbackData.configured) {
-          setAppState('SETUP');
-          return;
+      // If we genuinely have no token, fall back to login/setup check
+      if (!token) {
+        const fallbackCtrl = new AbortController();
+        const fallbackTimer = setTimeout(() => fallbackCtrl.abort(), 5000);
+        try {
+          const fallbackRes = await fetch('/api/auth/setup-status', { signal: fallbackCtrl.signal });
+          clearTimeout(fallbackTimer);
+          const fallbackData = await fallbackRes.json();
+          if (!fallbackData.isInitialized && !fallbackData.configured) {
+            setAppState('SETUP');
+            return;
+          }
+        } catch (_) {
+          clearTimeout(fallbackTimer);
         }
-      } catch (_) {
-        clearTimeout(fallbackTimer);
+        setAppState('LOGIN');
       }
-      setAppState('LOGIN');
     }
   };
 
@@ -674,10 +684,11 @@ export function App() {
   // Sleep / Standby Recovery & Tab Visibility Re-Sync Listener
   useEffect(() => {
     const handleWakeAndSync = () => {
-      if (authToken) {
-        // Force socket reconnection on wake or return online
-        connectSocket(authToken);
-        initApp(authToken);
+      const savedToken = localStorage.getItem('restaurantos_auth_token') || authToken;
+      if (savedToken) {
+        // Force socket reconnection and state re-sync on wake or return online using storage token fallback
+        connectSocket(savedToken);
+        initApp(savedToken);
       }
     };
 
