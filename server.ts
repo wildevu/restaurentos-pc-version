@@ -47,6 +47,10 @@ function getLocalLanIps(): string[] {
 
     for (const iface of interfaces[name] || []) {
       if (iface.family === 'IPv4' && !iface.internal) {
+        // Exclude link-local APIPA addresses (169.254.x.x)
+        if (iface.address.startsWith('169.254.')) {
+          continue;
+        }
         if (isVirtual) {
           virtualIps.push(iface.address);
         } else {

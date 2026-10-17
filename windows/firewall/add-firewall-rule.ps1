@@ -24,7 +24,7 @@ try {
                             -Action Allow `
                             -Protocol TCP `
                             -LocalPort $Port `
-                            -Profile Private,Domain `
+                            -Profile Private,Domain,Public `
                             -Enabled True
     } else {
         Write-Host "Creating new Windows Firewall rule '$RuleName' for port $Port..."

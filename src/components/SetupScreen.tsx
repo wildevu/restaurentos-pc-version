@@ -114,7 +114,16 @@ export function SetupScreen({ onComplete }: { onComplete: (token?: string) => vo
 
   const handleCopyInstallationId = () => {
     if (!installationId) return;
-    navigator.clipboard.writeText(installationId);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(installationId);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = installationId;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2500);
   };

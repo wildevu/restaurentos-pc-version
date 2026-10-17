@@ -48,7 +48,16 @@ export const LicenseManagement: React.FC = () => {
 
   const handleCopyInstallationId = () => {
     if (!status?.installationId) return;
-    navigator.clipboard.writeText(status.installationId);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(status.installationId);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = status.installationId;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };

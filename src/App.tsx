@@ -663,18 +663,31 @@ export function App() {
     }
   };
 
-  // Mobile/Tablet Screen Unlock & Tab Visibility Re-Sync Listener
+  // Sleep / Standby Recovery & Tab Visibility Re-Sync Listener
   useEffect(() => {
+    const handleWakeAndSync = () => {
+      if (authToken) {
+        // Force socket reconnection on wake or return online
+        connectSocket(authToken);
+        initApp(authToken);
+      }
+    };
+
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && authToken) {
-        if (!socket.connected) {
-          socket.connect();
-        }
+      if (document.visibilityState === 'visible') {
+        handleWakeAndSync();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleWakeAndSync);
+    window.addEventListener('focus', handleWakeAndSync);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleWakeAndSync);
+      window.removeEventListener('focus', handleWakeAndSync);
+    };
   }, [authToken]);
 
   const handleLogin = (token: string, userData?: any) => {

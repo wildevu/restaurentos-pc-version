@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChefHat, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, RotateCcw, ShieldAlert } from 'lucide-react';
+import { uuidv4 } from '../utils/uuid';
 
 interface LoginScreenProps {
   onLogin: (token: string, user?: any) => void;
@@ -21,10 +22,10 @@ export function LoginScreen({ onLogin, onReset, message }: { onLogin: (token: st
     setError('');
     setLoading(true);
     
-    // Ensure deviceId exists
+    // Ensure deviceId exists using safe uuidv4 helper (works on HTTP over LAN)
     let deviceId = localStorage.getItem('restaurantos_device_id');
     if (!deviceId) {
-      deviceId = crypto.randomUUID();
+      deviceId = uuidv4();
       localStorage.setItem('restaurantos_device_id', deviceId);
     }
 

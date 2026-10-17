@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ChefHat, CheckCircle, XCircle, Camera, Keyboard } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
+import { uuidv4 } from '../utils/uuid';
 
 export function PairingScreen({ onLogin }: { onLogin: (token: string) => void }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18,7 +19,7 @@ export function PairingScreen({ onLogin }: { onLogin: (token: string) => void })
     try {
       let deviceId = localStorage.getItem('restaurantos_device_id');
       if (!deviceId) {
-        deviceId = crypto.randomUUID();
+        deviceId = uuidv4();
         localStorage.setItem('restaurantos_device_id', deviceId);
       }
 
