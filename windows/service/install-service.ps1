@@ -19,12 +19,13 @@ if (-not $isAdmin) {
 Write-Host "Configuring RestaurantOS Local Hub automatic startup..." -ForegroundColor Cyan
 
 # Determine the cleanest silent executable path
-$SupervisorScript = Join-Path $AppDir "windows\service\run-hub-supervisor.ps1"
+$SupervisorScript = Join-Path $AppDir (Join-Path "windows" (Join-Path "service" "run-hub-supervisor.ps1"))
 if (-not (Test-Path $SupervisorScript)) {
     Write-Error "The Local Hub supervisor script is missing: $SupervisorScript"
     exit 1
 }
-$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \`"$SupervisorScript\`" -AppDir \`"$AppDir\`" -DataDir \`"$DataDir\`"" -WorkingDirectory $AppDir
+$TaskArguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -AppDir "{1}" -DataDir "{2}"' -f $SupervisorScript, $AppDir, $DataDir
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $TaskArguments -WorkingDirectory $AppDir
 
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)

@@ -51,6 +51,11 @@ check(!mainFlow.includes('process.Kill()'), 'launcher does not kill a hub during
 const supervisor = read('windows/service/run-hub-supervisor.ps1');
 check(supervisor.includes('while ($true)') && supervisor.includes('Start-Sleep'), 'Windows supervisor restarts exited server with backoff');
 check(supervisor.includes('$env:NODE_ENV = "production"') && supervisor.includes('$env:RESTAURANTOS_DATA_DIR = $DataDir'), 'Windows supervisor configures production and data paths');
+const installer = read('windows/installer/install.ps1');
+const serviceInstaller = read('windows/service/install-service.ps1');
+check(installer.includes('Join-Path "windows" (Join-Path "service" "run-hub-supervisor.ps1")'), 'main installer resolves supervisor script using platform-independent path joins');
+check(serviceInstaller.includes('Join-Path "windows" (Join-Path "service" "run-hub-supervisor.ps1")'), 'service installer resolves supervisor script using platform-independent path joins');
+check(installer.includes('-WorkingDirectory $InstallPath') && serviceInstaller.includes('-WorkingDirectory $AppDir'), 'both scheduled-task actions set application working directory');
 
 const db = read('src/db/index.ts');
 check(db.includes('PRAGMA integrity_check') && db.includes('requiredTables'), 'restore validates integrity and core tables before swap');

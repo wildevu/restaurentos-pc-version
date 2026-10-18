@@ -111,11 +111,12 @@ try {
 Write-Log "Registering Local Hub background startup service..."
 $TaskName = "RestaurantOS Local Hub"
 try {
-    $SupervisorScript = Join-Path $InstallPath "windowsserviceun-hub-supervisor.ps1"
+    $SupervisorScript = Join-Path $InstallPath (Join-Path "windows" (Join-Path "service" "run-hub-supervisor.ps1"))
     if (-not (Test-Path $SupervisorScript)) {
         throw "RestaurantOS service supervisor is missing: $SupervisorScript"
     }
-    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$SupervisorScript`" -AppDir `"$InstallPath`" -DataDir `"$DataPath`"" -WorkingDirectory $InstallPath
+    $TaskArguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -AppDir "{1}" -DataDir "{2}"' -f $SupervisorScript, $InstallPath, $DataPath
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $TaskArguments -WorkingDirectory $InstallPath
     $Trigger = New-ScheduledTaskTrigger -AtStartup
     $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
     
