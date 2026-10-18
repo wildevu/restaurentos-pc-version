@@ -22,6 +22,8 @@ check(queue.includes('clearTimeout(timeoutId)'), 'acknowledgement timeout is cle
 check(queue.includes('ACK_TIMEOUT') && queue.includes('same action ID'), 'uncertain acknowledgement preserves idempotent action identity');
 check(queue.includes("status: 'PENDING'") && !queue.includes('Max retries ('), 'transport exhaustion preserves uncertain commands instead of falsely rejecting them');
 check(queue.includes("where('status').anyOf('PENDING', 'SYNCING')") && queue.includes('flushRequested'), 'queue drain re-queries and schedules a requested follow-up');
+check(queue.includes('scheduleFlushRetry') && queue.includes('15000'), 'uncertain queued commands retry periodically while the socket remains connected');
+check(queue.includes("db.transaction('rw', db.commands") && queue.includes('latestTime + 1'), 'queue preserves strict FIFO order for same-millisecond actions');
 check(queue.includes("notifyListeners('rejected')"), 'permanent rejection signals authoritative reconciliation');
 check(queue.includes('stablePayload.clientOrderId') && queue.includes('stablePayload.clientItemId'), 'offline entity IDs are persisted in queued payloads');
 
@@ -38,6 +40,8 @@ check(server.includes('owner === process.pid'), 'process releases only its own P
 check(server.includes('return getFrontendStateTx(tx, versionRow?.version || 0)'), 'REST snapshot includes a state version');
 check(server.includes('if (currentVersion !== lastKnownVersion || lastKnownVersion === 0)'), 'SYNC handles version differences in both directions');
 check(server.includes('UNCAUGHT_EXCEPTION') && server.includes('UNHANDLED_REJECTION'), 'fatal process errors request controlled shutdown');
+check(server.includes('beginDatabaseMaintenance') && server.includes('activeDatabaseRequests') && server.includes('activeSocketOperations'), 'database restore gates new writes and drains active operations');
+check(server.includes("code: 'HUB_MAINTENANCE'"), 'commands and HTTP requests receive explicit retryable maintenance responses');
 
 const launcher = read('windows/launcher/RestaurantOS.cs');
 const mainFlow = launcher.slice(launcher.indexOf('static void Main'), launcher.indexOf('private static bool ProbeUrl'));
@@ -51,6 +55,7 @@ check(supervisor.includes('$env:NODE_ENV = "production"') && supervisor.includes
 const db = read('src/db/index.ts');
 check(db.includes('PRAGMA integrity_check') && db.includes('requiredTables'), 'restore validates integrity and core tables before swap');
 check(db.includes('await client.close()') && db.includes('oldDatabaseMoved') && db.includes('rollbackPath'), 'restore closes live handle and preserves rollback');
+check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress') && admin.includes('endMaintenance()'), 'restore is exclusive and releases maintenance gate on every exit');
 
 const admin = read('src/api/admin.ts');
 check(admin.includes('VACUUM INTO') && admin.includes('Refusing to back up a database that failed integrity_check'), 'backup is consistent and fails on invalid integrity');

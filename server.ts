@@ -185,6 +185,17 @@ async function startServer() {
 
   let gracefulShutdown: (reason?: string) => Promise<void>;
 
+  let databaseMaintenance = false;
+  let activeDatabaseRequests = 0;
+  let activeSocketOperations = 0;
+  let maintenanceDrainWaiters: Array<() => void> = [];
+  const notifyMaintenanceDrained = () => {
+    if (!databaseMaintenance || activeDatabaseRequests > 0 || activeSocketOperations > 0) return;
+    const waiters = maintenanceDrainWaiters;
+    maintenanceDrainWaiters = [];
+    waiters.forEach(resolve => resolve());
+  };
+
   // Correlation ID, CORS & Security Headers Middleware
   app.use((req: any, res: any, next) => {
     const reqId = req.headers['x-request-id'] || `req_${uuidv4().substring(0, 8)}`;
@@ -217,6 +228,61 @@ async function startServer() {
     }
     next(err);
   });
+
+  // Maintenance gate blocks new DB-backed API work during restore while preserving liveness.
+  app.use((req: any, res: any, next: any) => {
+    const requestPath = req.path;
+    const restoreRoute = requestPath === '/api/admin/backups/restore';
+    const isLiveness = requestPath === '/health' || requestPath === '/api/health';
+
+    if (databaseMaintenance && !restoreRoute && !isLiveness) {
+      return res.status(503).json({
+        error: 'RestaurantOS is performing database maintenance. Retry shortly.',
+        code: 'HUB_MAINTENANCE',
+        retryable: true
+      });
+    }
+
+    if (requestPath.startsWith('/api/') && !restoreRoute && !isLiveness) {
+      activeDatabaseRequests++;
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        activeDatabaseRequests = Math.max(0, activeDatabaseRequests - 1);
+        notifyMaintenanceDrained();
+      };
+      res.once('finish', release);
+      res.once('close', release);
+    }
+    next();
+  });
+
+  app.set('beginDatabaseMaintenance', async () => {
+    if (databaseMaintenance) throw new Error('Another database maintenance operation is already active.');
+    databaseMaintenance = true;
+    if (activeDatabaseRequests === 0 && activeSocketOperations === 0) return;
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        maintenanceDrainWaiters = maintenanceDrainWaiters.filter(waiter => waiter !== finish);
+        databaseMaintenance = false;
+        reject(new Error('Could not safely drain active database requests within 30 seconds. No restore was performed.'));
+      }, 30000);
+      maintenanceDrainWaiters.push(finish);
+    });
+  });
+  app.set('endDatabaseMaintenance', () => { databaseMaintenance = false; });
 
   // Health / Liveness Check
   app.get(['/health', '/api/health'], (req, res) => {
@@ -345,11 +411,11 @@ async function startServer() {
 
   // Websockets Authentication Middleware
   io.use(async (socket, next) => {
+    if (databaseMaintenance) return next(new Error('Local Hub database maintenance is in progress. Reconnect shortly.'));
     const token = socket.handshake.auth?.token;
-    if (!token) {
-      return next(new Error('Authentication error: Token missing'));
-    }
+    if (!token) return next(new Error('Authentication error: Token missing'));
 
+    activeSocketOperations++;
     try {
       const tokenHashed = hashToken(token);
       const sessionRecords = await db.select()
@@ -365,22 +431,19 @@ async function startServer() {
       if (sessionRecords.length === 0 || !sessionRecords[0].users) {
         return next(new Error('Authentication error: Invalid session'));
       }
-
       if (sessionRecords[0].devices && sessionRecords[0].devices.revokedAt) {
         return next(new Error('Authentication error: Device has been revoked'));
       }
-      
       const user = sessionRecords[0].users;
       if (!user.isActive || user.disabledAt) {
         return next(new Error('Authentication error: Account disabled'));
       }
 
-      // Update session last seen timestamp
       try {
-        await db.update(sessions).set({ lastSeenAt: new Date() }).where(eq(sessions.id, sessionRecords[0].sessions.id));
+        await db.update(sessions).set({ lastSeenAt: new Date() })
+          .where(eq(sessions.id, sessionRecords[0].sessions.id));
       } catch {}
 
-      // Attach user and device to socket
       (socket as any).user = user;
       (socket as any).deviceId = sessionRecords[0].sessions.deviceId;
       (socket as any).sessionId = sessionRecords[0].sessions.id;
@@ -388,6 +451,9 @@ async function startServer() {
     } catch (err) {
       logger.error('Socket authentication error', err);
       next(new Error('Authentication error: Internal error'));
+    } finally {
+      activeSocketOperations = Math.max(0, activeSocketOperations - 1);
+      notifyMaintenanceDrained();
     }
   });
 
@@ -397,46 +463,72 @@ async function startServer() {
     logger.info('Client connected via socket', { userId: user.id, username: user.username });
 
     socket.on('COMMAND', async (payload, callback) => {
+      if (databaseMaintenance) {
+        if (callback) callback({ success: false, retryable: true, code: 'HUB_MAINTENANCE', error: 'Database maintenance is in progress; this command remains queued.' });
+        return;
+      }
+      activeSocketOperations++;
       try {
         const licenseCheck = await LicensingService.getStatus();
         if (!licenseCheck.canOperate) {
           logger.warn('Operational command blocked due to inactive/expired license', {
             status: licenseCheck.status,
             userId: user.id,
+            actionId: payload?.actionId,
+            commandType: payload?.type
           });
           if (callback) callback({
             success: false,
             retryable: false,
+            code: licenseCheck.status === 'EXPIRED' ? 'LICENSE_EXPIRED' : 'LICENSE_REQUIRED',
             error: licenseCheck.status === 'EXPIRED'
               ? 'RestaurantOS license has expired. Please renew the license.'
-              : 'Active RestaurantOS license required to perform actions.',
+              : 'Active RestaurantOS license required to perform actions.'
           });
           return;
         }
 
         const command = CommandPayloadSchema.parse(payload);
         const result = await processCommand(command, user, socket.handshake.auth?.clientInstallationId);
-        
-        // Acknowledge the command, including the stateVersion it produced or resolved to
         if (callback) callback({ success: true, duplicate: result.duplicate, stateVersion: result.stateVersion });
-        
-        // Broadcast the new state to all clients if this was a new mutation
-        if (!result.duplicate && result.state) {
-          io.emit('STATE_UPDATE', result.state);
-        }
+        if (!result.duplicate && result.state) io.emit('STATE_UPDATE', result.state);
       } catch (err: any) {
-        logger.error(`Command failed: ${err.message}`);
         let isRetryable = true;
+        let errorCode = 'INTERNAL_UNCERTAIN';
         if (err && err.name === 'CommandError') {
           isRetryable = err.isRetryable;
+          errorCode = 'COMMAND_ERROR';
         } else if (err && err.name === 'ZodError') {
           isRetryable = false;
+          errorCode = 'VALIDATION';
         }
-        if (callback) callback({ success: false, retryable: isRetryable, error: err.message });
+        logger.error('Command failed', {
+          userId: user.id,
+          actionId: payload?.actionId,
+          commandType: payload?.type,
+          errorCode,
+          retryable: isRetryable,
+          error: err?.message || String(err)
+        });
+        if (callback) callback({
+          success: false,
+          retryable: isRetryable,
+          code: errorCode,
+          actionId: payload?.actionId,
+          error: err?.message || 'The hub could not confirm this action.'
+        });
+      } finally {
+        activeSocketOperations = Math.max(0, activeSocketOperations - 1);
+        notifyMaintenanceDrained();
       }
     });
 
     socket.on('SYNC', async (payload, callback) => {
+      if (databaseMaintenance) {
+        if (callback) callback({ error: 'Database maintenance is in progress; synchronization will resume shortly.', retryable: true, code: 'HUB_MAINTENANCE' });
+        return;
+      }
+      activeSocketOperations++;
       try {
         const suppliedVersion = Number(payload?.lastKnownVersion);
         const lastKnownVersion = Number.isSafeInteger(suppliedVersion) && suppliedVersion >= 0 ? suppliedVersion : 0;
@@ -453,6 +545,9 @@ async function startServer() {
       } catch (err: any) {
         logger.error('Sync failed', { error: err.message, userId: user.id });
         if (callback) callback({ error: 'Synchronization failed. Retry when the hub is available.' });
+      } finally {
+        activeSocketOperations = Math.max(0, activeSocketOperations - 1);
+        notifyMaintenanceDrained();
       }
     });
 

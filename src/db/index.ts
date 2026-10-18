@@ -132,8 +132,15 @@ export async function restoreDatabaseFile(sourcePath: string): Promise<{ rollbac
   }
 
   if (verifier) { await verifier.close(); verifier = null; }
-  await client.execute('PRAGMA wal_checkpoint(TRUNCATE);');
-  await client.close();
+  try {
+    await client.execute('PRAGMA wal_checkpoint(TRUNCATE);');
+    await client.close();
+  } catch (closeError: any) {
+    try { await client.close(); } catch {}
+    client = createClient({ url: 'file:' + DB_PATH });
+    db = drizzle(client, { schema });
+    throw new Error('Could not safely close the active database; restore was not attempted: ' + closeError.message);
+  }
 
   try {
     try { fs.unlinkSync(DB_PATH + '-wal'); } catch {}

@@ -15,6 +15,7 @@ import { LicensingService } from '../licensing/service';
 import { logger } from '../logger';
 
 export const adminRouter = Router();
+let restoreInProgress = false;
 
 // Middleware to check admin role
 adminRouter.use((req: any, res: any, next) => {
@@ -1456,24 +1457,44 @@ adminRouter.get('/backups/download/:filename', async (req: any, res) => {
 });
 
 adminRouter.post('/backups/restore', async (req: any, res) => {
+  if (req.user.role !== 'OWNER' && req.user.role !== 'MANAGER') {
+    return res.status(403).json({ error: 'Only owners or managers can restore backups' });
+  }
+  if (restoreInProgress) {
+    return res.status(409).json({ error: 'A database restore is already in progress.' });
+  }
+
+  restoreInProgress = true;
+  let maintenanceAcquired = false;
+  const endMaintenance = req.app.get('endDatabaseMaintenance');
   try {
-    if (req.user.role !== 'OWNER' && req.user.role !== 'MANAGER') {
-      return res.status(403).json({ error: 'Only owners or managers can restore backups' });
-    }
     const { filename, confirm } = req.body;
     if (!confirm || !filename || typeof filename !== 'string') {
       return res.status(400).json({ error: 'Explicit confirmation and filename are required' });
     }
+
     const safeFilename = path.basename(filename);
     const sourceBackupPath = path.join(BACKUP_DIR, safeFilename);
     if (safeFilename !== filename || !fs.existsSync(sourceBackupPath) || !safeFilename.endsWith('.db')) {
       return res.status(404).json({ error: 'Selected backup file does not exist' });
     }
 
-    await performSafeBackup('pre-restore', req.user.restaurantId, req.user.id);
+    const beginMaintenance = req.app.get('beginDatabaseMaintenance');
+    if (typeof beginMaintenance !== 'function' || typeof endMaintenance !== 'function') {
+      throw new Error('Database maintenance gate is unavailable; refusing to replace the live database.');
+    }
+    await beginMaintenance();
+    maintenanceAcquired = true;
+
     const io = req.app.get('io');
     if (io) {
       io.emit('HUB_MAINTENANCE', { message: 'Database restore is in progress. Pending actions remain queued on clients.' });
+    }
+
+    // The maintenance gate first blocks new DB-backed requests and drains existing ones.
+    await performSafeBackup('pre-restore', req.user.restaurantId, req.user.id);
+
+    if (io) {
       for (const connectedSocket of io.sockets.sockets.values()) {
         try { connectedSocket.conn.close(); } catch {}
       }
@@ -1490,11 +1511,15 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
       metadata: JSON.stringify({ restoredFrom: safeFilename, rollbackPath: result.rollbackPath }),
       createdAt: new Date(),
     });
+
     await emitStateUpdate(io, req.user.restaurantId, { forceResync: true });
     res.json({ success: true, message: 'Database successfully restored and validated' });
   } catch (err: any) {
     logger.error('Restore error:', err);
     res.status(500).json({ error: err.message || 'Failed to restore database' });
+  } finally {
+    if (maintenanceAcquired && typeof endMaintenance === 'function') endMaintenance();
+    restoreInProgress = false;
   }
 });
 
