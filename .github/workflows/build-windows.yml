@@ -2,7 +2,7 @@ name: Build RestaurantOS Windows Installer
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, gpt-harness ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
@@ -43,6 +43,9 @@ jobs:
 
       - name: Validate TypeScript Types & Code Quality
         run: npm run lint
+
+      - name: Run Reliability Regression Guardrails
+        run: node scripts/verify-reliability-hardening.cjs
 
       - name: Run Localization & Licensing Verification Suites
         run: |
@@ -167,7 +170,7 @@ jobs:
 
       - name: Publish Windows Installer to GitHub Releases
         uses: softprops/action-gh-release@v2
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v1.0.0' }}
           name: ${{ github.ref_type == 'tag' && github.ref_name || 'RestaurantOS Release v1.0.0' }}

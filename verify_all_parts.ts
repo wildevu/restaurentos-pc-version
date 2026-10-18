@@ -6,7 +6,7 @@ import { db } from './src/db/index';
 import { sql } from 'drizzle-orm';
 import { io as SocketIOClient } from 'socket.io-client';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = process.env.API_BASE || 'http://localhost:8989';
 
 interface TestResult {
   part: string;

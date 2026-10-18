@@ -19,21 +19,12 @@ if (-not $isAdmin) {
 Write-Host "Configuring RestaurantOS Local Hub automatic startup..." -ForegroundColor Cyan
 
 # Determine the cleanest silent executable path
-$LauncherExe = Join-Path $AppDir "RestaurantOS.exe"
-$VbsLauncher = Join-Path $AppDir "Launch-RestaurantOS.vbs"
-$NodeExe = Join-Path $AppDir "runtime\node.exe"
-$ServerCjs = Join-Path $AppDir "server.cjs"
-
-if (Test-Path $LauncherExe) {
-    $Action = New-ScheduledTaskAction -Execute $LauncherExe -Argument "--service" -WorkingDirectory $AppDir
-} elseif (Test-Path $VbsLauncher) {
-    $Action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "//B //Nologo `"$VbsLauncher`"" -WorkingDirectory $AppDir
-} elseif (Test-Path $NodeExe) {
-    $Action = New-ScheduledTaskAction -Execute $NodeExe -Argument "`"$ServerCjs`"" -WorkingDirectory $AppDir
-} else {
-    $LauncherScript = Join-Path $AppDir "launch-hub.bat"
-    $Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$LauncherScript`"" -WorkingDirectory $AppDir
+$SupervisorScript = Join-Path $AppDir "windows\service\run-hub-supervisor.ps1"
+if (-not (Test-Path $SupervisorScript)) {
+    Write-Error "The Local Hub supervisor script is missing: $SupervisorScript"
+    exit 1
 }
+$Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \`"$SupervisorScript\`" -AppDir \`"$AppDir\`" -DataDir \`"$DataDir\`"" -WorkingDirectory $AppDir
 
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)

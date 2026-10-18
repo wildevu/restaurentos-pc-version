@@ -583,13 +583,9 @@ export function App() {
     if (initInFlightRef.current) return;
     initInFlightRef.current = true;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch('/api/state', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: controller.signal
+      const res = await fetchWithTimeout('/api/state', {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
@@ -601,11 +597,12 @@ export function App() {
           setRestaurant(data.restaurant);
         }
       } else if (res.status === 402 || res.status === 403) {
-        // Expired or invalid license response
         const errorData = await res.json().catch(() => ({}));
         if (errorData.code === 'LICENSE_REQUIRED' || errorData.error?.includes('license')) {
-          fetchLicenseStatus(); // Immediately trigger license status update to display renewal modal
+          void fetchLicenseStatus();
         }
+      } else {
+        throw new Error('Could not load current restaurant state (HTTP ' + res.status + ')');
       }
 
       // Unbind previous listeners before reconnecting

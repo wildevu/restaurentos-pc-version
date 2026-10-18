@@ -101,7 +101,7 @@ if (-not (Test-Path $rootLauncher)) {
 Write-Log "Configuring Windows Firewall for restaurant LAN access on port 8989..."
 try {
     netsh advfirewall firewall delete rule name="RestaurantOS Local Hub" 2>&1 | Out-Null
-    netsh advfirewall firewall add rule name="RestaurantOS Local Hub" dir=in action=allow protocol=TCP localport=8989 profile=private,domain,public description="Allows waiter, kitchen, and manager devices to connect to RestaurantOS Local Hub" | Out-Null
+    netsh advfirewall firewall add rule name="RestaurantOS Local Hub" dir=in action=allow protocol=TCP localport=8989 profile=private,domain description="Allows waiter, kitchen, and manager devices to connect to RestaurantOS Local Hub" | Out-Null
     Write-Log "Windows Firewall configured successfully." "Green"
 } catch {
     Write-Warning "Could not configure firewall automatically: $_"
@@ -111,7 +111,11 @@ try {
 Write-Log "Registering Local Hub background startup service..."
 $TaskName = "RestaurantOS Local Hub"
 try {
-    $Action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$rootLauncher`"" -WorkingDirectory $InstallPath
+    $SupervisorScript = Join-Path $InstallPath "windowsserviceun-hub-supervisor.ps1"
+    if (-not (Test-Path $SupervisorScript)) {
+        throw "RestaurantOS service supervisor is missing: $SupervisorScript"
+    }
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$SupervisorScript`" -AppDir `"$InstallPath`" -DataDir `"$DataPath`"" -WorkingDirectory $InstallPath
     $Trigger = New-ScheduledTaskTrigger -AtStartup
     $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)
     

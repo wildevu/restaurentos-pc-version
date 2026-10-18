@@ -68,37 +68,28 @@ namespace RestaurantOS.Launcher
                 }
                 catch { }
 
-                // 3. Prevent Port 8989 Conflict: Check if an instance is already starting or running
+                // 3. Prevent duplicate hub instances. Never kill a process based only on a
+                // port probe or PID file: database migrations may legitimately take time.
                 if (IsPortInUse(8989) || IsExistingPidRunning(pidFile))
                 {
-                    // Wait up to 5 seconds for the existing instance to finish booting
                     DateTime waitStart = DateTime.UtcNow;
-                    while ((DateTime.UtcNow - waitStart).TotalSeconds < 5)
+                    while ((DateTime.UtcNow - waitStart).TotalSeconds < MaxWaitSeconds)
                     {
                         if (CheckReadyEndpoint())
                         {
-                            if (!isServiceMode)
-                            {
-                                OpenBrowser(HubUrl);
-                            }
+                            if (!isServiceMode) OpenBrowser(HubUrl);
                             return;
                         }
                         Thread.Sleep(400);
                     }
 
-                    // If it is responding now, open browser
-                    if (CheckReadyEndpoint())
-                    {
-                        if (!isServiceMode)
-                        {
-                            OpenBrowser(HubUrl);
-                        }
-                        return;
-                    }
-
-                    // Port 8989 is occupied by an unresponsive/orphaned process. Clean it up to allow fresh startup.
-                    KillOrphanedServerProcesses();
-                    Thread.Sleep(1000);
+                    ShowErrorDialog(
+                        "RestaurantOS is already starting or a process is occupying port 8989, but the hub did not become ready within " +
+                        MaxWaitSeconds + " seconds. No existing process was terminated.\n\n" +
+                        "Check diagnostic logs before restarting the hub.\n\n" +
+                        "Diagnostic logs:\nC:\\ProgramData\\RestaurantOS\\logs\\"
+                    );
+                    return;
                 }
 
                 // 4. Resolve Node.js Runtime
@@ -208,16 +199,8 @@ namespace RestaurantOS.Launcher
 
                 if (!isReady)
                 {
-                    // Clean up child process to avoid leaving an orphaned zombie locking port 8989
-                    try
-                    {
-                        if (process != null && !process.HasExited)
-                        {
-                            process.Kill();
-                        }
-                    }
-                    catch { }
-
+                    // A startup timeout is not proof the server is dead. It may still be migrating,
+                    // so do not terminate it or risk interrupting database recovery.
                     ShowErrorDialog(
                         "RestaurantOS startup timed out.\n\n" +
                         "The server did not respond within the expected timeframe.\n" +
