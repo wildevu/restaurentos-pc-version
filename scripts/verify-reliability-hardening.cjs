@@ -55,9 +55,9 @@ check(supervisor.includes('$env:NODE_ENV = "production"') && supervisor.includes
 const db = read('src/db/index.ts');
 check(db.includes('PRAGMA integrity_check') && db.includes('requiredTables'), 'restore validates integrity and core tables before swap');
 check(db.includes('await client.close()') && db.includes('oldDatabaseMoved') && db.includes('rollbackPath'), 'restore closes live handle and preserves rollback');
-check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress') && admin.includes('endMaintenance()'), 'restore is exclusive and releases maintenance gate on every exit');
 
 const admin = read('src/api/admin.ts');
+check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress') && admin.includes('endMaintenance()'), 'restore is exclusive and releases maintenance gate on every exit');
 check(admin.includes('VACUUM INTO') && admin.includes('Refusing to back up a database that failed integrity_check'), 'backup is consistent and fails on invalid integrity');
 check(admin.includes('options.forceResync ? { ...state, forceResync: true } : state'), 'state publishes after commit and restore can force resync');
 
