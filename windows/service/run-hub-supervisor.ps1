@@ -13,6 +13,12 @@ $SupervisorLog = Join-Path $LogDir "hub-supervisor.log"
 foreach ($dir in @($DataDir, (Join-Path $DataDir "data"), (Join-Path $DataDir "backups"), $LogDir, (Join-Path $DataDir "config"))) {
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
 }
+try {
+    Set-Location -LiteralPath $AppDir
+} catch {
+    Add-Content -Path $SupervisorLog -Value "[$(Get-Date -Format o)] FATAL: could not set application working directory: $_"
+    exit 3
+}
 if (-not (Test-Path $NodeExe)) {
     Add-Content -Path $SupervisorLog -Value "[$(Get-Date -Format o)] FATAL: bundled Node runtime missing: $NodeExe"
     exit 2

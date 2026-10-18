@@ -14,7 +14,7 @@ createRoot(document.getElementById('root')!).render(
 
 const updateSW = registerSW({
   onNeedRefresh() {
-    if (confirm('New content available. Reload?')) {
+    if (confirm('An update for RestaurantOS is ready. Reload now to apply it?')) {
       updateSW(true);
     }
   },

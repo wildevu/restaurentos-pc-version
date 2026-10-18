@@ -1,6 +1,7 @@
-' RestaurantOS Local Hub - Silent VBS Launcher
-' Launches the bundled background service without flashing any console window
-Dim WshShell, fso, appDir, nodeExe, serverScript, dataDir, logDir
+' RestaurantOS Local Hub - Silent Launcher
+' Starts the persistent PowerShell hub supervisor. The supervisor owns Node's
+' output redirection, logging, and restart lifecycle independently of this script.
+Dim WshShell, fso, appDir, dataDir, logDir, supervisorScript, commandLine
 
 Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
@@ -14,16 +15,11 @@ logDir = dataDir & "\logs"
 If Not fso.FolderExists(dataDir) Then fso.CreateFolder(dataDir)
 If Not fso.FolderExists(logDir) Then fso.CreateFolder(logDir)
 
-nodeExe = appDir & "\runtime\node.exe"
-If Not fso.FileExists(nodeExe) Then nodeExe = appDir & "\node.exe"
-If Not fso.FileExists(nodeExe) Then nodeExe = "node.exe"
+supervisorScript = appDir & "\windows\service\run-hub-supervisor.ps1"
+If Not fso.FileExists(supervisorScript) Then
+    MsgBox "The RestaurantOS hub supervisor is missing. Please reinstall RestaurantOS." & vbCrLf & supervisorScript, vbCritical, "RestaurantOS Local Hub"
+    WScript.Quit 1
+End If
 
-serverScript = appDir & "\server.cjs"
-
-WshShell.Environment("PROCESS")("NODE_ENV") = "production"
-WshShell.Environment("PROCESS")("PORT") = "8989"
-WshShell.Environment("PROCESS")("RESTAURANTOS_DATA_DIR") = dataDir
-
-' Launch silently with 0 (hidden window)
-WshShell.CurrentDirectory = appDir
-WshShell.Run """" & nodeExe & """ """ & serverScript & """", 0, False
+commandLine = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File """ & supervisorScript & """ -AppDir """ & appDir & """ -DataDir """ & dataDir & """"
+WshShell.Run commandLine, 0, False

@@ -22,6 +22,7 @@ AppUpdatesURL={#MyAppURL}
 
 ; Destination Directories
 DefaultDirName={autopf}\RestaurantOS
+DisableDirPage=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 DirExistsWarning=no
@@ -124,7 +125,7 @@ Filename: "wscript.exe"; Parameters: """{app}\Launch-RestaurantOS.vbs"""; Descri
 
 [UninstallRun]
 ; Step 1: Remove scheduled task FIRST — prevents any auto-restart
-Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterTask"
+Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\windows\service\uninstall-service.ps1"" -AppDir ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "UnregisterTask"
 
 ; Step 2: Kill only RestaurantOS's node and app processes (targeted by path)
 Filename: "taskkill.exe"; Parameters: "/F /IM RestaurantOS.exe"; Flags: runhidden waituntilterminated; RunOnceId: "KillApp"

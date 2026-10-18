@@ -54,8 +54,7 @@ namespace RestaurantOS.Launcher
                 }
                 string dataDir = Path.Combine(programData, "RestaurantOS");
                 string logsDir = Path.Combine(dataDir, "logs");
-                string stdoutLog = Path.Combine(logsDir, "hub-stdout.log");
-                string stderrLog = Path.Combine(logsDir, "hub-stderr.log");
+                string supervisorLog = Path.Combine(logsDir, "hub-supervisor.log");
                 string pidFile = Path.Combine(dataDir, "restaurantos.pid");
 
                 try
@@ -92,68 +91,39 @@ namespace RestaurantOS.Launcher
                     return;
                 }
 
-                // 4. Resolve Node.js Runtime
-                string nodeExe = Path.Combine(appDir, "runtime", "node.exe");
-                if (!File.Exists(nodeExe))
+                // 4. Start the persistent supervisor rather than a Node process with
+                // redirected stdout/stderr pipes tied to this short-lived GUI launcher.
+                string supervisorScript = Path.Combine(appDir, "windows", "service", "run-hub-supervisor.ps1");
+                if (!File.Exists(supervisorScript))
                 {
-                    nodeExe = Path.Combine(appDir, "node.exe");
-                }
-                if (!File.Exists(nodeExe))
-                {
-                    nodeExe = "node.exe";
-                }
-
-                string serverScript = Path.Combine(appDir, "server.cjs");
-                if (!File.Exists(serverScript))
-                {
-                    serverScript = Path.Combine(appDir, "server.js");
+                    ShowErrorDialog(
+                        "The RestaurantOS hub supervisor is missing. Please reinstall RestaurantOS.\n\n" +
+                        "Expected file:\n" + supervisorScript
+                    );
+                    return;
                 }
 
-                // 5. Configure Process Start Info
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
-                    FileName = nodeExe,
-                    Arguments = string.Format("\"{0}\"", serverScript),
+                    FileName = "powershell.exe",
+                    Arguments = string.Format(
+                        "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{0}\" -AppDir \"{1}\" -DataDir \"{2}\"",
+                        supervisorScript, appDir, dataDir),
                     WorkingDirectory = appDir,
                     CreateNoWindow = true,
                     UseShellExecute = false,
                     WindowStyle = ProcessWindowStyle.Hidden,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false
                 };
-
-                psi.EnvironmentVariables["NODE_ENV"] = "production";
-                psi.EnvironmentVariables["PORT"] = "8989";
-                psi.EnvironmentVariables["RESTAURANTOS_DATA_DIR"] = dataDir;
 
                 Process process = new Process { StartInfo = psi };
-
-                // Redirect logs asynchronously
-                process.OutputDataReceived += (s, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
-                    {
-                        try { File.AppendAllText(stdoutLog, string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}{2}", DateTime.UtcNow, e.Data, Environment.NewLine)); } catch { }
-                    }
-                };
-
-                process.ErrorDataReceived += (s, e) =>
-                {
-                    if (!string.IsNullOrEmpty(e.Data))
-                    {
-                        try { File.AppendAllText(stderrLog, string.Format("[{0:yyyy-MM-dd HH:mm:ss}] {1}{2}", DateTime.UtcNow, e.Data, Environment.NewLine)); } catch { }
-                    }
-                };
-
                 bool started = process.Start();
                 if (!started)
                 {
-                    ShowErrorDialog("Failed to start the RestaurantOS engine process.");
+                    ShowErrorDialog("Failed to start the RestaurantOS hub supervisor.");
                     return;
                 }
-
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
 
                 // 6. Poll for Readiness
                 DateTime startTime = DateTime.UtcNow;
@@ -166,9 +136,9 @@ namespace RestaurantOS.Launcher
                         string errDetail = "";
                         try
                         {
-                            if (File.Exists(stderrLog))
+                            if (File.Exists(supervisorLog))
                             {
-                                string[] lines = File.ReadAllLines(stderrLog);
+                                string[] lines = File.ReadAllLines(supervisorLog);
                                 if (lines.Length > 0)
                                 {
                                     int count = Math.Min(lines.Length, 5);

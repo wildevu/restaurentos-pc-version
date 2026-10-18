@@ -5,6 +5,27 @@ import { LOG_DIR, ensureDirectories } from './paths';
 // Ensure the log directory exists
 ensureDirectories();
 
+// A detached Windows launcher or a closed terminal can invalidate stdout/stderr.
+// File logging below is the durable record, so console stream errors must be non-fatal.
+function protectConsoleStream(stream: any) {
+  if (!stream || typeof stream.on !== 'function') return;
+  stream.on('error', (error: any) => {
+    if (error?.code === 'EPIPE' || error?.code === 'EBADF') return;
+    try {
+      const timestamp = new Date().toISOString();
+      const logFilePath = path.join(LOG_DIR, `restaurantos-${timestamp.split('T')[0]}.log`);
+      fs.appendFileSync(logFilePath, JSON.stringify({
+        timestamp,
+        level: 'ERROR',
+        message: 'Console output stream failed',
+        meta: { code: error?.code, message: error?.message }
+      }) + '\\n', 'utf-8');
+    } catch {}
+  });
+}
+protectConsoleStream(process.stdout);
+protectConsoleStream(process.stderr);
+
 export const logger = {
   info: (msg: string, meta?: any) => log('INFO', msg, meta),
   warn: (msg: string, meta?: any) => log('WARN', msg, meta),
@@ -26,13 +47,17 @@ function log(level: string, message: string, meta?: any) {
 
   const jsonStr = JSON.stringify(logEntry);
 
-  // 1. Console Output
-  if (level === 'ERROR') {
-    console.error(jsonStr);
-  } else if (level === 'WARN') {
-    console.warn(jsonStr);
-  } else {
-    console.log(jsonStr);
+  // 1. Best-effort console output. Keep durable file logging independent from it.
+  try {
+    if (level === 'ERROR') {
+      console.error(jsonStr);
+    } else if (level === 'WARN') {
+      console.warn(jsonStr);
+    } else {
+      console.log(jsonStr);
+    }
+  } catch {
+    // Console output is optional and must not affect restaurant operations.
   }
 
   // 2. Safe File Logging with Daily Rotation
