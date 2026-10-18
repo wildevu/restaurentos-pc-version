@@ -54,26 +54,26 @@ function sendCommand(command: { actionId: string; type: string; payload: any }):
 
   return new Promise((resolve, reject) => {
     let settled = false;
-    const timeoutId = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      reject(new Error('ACK_TIMEOUT'));
-    }, ACK_TIMEOUT_MS);
-
     const settle = (error?: Error, response?: any) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeoutId);
       if (error) reject(error);
       else resolve(response);
     };
 
     try {
-      socket.emit('COMMAND', {
+      // Socket.IO owns the timeout lifecycle here. Unlike a separate setTimeout,
+      // this removes the acknowledgement callback from the socket's pending-ACK
+      // map when it expires, avoiding leaked callbacks during repeated timeouts.
+      socket.timeout(ACK_TIMEOUT_MS).emit('COMMAND', {
         actionId: command.actionId,
         type: command.type,
         payload: command.payload
-      }, (response: any) => {
+      }, (error: Error | null, response: any) => {
+        if (error) {
+          settle(new Error('ACK_TIMEOUT'));
+          return;
+        }
         if (!response || typeof response !== 'object') {
           settle(new Error('EMPTY_ACKNOWLEDGEMENT'));
           return;

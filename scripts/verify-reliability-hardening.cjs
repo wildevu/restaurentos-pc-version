@@ -18,8 +18,9 @@ function read(file) {
 
 console.log('RestaurantOS reliability regression guardrails');
 const queue = read('src/offline/queue.ts');
-check(queue.includes('clearTimeout(timeoutId)'), 'acknowledgement timeout is cleared after response');
+check(queue.includes('socket.timeout(ACK_TIMEOUT_MS).emit'), 'Socket.IO owns ACK timeout cleanup and removes expired callbacks');
 check(queue.includes('ACK_TIMEOUT') && queue.includes('same action ID'), 'uncertain acknowledgement preserves idempotent action identity');
+check(queue.includes('socket.timeout(ACK_TIMEOUT_MS).emit') && queue.includes('ACK_TIMEOUT'), 'transport ACK timeout is bounded by Socket.IO itself');
 check(queue.includes("status: 'PENDING'") && !queue.includes('Max retries ('), 'transport exhaustion preserves uncertain commands instead of falsely rejecting them');
 check(queue.includes("where('status').anyOf('PENDING', 'SYNCING')") && queue.includes('flushRequested'), 'queue drain re-queries and schedules a requested follow-up');
 check(queue.includes('scheduleFlushRetry') && queue.includes('15000'), 'uncertain queued commands retry periodically while the socket remains connected');
