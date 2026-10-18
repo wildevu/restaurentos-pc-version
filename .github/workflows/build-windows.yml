@@ -44,8 +44,10 @@ jobs:
       - name: Validate TypeScript Types & Code Quality
         run: npm run lint
 
-      - name: Run Reliability Regression Guardrails
-        run: node scripts/verify-reliability-hardening.cjs
+      - name: Run Reliability Regression Checks
+        run: |
+          node scripts/verify-reliability-hardening.cjs
+          npx tsx scripts/verify-command-idempotency.ts
 
       - name: Run Localization & Licensing Verification Suites
         run: |

@@ -73,7 +73,7 @@ check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress'
 check(admin.indexOf('const advanceSyncEpoch = req.app.get(\'advanceSyncEpoch\')') < admin.indexOf('await db.insert(auditEvents).values({', admin.indexOf("adminRouter.post('/backups/restore'")), 'restore epoch is invalidated immediately after swap, before fallible audit writes');
 check(admin.includes('VACUUM INTO') && admin.includes('Refusing to back up a database that failed integrity_check'), 'backup is consistent and fails on invalid integrity');
 const scheduler = admin.slice(admin.indexOf('export function startAutoBackupScheduler'));
-check(scheduler.includes('if (restoreInProgress)'), 'automatic backups do not start while restore is active');
+check(scheduler.includes('if (restoreInProgress || autoBackupInProgress)'), 'automatic backups do not start while restore or another backup is active');
 check(admin.includes('waitForAutoBackupToFinish()') && admin.includes('autoBackupInProgress = false'), 'restore waits for any auto-backup already in flight before closing the DB');
 check(admin.includes('options.forceResync ? { ...state, forceResync: true } : state'), 'state publishes after commit and restore can force resync');
 check(admin.includes('if (stateVersion === undefined)'), 'state version zero is handled without duplicate hub-state insertion');
@@ -84,6 +84,8 @@ check(workflow.includes("github.event_name == 'push' && github.ref_type == 'tag'
 
 const pkg = JSON.parse(read('package.json'));
 check(pkg.scripts.test.includes('verify-reliability-hardening.cjs'), 'npm test includes reliability guardrails');
+check(pkg.scripts.test.includes('verify-command-idempotency.ts'), 'npm test includes real database command idempotency tests');
+check(fs.existsSync(path.join(process.cwd(), 'scripts/verify-command-idempotency.ts')), 'real database regression suite is present');
 check(read('verify_all_parts.ts').includes("process.env.API_BASE || 'http://localhost:8989'"), 'integration test default matches server port');
 
 console.log('\nReliability guardrails: ' + passed + ' passed, ' + failed + ' failed.');
