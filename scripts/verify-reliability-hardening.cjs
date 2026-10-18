@@ -62,6 +62,7 @@ check(installer.includes('-WorkingDirectory $InstallPath') && serviceInstaller.i
 const db = read('src/db/index.ts');
 check(db.includes('PRAGMA integrity_check') && db.includes('requiredTables'), 'restore validates integrity and core tables before swap');
 check(db.includes('await client.close()') && db.includes('oldDatabaseMoved') && db.includes('rollbackPath'), 'restore closes live handle and preserves rollback');
+check(db.includes('if (oldDatabaseMoved) {') && db.includes('If moving the original failed, keep it intact.'), 'restore never deletes the original DB if its rollback rename fails');
 
 const admin = read('src/api/admin.ts');
 check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress') && admin.includes('endMaintenance()'), 'restore is exclusive and releases maintenance gate on every exit');

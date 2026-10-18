@@ -155,10 +155,16 @@ export async function restoreDatabaseFile(sourcePath: string): Promise<{ rollbac
     return { rollbackPath };
   } catch (restoreError) {
     try { await client.close(); } catch {}
-    try { fs.unlinkSync(DB_PATH); } catch {}
-    try { fs.unlinkSync(DB_PATH + '-wal'); } catch {}
-    try { fs.unlinkSync(DB_PATH + '-shm'); } catch {}
-    if (oldDatabaseMoved && fs.existsSync(rollbackPath)) fs.renameSync(rollbackPath, DB_PATH);
+
+    if (oldDatabaseMoved) {
+      // Only delete the candidate replacement after the original has been moved
+      // safely into rollbackPath. If moving the original failed, keep it intact.
+      try { fs.unlinkSync(DB_PATH); } catch {}
+      try { fs.unlinkSync(DB_PATH + '-wal'); } catch {}
+      try { fs.unlinkSync(DB_PATH + '-shm'); } catch {}
+      if (fs.existsSync(rollbackPath)) fs.renameSync(rollbackPath, DB_PATH);
+    }
+
     client = createClient({ url: 'file:' + DB_PATH });
     db = drizzle(client, { schema });
     try {
