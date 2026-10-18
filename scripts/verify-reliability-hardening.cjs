@@ -42,7 +42,7 @@ const server = read('server.ts');
 check(server.includes("fs.openSync(LOCK_FILE, 'wx')"), 'single-instance lock uses exclusive file creation');
 check(server.includes('owner === process.pid'), 'process releases only its own PID lock');
 check(server.includes('return getFrontendStateTx(tx, versionRow?.version || 0)'), 'REST snapshot includes a state version');
-check(server.includes('if (currentVersion !== lastKnownVersion || lastKnownVersion === 0)'), 'SYNC handles version differences in both directions');
+check(server.includes('if (currentVersion !== lastKnownVersion || lastKnownVersion === 0 || clientEpoch !== syncEpoch)'), 'SYNC handles state-version and server-epoch differences');
 check(server.includes('forceResync: currentVersion < lastKnownVersion'), 'SYNC identifies a legitimate version rollback after backup restore');
 check(server.includes('clientEpoch !== syncEpoch') && server.includes('app.set(\'advanceSyncEpoch\''), 'SYNC epoch forces refresh after server restarts and restores even if versions match');
 check(server.includes('UNCAUGHT_EXCEPTION') && server.includes('UNHANDLED_REJECTION'), 'fatal process errors request controlled shutdown');
