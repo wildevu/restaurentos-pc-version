@@ -54,7 +54,17 @@ import {
 } from './offline';
 import { RejectedCommandsModal } from './components/RejectedCommandsModal';
 
-type AppState = 'LOADING' | 'SETUP' | 'LOGIN' | 'APP';
+async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+type AppState = 'LOADING' | 'SETUP' | 'LOGIN' | 'APP' | 'HUB_UNAVAILABLE';
 
 function AppContent({ 
   user, 
@@ -417,6 +427,7 @@ export function App() {
     return localStorage.getItem('restaurantos_auth_token');
   });
   const [restaurant, setRestaurant] = useState<any>(null);
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   // Auto-login persistence check on app boot
   useEffect(() => {
@@ -430,12 +441,40 @@ export function App() {
 
 
   useEffect(() => {
-    const unsubQueue = subscribeToQueue(async () => {
-      const count = await getPendingCount();
-      const rejected = await getRejectedCommands();
+    const refreshQueueStatus = async () => {
+      const [count, rejected] = await Promise.all([getPendingCount(), getRejectedCommands()]);
       setRejectedCommands(rejected);
       setPendingCommands(count);
+    };
+
+    const unsubQueue = subscribeToQueue(async (reason) => {
+      await refreshQueueStatus();
+      if (reason !== 'rejected' || reconcileInFlightRef.current) return;
+      const token = localStorage.getItem('restaurantos_auth_token');
+      if (!token) return;
+
+      reconcileInFlightRef.current = true;
+      try {
+        const response = await fetchWithTimeout('/api/state', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) return;
+        const authoritative = await response.json();
+        if (authoritative.stateVersion !== undefined) stateVersionRef.current = authoritative.stateVersion;
+        const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
+        let reconciled = { tables: authoritative.tables || [], orders: authoritative.orders || [] };
+        for (const command of pending) reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
+        setTables(reconciled.tables);
+        setOrders(reconciled.orders);
+        if (authoritative.menu) setMenu(authoritative.menu);
+        if (authoritative.restaurant) setRestaurant(authoritative.restaurant);
+      } catch (error) {
+        console.error('Could not reconcile rejected optimistic command with server state', error);
+      } finally {
+        reconcileInFlightRef.current = false;
+      }
     });
+    void refreshQueueStatus();
 
     const unsubOpt = subscribeToOptimistic((type, payload) => {
       setTables(prevTables => {
@@ -464,6 +503,9 @@ export function App() {
   const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
   const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const stateVersionRef = useRef<number>(0);
+  const initInFlightRef = useRef(false);
+  const reconcileInFlightRef = useRef(false);
+  const lastWakeSyncAtRef = useRef(0);
 
   const fetchLicenseStatus = async () => {
     try {
@@ -484,87 +526,62 @@ export function App() {
   };
 
   const checkStatus = async (token = authToken, retriesLeft = 3) => {
+    setStartupError(null);
     try {
       if (token) {
-        // Verify token with timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` },
-          signal: controller.signal
+        const res = await fetchWithTimeout('/api/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
         });
-        clearTimeout(timeoutId);
 
-        if (res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          // Only explicit auth rejection invalidates saved credentials.
+          localStorage.removeItem('restaurantos_auth_token');
+          setAuthToken(null);
+          setUser(null);
+          token = null;
+        } else if (!res.ok) {
+          throw new Error('Hub authentication check failed (HTTP ' + res.status + ')');
+        } else {
           const data = await res.json();
           if (data.user) {
             setUser(data.user);
-            if (data.restaurant) {
-              setRestaurant(data.restaurant);
-            }
+            if (data.restaurant) setRestaurant(data.restaurant);
             setAppState('APP');
-            initApp(token);
+            void initApp(token);
             return;
           }
-        } else if (res.status === 401 || res.status === 403) {
-          // Token explicitly invalid/revoked by server — this is the ONLY case to clear local credentials
+
           localStorage.removeItem('restaurantos_auth_token');
           setAuthToken(null);
+          setUser(null);
           token = null;
-        } else {
-          // Transient HTTP error (e.g. 502, 503, connection dropped) — DO NOT clear token or reset to LOGIN!
-          if (retriesLeft > 0) {
-            setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
-          }
-          return;
         }
       }
 
-      // Genuine absence of token — check setup/login status
       if (!token) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const setupRes = await fetch('/api/auth/status', { signal: controller.signal });
-        clearTimeout(timeoutId);
-
+        const setupRes = await fetchWithTimeout('/api/auth/status');
+        if (!setupRes.ok) throw new Error('Hub setup check failed (HTTP ' + setupRes.status + ')');
         const setupData = await setupRes.json();
-        if (setupData.restaurant) {
-          setRestaurant(setupData.restaurant);
-        }
-        if (!setupData.configured && !setupData.isInitialized) {
-          setAppState('SETUP');
-        } else {
-          setAppState('LOGIN');
-        }
+        if (setupData.restaurant) setRestaurant(setupData.restaurant);
+        setAppState(!setupData.configured && !setupData.isInitialized ? 'SETUP' : 'LOGIN');
+        return;
       }
-    } catch (err) {
-      console.error(`Failed to check status (retries left: ${retriesLeft})`, err);
-      if (token && retriesLeft > 0) {
-        setTimeout(() => checkStatus(token, retriesLeft - 1), 2000);
+    } catch (err: any) {
+      console.error('Failed to check RestaurantOS status (retries left: ' + retriesLeft + ')', err);
+      if (retriesLeft > 0) {
+        window.setTimeout(() => { void checkStatus(token, retriesLeft - 1); }, 1500);
         return;
       }
 
-      // If we genuinely have no token, fall back to login/setup check
-      if (!token) {
-        const fallbackCtrl = new AbortController();
-        const fallbackTimer = setTimeout(() => fallbackCtrl.abort(), 5000);
-        try {
-          const fallbackRes = await fetch('/api/auth/setup-status', { signal: fallbackCtrl.signal });
-          clearTimeout(fallbackTimer);
-          const fallbackData = await fallbackRes.json();
-          if (!fallbackData.isInitialized && !fallbackData.configured) {
-            setAppState('SETUP');
-            return;
-          }
-        } catch (_) {
-          clearTimeout(fallbackTimer);
-        }
-        setAppState('LOGIN');
-      }
+      // Never clear a token because the local hub is temporarily unavailable.
+      setStartupError(err?.message || 'The local hub could not be reached.');
+      setAppState('HUB_UNAVAILABLE');
     }
   };
 
   const initApp = async (token: string, retriesLeft = 3) => {
+    if (initInFlightRef.current) return;
+    initInFlightRef.current = true;
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -602,7 +619,8 @@ export function App() {
 
       let disconnectTimer: any = null;
 
-      socket.on('connect', () => {
+      const synchronize = () => {
+        if (!socket.connected) return;
         if (disconnectTimer) {
           clearTimeout(disconnectTimer);
           disconnectTimer = null;
@@ -613,33 +631,40 @@ export function App() {
           let latestOrders: any[] = [];
           setTables(prev => { latestTables = prev; return prev; });
           setOrders(prev => { latestOrders = prev; return prev; });
-          
-          if (res && res.upToDate === false && res.state) {
-            stateVersionRef.current = res.state.stateVersion;
-            latestTables = res.state.tables;
-            latestOrders = res.state.orders;
+
+          if (!res || res.error) {
+            console.error('Hub synchronization failed', res?.error || 'No response');
+            return;
+          }
+
+          if (res.upToDate === false && res.state) {
+            // SYNC snapshots are authoritative, including after a database restore.
+            stateVersionRef.current = Number(res.state.stateVersion || 0);
+            latestTables = res.state.tables || [];
+            latestOrders = res.state.orders || [];
             if (res.state.menu) setMenu(res.state.menu);
             if (res.state.restaurant) setRestaurant(res.state.restaurant);
           }
-          
+
           try {
             const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
             let state = { tables: latestTables, orders: latestOrders };
-            for (const cmd of pending) {
-               state = applyOptimisticCommand(state, cmd.type, cmd.payload);
-            }
+            for (const cmd of pending) state = applyOptimisticCommand(state, cmd.type, cmd.payload);
             setTables(state.tables);
             setOrders(state.orders);
-          } catch(e) {
-            console.error('Optimistic re-apply failed', e);
+          } catch (error) {
+            console.error('Optimistic re-apply failed', error);
             setTables(latestTables);
             setOrders(latestOrders);
           }
-          
-          flushQueue();
+
+          void flushQueue();
         });
-      });
-      
+      };
+
+      socket.on('connect', synchronize);
+      if (socket.connected) synchronize();
+
       socket.on('disconnect', () => {
         if (!disconnectTimer) {
           disconnectTimer = setTimeout(() => {
@@ -660,36 +685,36 @@ export function App() {
         handleLogout();
       });
       
-      socket.on('STATE_UPDATE', (data: { tables: Table[], orders: Order[], menu?: MenuItem[], stateVersion?: number, restaurant?: any }) => {
-        if (data.stateVersion !== undefined) {
-          stateVersionRef.current = data.stateVersion;
-        }
-        setTables(data.tables);
-        setOrders(data.orders);
-        if (data.menu) {
-          setMenu(data.menu);
-        }
-        if (data.restaurant) {
-          setRestaurant(data.restaurant);
-        }
+      socket.on('STATE_UPDATE', (data: { tables: Table[], orders: Order[], menu?: MenuItem[], stateVersion?: number, restaurant?: any, forceResync?: boolean }) => {
+        // Prevent late events from overwriting newer state. A full forced resync is
+        // allowed to lower the version after a restore from an older backup.
+        if (data.stateVersion !== undefined && data.stateVersion < stateVersionRef.current && !data.forceResync) return;
+        if (data.stateVersion !== undefined) stateVersionRef.current = data.stateVersion;
+        setTables(data.tables || []);
+        setOrders(data.orders || []);
+        if (data.menu) setMenu(data.menu);
+        if (data.restaurant) setRestaurant(data.restaurant);
       });
     } catch (err) {
-      console.error(`Init error (retries left: ${retriesLeft})`, err);
+      console.error('Init error (retries left: ' + retriesLeft + ')', err);
       if (retriesLeft > 0) {
-        setTimeout(() => initApp(token, retriesLeft - 1), 1000);
+        window.setTimeout(() => { void initApp(token, retriesLeft - 1); }, 1000);
+      } else {
+        setIsConnected(false);
       }
+    } finally {
+      initInFlightRef.current = false;
     }
   };
 
-  // Sleep / Standby Recovery & Tab Visibility Re-Sync Listener
+  // Focus, visibility and network events can fire together; coalesce them into one sync.
   useEffect(() => {
     const handleWakeAndSync = () => {
+      const now = Date.now();
+      if (now - lastWakeSyncAtRef.current < 1500) return;
+      lastWakeSyncAtRef.current = now;
       const savedToken = localStorage.getItem('restaurantos_auth_token') || authToken;
-      if (savedToken) {
-        // Force socket reconnection and state re-sync on wake or return online using storage token fallback
-        connectSocket(savedToken);
-        initApp(savedToken);
-      }
+      if (savedToken) void initApp(savedToken);
     };
 
     const handleVisibilityChange = () => {
@@ -743,6 +768,29 @@ export function App() {
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-bold text-gray-500 gap-3">
         <RefreshCw size={24} className="animate-spin text-blue-600" />
         <span>Loading RestaurantOS...</span>
+      </div>
+    );
+  }
+
+  if (appState === 'HUB_UNAVAILABLE') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4 px-6 text-center text-gray-700">
+        <CloudOff size={36} className="text-amber-600" />
+        <h1 className="text-xl font-bold">RestaurantOS hub unavailable</h1>
+        <p className="max-w-md text-sm">
+          The local hub could not be reached. Your saved sign-in has been preserved. Check that the RestaurantOS hub is running on the main PC, then retry.
+        </p>
+        {startupError && <p className="max-w-md text-xs text-gray-500">{startupError}</p>}
+        <button
+          type="button"
+          className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+          onClick={() => {
+            setAppState('LOADING');
+            void checkStatus(localStorage.getItem('restaurantos_auth_token'), 4);
+          }}
+        >
+          Retry connection
+        </button>
       </div>
     );
   }

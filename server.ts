@@ -66,34 +66,50 @@ function getLocalLanIps(): string[] {
 
 function acquireInstanceLock(): boolean {
   ensureDirectories();
-  try {
-    if (fs.existsSync(LOCK_FILE)) {
-      const pidStr = fs.readFileSync(LOCK_FILE, 'utf-8').trim();
-      const pid = parseInt(pidStr, 10);
-      if (!isNaN(pid)) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = fs.openSync(LOCK_FILE, 'wx');
+      try {
+        fs.writeFileSync(fd, String(process.pid), 'utf-8');
+        fs.fsyncSync(fd);
+      } finally { fs.closeSync(fd); }
+      return true;
+    } catch (error: any) {
+      if (error?.code !== 'EEXIST') {
+        logger.error('Unable to acquire Local Hub instance lock; refusing startup.', { error: error?.message });
+        return false;
+      }
+      let pid = NaN;
+      try { pid = Number.parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim(), 10); } catch {}
+      if (Number.isInteger(pid) && pid > 0) {
         try {
-          // Check if process with that PID is still running
           process.kill(pid, 0);
-          logger.warn(`Another instance of RestaurantOS Local Hub is already running (PID: ${pid})`);
-          return true; // Still allow server to attempt port binding; PID check is informational
-        } catch {
-          // Process not running, stale lock file
-          logger.info(`Cleaning up stale lockfile from PID ${pid}`);
+          logger.error('Another process owns the Local Hub lock; refusing a second instance.', { pid });
+          return false;
+        } catch (probeError: any) {
+          if (probeError?.code === 'EPERM') {
+            logger.error('The existing process is alive but cannot be inspected; refusing a second instance.', { pid });
+            return false;
+          }
         }
       }
+      try {
+        fs.unlinkSync(LOCK_FILE);
+        logger.warn('Removed stale Local Hub lock file.', { previousPid: Number.isFinite(pid) ? pid : null });
+      } catch (unlinkError: any) {
+        logger.error('Could not remove stale Local Hub lock; refusing startup.', { error: unlinkError?.message });
+        return false;
+      }
     }
-    fs.writeFileSync(LOCK_FILE, String(process.pid), 'utf-8');
-  } catch (err) {
-    logger.warn('Lockfile handling note:', err);
   }
-  return true;
+  logger.error('Could not acquire Local Hub lock after stale-lock recovery.');
+  return false;
 }
 
 function releaseInstanceLock(): void {
   try {
-    if (fs.existsSync(LOCK_FILE)) {
-      fs.unlinkSync(LOCK_FILE);
-    }
+    const owner = Number.parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim(), 10);
+    if (owner === process.pid) fs.unlinkSync(LOCK_FILE);
   } catch {}
 }
 
@@ -106,7 +122,10 @@ async function startServer() {
   });
   
   ensureDirectories();
-  acquireInstanceLock();
+  if (!acquireInstanceLock()) {
+    logger.error('RestaurantOS Local Hub is already running or its lock could not be acquired. Exiting without touching the active instance.');
+    process.exit(1);
+  }
   cleanOldLogs();
   
   // Clean logs every 24 hours
@@ -312,7 +331,11 @@ async function startServer() {
   // Frontend State Route
   app.get('/api/state', authenticate, async (req: any, res) => {
     try {
-      const state = await db.transaction(async (tx: any) => await getFrontendStateTx(tx));
+      const state = await db.transaction(async (tx: any) => {
+        const versionRow = await tx.select().from(hubState)
+          .where(eq(hubState.restaurantId, req.user.restaurantId)).get();
+        return getFrontendStateTx(tx, versionRow?.version || 0);
+      });
       res.json(state);
     } catch (err: any) {
       logger.error('Failed to fetch state', { error: err.message, reqId: req.id });
@@ -415,20 +438,21 @@ async function startServer() {
 
     socket.on('SYNC', async (payload, callback) => {
       try {
-        const lastKnownVersion = payload?.lastKnownVersion || 0;
-        
-        const stateRes = await db.select().from(hubState).where(eq(hubState.restaurantId, user.restaurantId)).get();
-        const currentVersion = stateRes?.version || 0;
-        
-        if (currentVersion > lastKnownVersion || lastKnownVersion === 0) {
-          const state = await getFrontendStateTx(db, currentVersion);
-          if (callback) callback({ upToDate: false, state });
-        } else {
-          if (callback) callback({ upToDate: true, stateVersion: currentVersion });
-        }
+        const suppliedVersion = Number(payload?.lastKnownVersion);
+        const lastKnownVersion = Number.isSafeInteger(suppliedVersion) && suppliedVersion >= 0 ? suppliedVersion : 0;
+        const response = await db.transaction(async (tx: any) => {
+          const stateRow = await tx.select().from(hubState)
+            .where(eq(hubState.restaurantId, user.restaurantId)).get();
+          const currentVersion = stateRow?.version || 0;
+          if (currentVersion !== lastKnownVersion || lastKnownVersion === 0) {
+            return { upToDate: false, state: await getFrontendStateTx(tx, currentVersion) };
+          }
+          return { upToDate: true, stateVersion: currentVersion };
+        });
+        if (callback) callback(response);
       } catch (err: any) {
-        logger.error(`Sync failed: ${err.message}`);
-        if (callback) callback({ error: err.message });
+        logger.error('Sync failed', { error: err.message, userId: user.id });
+        if (callback) callback({ error: 'Synchronization failed. Retry when the hub is available.' });
       }
     });
 

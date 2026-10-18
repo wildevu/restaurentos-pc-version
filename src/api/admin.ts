@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db } from '../db/index';
+import { db, restoreDatabaseFile } from '../db/index';
 import { users, restaurants, tables, auditEvents, hubState, sessions, devices, pairingTokens, menuCategories, menuItems, orders, orderItems } from '../db/schema';
 import { eq, and, not, sql, isNull, asc, desc, inArray, gte, lte, like } from 'drizzle-orm';
 import { z } from 'zod';
@@ -26,25 +26,23 @@ adminRouter.use((req: any, res: any, next) => {
 });
 
 // Helper for emitting state updates
-export async function emitStateUpdate(io: any, restaurantId: string) {
+export async function emitStateUpdate(io: any, restaurantId: string, options: { forceResync?: boolean } = {}) {
   if (!io) return;
-  await db.transaction(async (tx: any) => {
+  const state = await db.transaction(async (tx: any) => {
     const now = new Date();
     const versionRes = await tx.update(hubState)
-      .set({ version: sql`${hubState.version} + 1`, updatedAt: now })
+      .set({ version: sql.raw('version + 1'), updatedAt: now })
       .where(eq(hubState.restaurantId, restaurantId))
       .returning({ version: hubState.version })
       .get();
-    
     let stateVersion = versionRes?.version;
     if (!stateVersion) {
       stateVersion = 1;
       await tx.insert(hubState).values({ restaurantId, version: stateVersion, updatedAt: now });
     }
-    
-    const state = await getFrontendStateTx(tx, stateVersion);
-    io.emit('STATE_UPDATE', state);
+    return getFrontendStateTx(tx, stateVersion);
   }, { behavior: 'immediate' });
+  io.emit('STATE_UPDATE', options.forceResync ? { ...state, forceResync: true } : state);
 }
 
 // RESTAURANT PROFILE
@@ -1352,20 +1350,18 @@ function ensureBackupDir() {
 async function performSafeBackup(type: 'manual' | 'auto' | 'pre-restore', restaurantId: string, actorUserId: string) {
   ensureBackupDir();
   
-  // Safe checkpoint to make sure WAL changes are flushed
-  try {
-    await db.run(sql.raw('PRAGMA wal_checkpoint(TRUNCATE);'));
-    await db.run(sql.raw('PRAGMA integrity_check;'));
-  } catch (e) {
-    console.warn('wal_checkpoint error ignored:', e);
+  const integrity = await db.run(sql.raw('PRAGMA integrity_check;'));
+  const integrityValue = (integrity as any).rows?.[0]?.integrity_check ?? (integrity as any).rows?.[0]?.[0];
+  if (integrityValue !== 'ok') {
+    throw new Error('Refusing to back up a database that failed integrity_check: ' + String(integrityValue));
   }
 
   const timestampStr = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `backup_${type}_${timestampStr}.db`;
   const targetPath = path.join(BACKUP_DIR, filename);
 
-  // Safely copy the DB file
-  fs.copyFileSync(DB_PATH, targetPath);
+  const escapedTarget = targetPath.replace(/'/g, "''");
+  await db.run(sql.raw("VACUUM INTO '" + escapedTarget + "'"));
   const stats = fs.statSync(targetPath);
 
   if (stats.size === 0) {
@@ -1464,40 +1460,26 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
     if (req.user.role !== 'OWNER' && req.user.role !== 'MANAGER') {
       return res.status(403).json({ error: 'Only owners or managers can restore backups' });
     }
-
     const { filename, confirm } = req.body;
-    if (!confirm || !filename) {
+    if (!confirm || !filename || typeof filename !== 'string') {
       return res.status(400).json({ error: 'Explicit confirmation and filename are required' });
     }
-
     const safeFilename = path.basename(filename);
     const sourceBackupPath = path.join(BACKUP_DIR, safeFilename);
-    if (!fs.existsSync(sourceBackupPath) || !safeFilename.endsWith('.db')) {
+    if (safeFilename !== filename || !fs.existsSync(sourceBackupPath) || !safeFilename.endsWith('.db')) {
       return res.status(404).json({ error: 'Selected backup file does not exist' });
     }
 
-    // 1. Take a safety pre-restore backup first
     await performSafeBackup('pre-restore', req.user.restaurantId, req.user.id);
-
-    // 2. Force a full TRUNCATE checkpoint to clear existing WAL memory pages
-    try {
-      await db.run(sql.raw('PRAGMA wal_checkpoint(TRUNCATE);'));
-    } catch (e) {
-      logger.warn('WAL checkpoint before restore warning:', e);
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('HUB_MAINTENANCE', { message: 'Database restore is in progress. Pending actions remain queued on clients.' });
+      for (const connectedSocket of io.sockets.sockets.values()) {
+        try { connectedSocket.conn.close(); } catch {}
+      }
     }
 
-    // 3. Atomically overwrite main database file and clean temporary WAL/SHM indexes
-    fs.copyFileSync(sourceBackupPath, DB_PATH);
-    try {
-      if (fs.existsSync(`${DB_PATH}-wal`)) fs.unlinkSync(`${DB_PATH}-wal`);
-      if (fs.existsSync(`${DB_PATH}-shm`)) fs.unlinkSync(`${DB_PATH}-shm`);
-    } catch {}
-
-    // 4. Verify integrity of newly restored database file
-    const integrity = await db.run(sql.raw('PRAGMA integrity_check;'));
-    logger.info('Restored database integrity check status:', integrity);
-
-    // 5. Audit log
+    const result = await restoreDatabaseFile(sourceBackupPath);
     await db.insert(auditEvents).values({
       id: uuidv4(),
       restaurantId: req.user.restaurantId,
@@ -1505,13 +1487,11 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
       action: 'DATABASE_RESTORED',
       entityType: 'RESTAURANT',
       entityId: req.user.restaurantId,
-      metadata: JSON.stringify({ restoredFrom: safeFilename }),
+      metadata: JSON.stringify({ restoredFrom: safeFilename, rollbackPath: result.rollbackPath }),
       createdAt: new Date(),
     });
-
-    // 6. Broadcast restored state instantly to all connected waiter & kitchen tablets
-    await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
-    res.json({ success: true, message: 'Database successfully restored' });
+    await emitStateUpdate(io, req.user.restaurantId, { forceResync: true });
+    res.json({ success: true, message: 'Database successfully restored and validated' });
   } catch (err: any) {
     logger.error('Restore error:', err);
     res.status(500).json({ error: err.message || 'Failed to restore database' });

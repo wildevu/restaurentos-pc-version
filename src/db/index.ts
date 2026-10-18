@@ -24,11 +24,11 @@ const getCurrentDirname = () => {
 // Ensure data and database directories exist before initializing LibSQL client
 ensureDirectories();
 
-export const client = createClient({
+export let client = createClient({
   url: `file:${DB_PATH}`,
 });
 
-export const db = drizzle(client, { schema });
+export let db = drizzle(client, { schema });
 
 // Resolve the migrations folder reliably across dev (src/db/migrations) and production builds (migrations or dist/migrations)
 export function getMigrationsFolder(): string {
@@ -98,6 +98,76 @@ export async function runMigrations() {
   }
   
   logger.info('Database migrations and integrity checks completed successfully.');
+}
+
+/**
+ * Replace the live database only after validating an isolated staged copy.
+ * The LibSQL handle is closed before the filesystem swap.
+ */
+export async function restoreDatabaseFile(sourcePath: string): Promise<{ rollbackPath: string }> {
+  ensureDirectories();
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const stagedPath = DB_PATH + '.restore-stage-' + process.pid + '-' + Date.now();
+  const rollbackPath = DB_PATH + '.pre-restore-' + stamp;
+  let verifier: ReturnType<typeof createClient> | null = null;
+  let oldDatabaseMoved = false;
+
+  try {
+    fs.copyFileSync(sourcePath, stagedPath);
+    verifier = createClient({ url: 'file:' + stagedPath });
+    const integrity = await verifier.execute('PRAGMA integrity_check;');
+    const integrityValue = integrity.rows[0]?.integrity_check ?? integrity.rows[0]?.[0];
+    if (integrityValue !== 'ok') throw new Error('Selected backup failed SQLite integrity_check: ' + String(integrityValue));
+    const requiredTables = await verifier.execute(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('restaurants', 'tables', 'orders', 'order_items')"
+    );
+    const availableTables = new Set(requiredTables.rows.map((row: any) => String(row.name ?? row[0])));
+    for (const required of ['restaurants', 'tables', 'orders', 'order_items']) {
+      if (!availableTables.has(required)) throw new Error('Selected backup is missing required table: ' + required);
+    }
+  } catch (error) {
+    if (verifier) { try { await verifier.close(); } catch {} }
+    try { fs.unlinkSync(stagedPath); } catch {}
+    throw error;
+  }
+
+  if (verifier) { await verifier.close(); verifier = null; }
+  await client.execute('PRAGMA wal_checkpoint(TRUNCATE);');
+  await client.close();
+
+  try {
+    try { fs.unlinkSync(DB_PATH + '-wal'); } catch {}
+    try { fs.unlinkSync(DB_PATH + '-shm'); } catch {}
+    fs.renameSync(DB_PATH, rollbackPath);
+    oldDatabaseMoved = true;
+    fs.renameSync(stagedPath, DB_PATH);
+    client = createClient({ url: 'file:' + DB_PATH });
+    db = drizzle(client, { schema });
+    await runMigrations();
+    logger.warn('Database restore completed; previous database retained for rollback.', { rollbackPath });
+    return { rollbackPath };
+  } catch (restoreError) {
+    try { await client.close(); } catch {}
+    try { fs.unlinkSync(DB_PATH); } catch {}
+    try { fs.unlinkSync(DB_PATH + '-wal'); } catch {}
+    try { fs.unlinkSync(DB_PATH + '-shm'); } catch {}
+    if (oldDatabaseMoved && fs.existsSync(rollbackPath)) fs.renameSync(rollbackPath, DB_PATH);
+    client = createClient({ url: 'file:' + DB_PATH });
+    db = drizzle(client, { schema });
+    try {
+      await runMigrations();
+    } catch (rollbackError: any) {
+      logger.error('Critical: database restore and rollback validation failed.', {
+        restoreError: (restoreError as any)?.message,
+        rollbackError: rollbackError?.message,
+        rollbackPath
+      });
+      throw new Error('Database restore failed and rollback validation also failed. Preserve ' + rollbackPath + ' and contact support.');
+    }
+    throw restoreError;
+  } finally {
+    try { fs.unlinkSync(stagedPath); } catch {}
+  }
 }
 
 export async function seedDb() {
