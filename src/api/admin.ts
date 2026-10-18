@@ -1950,6 +1950,12 @@ export function startAutoBackupScheduler() {
   const intervalMs = 24 * 60 * 60 * 1000;
   
   const runAutoBackup = async () => {
+    // Do not start a scheduled snapshot while an administrative restore is
+    // draining/replacing the database; it is retried on the next daily run.
+    if (restoreInProgress) {
+      console.log('[AutoBackup] Skipping backup because a database restore is in progress.');
+      return;
+    }
     try {
       const allRest = await db.select({ id: restaurants.id }).from(restaurants).limit(1);
       const restaurantId = allRest[0]?.id;

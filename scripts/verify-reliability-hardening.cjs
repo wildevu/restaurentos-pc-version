@@ -23,6 +23,8 @@ check(queue.includes('ACK_TIMEOUT') && queue.includes('same action ID'), 'uncert
 check(queue.includes("status: 'PENDING'") && !queue.includes('Max retries ('), 'transport exhaustion preserves uncertain commands instead of falsely rejecting them');
 check(queue.includes("where('status').anyOf('PENDING', 'SYNCING')") && queue.includes('flushRequested'), 'queue drain re-queries and schedules a requested follow-up');
 check(queue.includes('scheduleFlushRetry') && queue.includes('15000'), 'uncertain queued commands retry periodically while the socket remains connected');
+const flushStart = queue.indexOf('export async function flushQueue');
+check(queue.indexOf('if (flushPromise)', flushStart) < queue.indexOf('if (retryFlushTimer)', flushStart), 'concurrent queue drains preserve an existing retry cooldown');
 check(queue.includes("db.transaction('rw', db.commands") && queue.includes('latestTime + 1'), 'queue preserves strict FIFO order for same-millisecond actions');
 check(queue.includes("notifyListeners('rejected')"), 'permanent rejection signals authoritative reconciliation');
 check(queue.includes('stablePayload.clientOrderId') && queue.includes('stablePayload.clientItemId'), 'offline entity IDs are persisted in queued payloads');
@@ -64,6 +66,8 @@ check(db.includes('await client.close()') && db.includes('oldDatabaseMoved') && 
 const admin = read('src/api/admin.ts');
 check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress') && admin.includes('endMaintenance()'), 'restore is exclusive and releases maintenance gate on every exit');
 check(admin.includes('VACUUM INTO') && admin.includes('Refusing to back up a database that failed integrity_check'), 'backup is consistent and fails on invalid integrity');
+const scheduler = admin.slice(admin.indexOf('export function startAutoBackupScheduler'));
+check(scheduler.includes('if (restoreInProgress)'), 'automatic backups do not race an exclusive restore');
 check(admin.includes('options.forceResync ? { ...state, forceResync: true } : state'), 'state publishes after commit and restore can force resync');
 
 const workflow = read('.github/workflows/build-windows.yml');

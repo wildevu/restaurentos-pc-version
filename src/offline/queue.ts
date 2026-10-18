@@ -205,13 +205,15 @@ async function drainQueue(): Promise<void> {
 
 export async function flushQueue(): Promise<void> {
   if (!socket.connected) return;
-  if (retryFlushTimer) {
-    clearTimeout(retryFlushTimer);
-    retryFlushTimer = null;
-  }
+  // A concurrent caller asks for a follow-up drain but must not cancel the
+  // retry cooldown that protects against a busy/unresponsive hub.
   if (flushPromise) {
     flushRequested = true;
     return flushPromise;
+  }
+  if (retryFlushTimer) {
+    clearTimeout(retryFlushTimer);
+    retryFlushTimer = null;
   }
 
   flushRequested = false;
@@ -229,7 +231,7 @@ export async function flushQueue(): Promise<void> {
     // was cleared. Only restart when a caller explicitly requested a follow-up.
     if (flushRequested && socket.connected) {
       flushRequested = false;
-      void flushQueue();
+      if (!retryFlushTimer) void flushQueue();
     }
   }
 }
