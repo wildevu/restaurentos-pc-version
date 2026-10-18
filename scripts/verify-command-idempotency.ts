@@ -131,5 +131,25 @@ try {
   if (dbModule?.client) {
     try { await dbModule.client.close(); } catch {}
   }
-  fs.rmSync(testDataDir, { recursive: true, force: true });
+
+  // LibSQL's Windows native driver can briefly retain a file handle after close().
+  // Retry transient Windows EBUSY/EPERM/ENOTEMPTY locks instead of failing the
+  // behavioral test after all assertions already passed.
+  let removed = false;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      fs.rmSync(testDataDir, { recursive: true, force: true });
+      removed = true;
+      break;
+    } catch (error: any) {
+      if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error?.code) || attempt === 9) {
+        console.warn('Could not remove isolated test database directory:', error?.message || error);
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  }
+  if (!removed && fs.existsSync(testDataDir)) {
+    console.warn('Isolated test database directory remains locked; it contains generated test data only:', testDataDir);
+  }
 }
