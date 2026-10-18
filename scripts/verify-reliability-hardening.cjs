@@ -62,6 +62,12 @@ check(launcherSource.includes('QuoteWindowsArgument(supervisorScript)') && launc
 check(launcherSource.includes('private static string QuoteWindowsArgument(string value)') && launcherSource.includes("backslashCount * 2"), 'Windows argument quoting handles backslashes and closing quotes correctly');
 check(launcherSource.includes('Environment.GetEnvironmentVariable("RESTAURANTOS_DATA_DIR")'), 'native launcher honors configured shared data directory');
 check(launcherSource.includes('Launcher starting supervisor. AppDir=['), 'launcher logs resolved app/data paths before starting supervisor');
+const launcherSource = launcher;
+check(launcherSource.includes('NormalizeDirectoryPath(AppDomain.CurrentDomain.BaseDirectory)'), 'native launcher removes trailing separator before quoting install path');
+check(launcherSource.includes('QuoteWindowsArgument(supervisorScript)') && launcherSource.includes('QuoteWindowsArgument(appDir)') && launcherSource.includes('QuoteWindowsArgument(dataDir)'), 'native launcher quotes each supervisor argument independently');
+check(launcherSource.includes('private static string QuoteWindowsArgument(string value)') && launcherSource.includes("backslashCount * 2"), 'Windows argument quoting handles backslashes and closing quotes correctly');
+check(launcherSource.includes('Environment.GetEnvironmentVariable("RESTAURANTOS_DATA_DIR")'), 'native launcher honors configured shared data directory');
+check(launcherSource.includes('Launcher starting supervisor. AppDir=['), 'launcher logs resolved app/data paths before starting supervisor');
 const fallbackLauncher = read('windows/launcher/Launch-RestaurantOS.vbs');
 check(fallbackLauncher.includes('run-hub-supervisor.ps1') && !fallbackLauncher.includes('server.cjs'), 'fallback launcher uses the same persistent supervisor');
 const logger = read('src/logger.ts');
@@ -79,6 +85,9 @@ check(supervisor.includes('while ($true)') && supervisor.includes('Start-Sleep')
 check(supervisor.includes('[System.IO.Path]::GetFullPath($AppDir)') && supervisor.includes('[System.IO.Path]::GetFullPath($DataDir)'), 'supervisor canonicalizes app and data paths before resolving runtime');
 check(supervisor.includes('AppDir=[$AppDir]') && supervisor.includes('NodeExe=[$NodeExe]'), 'supervisor diagnostics include resolved runtime path');
 check(supervisor.includes('-gt 10MB') && supervisor.includes('$rotatedLog = "$SupervisorLog.1"'), 'supervisor status log is bounded by rotation');
+check(supervisor.includes('[System.IO.Path]::GetFullPath($AppDir)') && supervisor.includes('[System.IO.Path]::GetFullPath($DataDir)'), 'supervisor canonicalizes app and data paths before resolving runtime');
+check(supervisor.includes('AppDir=[$AppDir]') && supervisor.includes('NodeExe=[$NodeExe]'), 'supervisor diagnostics include resolved runtime path');
+check(supervisor.includes('-gt 10MB') && supervisor.includes('$rotatedLog = "$SupervisorLog.1"'), 'supervisor status log is bounded by rotation');
 check(supervisor.includes('$env:NODE_ENV = "production"') && supervisor.includes('$env:RESTAURANTOS_DATA_DIR = $DataDir'), 'Windows supervisor configures production and data paths');
 const installer = read('windows/installer/install.ps1');
 const serviceInstaller = read('windows/service/install-service.ps1');
@@ -86,6 +95,13 @@ check(installer.includes('Join-Path "windows" (Join-Path "service" "run-hub-supe
 check(serviceInstaller.includes('Join-Path "windows" (Join-Path "service" "run-hub-supervisor.ps1")'), 'service installer resolves supervisor script using platform-independent path joins');
 check(installer.includes('-WorkingDirectory $InstallPath') && serviceInstaller.includes('-WorkingDirectory $AppDir'), 'both scheduled-task actions set application working directory');
 
+const packageBuilder = read('scripts/build-windows-package.js');
+check(packageBuilder.includes("process.env.NODE_VERSION || '22.23.0'"), 'packaged runtime uses a maintained Node.js LTS line instead of EOL Node 20');
+check(packageBuilder.includes('NODE_VERSION_MARKER') && packageBuilder.includes('cachedVersion === NODE_VERSION'), 'packaging refuses stale or unverified cached Node runtimes');
+const runtimeVerifier = read('scripts/verify-packaged-runtime.cjs');
+check(runtimeVerifier.includes("process.platform === 'win32' ? bundledNode : process.execPath"), 'Windows packaged-runtime test executes the bundled node.exe rather than CI Node');
+check(runtimeVerifier.includes("node-version: '22.23.0'") || read('.github/workflows/build-windows.yml').includes("node-version: '22.23.0'"), 'CI Node runtime is pinned to the same patch version as the packaged runtime');
+check(runtimeVerifier.includes("['--version']") && runtimeVerifier.includes("v22.23.0"), 'Windows packaged-runtime verification checks the embedded Node version');
 const db = read('src/db/index.ts');
 check(db.includes('PRAGMA integrity_check') && db.includes('requiredTables'), 'restore validates integrity and core tables before swap');
 check(db.includes('await client.close()') && db.includes('oldDatabaseMoved') && db.includes('rollbackPath'), 'restore closes live handle and preserves rollback');

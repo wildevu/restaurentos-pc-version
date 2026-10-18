@@ -31,8 +31,9 @@ function copyFolderSync(from, to, exclude = []) {
   });
 }
 
-const NODE_VERSION = process.env.NODE_VERSION || '20.18.0';
+const NODE_VERSION = process.env.NODE_VERSION || '22.23.0';
 const NODE_ARCH = 'win-x64';
+const NODE_VERSION_MARKER = `${NODE_EXE_CACHE}.version`;
 
 // Ensure official Windows Node.js runtime is available
 async function ensureWindowsNodeRuntime() {
@@ -41,30 +42,51 @@ async function ensureWindowsNodeRuntime() {
   }
 
   if (fs.existsSync(NODE_EXE_CACHE) && fs.statSync(NODE_EXE_CACHE).size > 10000000) {
-    console.log('[Runtime] Found cached Windows x64 Node.js runtime binary (' + Math.round(fs.statSync(NODE_EXE_CACHE).size / 1024 / 1024) + ' MB)');
-    return;
+    let cachedVersion = '';
+    try { cachedVersion = fs.readFileSync(NODE_VERSION_MARKER, 'utf8').trim(); } catch {}
+    if (cachedVersion === NODE_VERSION) {
+      console.log('[Runtime] Found verified Windows x64 Node.js runtime v' + cachedVersion + ' (' + Math.round(fs.statSync(NODE_EXE_CACHE).size / 1024 / 1024) + ' MB)');
+      return;
+    }
+    console.log('[Runtime] Cached Node.js binary is unverified or not v' + NODE_VERSION + '; downloading the pinned runtime.');
   }
 
   console.log(`[Runtime] Downloading official standalone Windows x64 Node.js binary (v${NODE_VERSION}) from nodejs.org...`);
   const url = `https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCH}/node.exe`;
-  
+  fs.rmSync(NODE_EXE_CACHE, { force: true });
+  fs.rmSync(NODE_VERSION_MARKER, { force: true });
+
   await new Promise((resolve, reject) => {
     const file = fs.createWriteStream(NODE_EXE_CACHE);
+    const fail = (error) => {
+      try { file.destroy(); } catch {}
+      fs.rmSync(NODE_EXE_CACHE, { force: true });
+      fs.rmSync(NODE_VERSION_MARKER, { force: true });
+      reject(error);
+    };
+    file.on('error', fail);
     https.get(url, (response) => {
       if (response.statusCode !== 200) {
-        return reject(new Error('Failed to download node.exe, HTTP status: ' + response.statusCode));
+        response.resume();
+        return fail(new Error('Failed to download node.exe, HTTP status: ' + response.statusCode));
       }
+      response.on('error', fail);
       response.pipe(file);
       file.on('finish', () => {
-        file.close(() => {
-          console.log('[Runtime] Downloaded Windows x64 Node.js runtime successfully (' + Math.round(fs.statSync(NODE_EXE_CACHE).size / 1024 / 1024) + ' MB)');
-          resolve();
+        file.close((closeError) => {
+          if (closeError) return fail(closeError);
+          try {
+            const size = fs.statSync(NODE_EXE_CACHE).size;
+            if (size <= 10000000) throw new Error('Downloaded node.exe is unexpectedly small (' + size + ' bytes).');
+            fs.writeFileSync(NODE_VERSION_MARKER, NODE_VERSION + '\\n', 'utf8');
+            console.log('[Runtime] Downloaded pinned Windows x64 Node.js v' + NODE_VERSION + ' (' + Math.round(size / 1024 / 1024) + ' MB)');
+            resolve();
+          } catch (error) {
+            fail(error);
+          }
         });
       });
-    }).on('error', (err) => {
-      fs.unlink(NODE_EXE_CACHE, () => {});
-      reject(err);
-    });
+    }).on('error', fail);
   });
 }
 

@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node.js Runtime (v22 Active LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.23.0'
           check-latest: false
           cache: 'npm'
           

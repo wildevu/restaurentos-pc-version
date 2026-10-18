@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { spawn, execSync } = require('child_process');
+const { spawn, spawnSync, execSync } = require('child_process');
 
 let passedTests = 0;
 let failedTests = 0;
@@ -104,7 +104,23 @@ async function runLiveRuntimeTests() {
     SEED_DB: 'true' // Intentionally set to test that production mode ignores demo seeding
   };
 
-  const serverProc = spawn('node', [path.join(pkgDir, 'server.cjs')], {
+  // On Windows, execute the exact embedded runtime that the installed launcher will use.
+  // Non-Windows developer runs use the host runtime because node.exe cannot execute there.
+  const bundledNode = path.join(pkgDir, 'runtime', 'node.exe');
+  if (process.platform === 'win32' && !fs.existsSync(bundledNode)) {
+    throw new Error('Packaged Windows Node runtime is missing: ' + bundledNode);
+  }
+  const nodeExecutable = process.platform === 'win32' ? bundledNode : process.execPath;
+  if (process.platform === 'win32') {
+    const versionProbe = spawnSync(nodeExecutable, ['--version'], { encoding: 'utf8', timeout: 5000 });
+    assert(versionProbe.status === 0 && String(versionProbe.stdout || '').trim() === 'v22.23.0',
+      'Embedded Windows runtime reports the pinned supported Node.js version v22.23.0');
+    if (versionProbe.status !== 0 || String(versionProbe.stdout || '').trim() !== 'v22.23.0') {
+      throw new Error('Embedded Node.js version mismatch. Expected v22.23.0; got: ' + String(versionProbe.stdout || versionProbe.stderr || versionProbe.error || '').trim());
+    }
+  }
+  console.log('Starting packaged server with runtime: ' + nodeExecutable);
+  const serverProc = spawn(nodeExecutable, [path.join(pkgDir, 'server.cjs')], {
     cwd: pkgDir,
     env: serverEnv,
     stdio: ['pipe', 'pipe', 'pipe']
