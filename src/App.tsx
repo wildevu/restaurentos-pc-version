@@ -503,6 +503,7 @@ export function App() {
   const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
   const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const stateVersionRef = useRef<number>(0);
+  const syncSequenceRef = useRef(0);
   const initInFlightRef = useRef(false);
   const reconcileInFlightRef = useRef(false);
   const lastWakeSyncAtRef = useRef(0);
@@ -618,12 +619,14 @@ export function App() {
 
       const synchronize = () => {
         if (!socket.connected) return;
+        const syncSequence = ++syncSequenceRef.current;
         if (disconnectTimer) {
           clearTimeout(disconnectTimer);
           disconnectTimer = null;
         }
         setIsConnected(true);
         socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current }, async (res: any) => {
+          if (syncSequence !== syncSequenceRef.current) return;
           let latestTables: any[] = [];
           let latestOrders: any[] = [];
           setTables(prev => { latestTables = prev; return prev; });
@@ -635,8 +638,11 @@ export function App() {
           }
 
           if (res.upToDate === false && res.state) {
-            // SYNC snapshots are authoritative, including after a database restore.
-            stateVersionRef.current = Number(res.state.stateVersion || 0);
+            // Don't let a slow snapshot overwrite newer events. A server-declared
+            // version rollback is an intentional restore and must be accepted.
+            const incomingVersion = Number(res.state.stateVersion || 0);
+            if (incomingVersion < stateVersionRef.current && !res.forceResync) return;
+            stateVersionRef.current = incomingVersion;
             latestTables = res.state.tables || [];
             latestOrders = res.state.orders || [];
             if (res.state.menu) setMenu(res.state.menu);

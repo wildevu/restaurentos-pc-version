@@ -537,7 +537,11 @@ async function startServer() {
             .where(eq(hubState.restaurantId, user.restaurantId)).get();
           const currentVersion = stateRow?.version || 0;
           if (currentVersion !== lastKnownVersion || lastKnownVersion === 0) {
-            return { upToDate: false, state: await getFrontendStateTx(tx, currentVersion) };
+            return {
+              upToDate: false,
+              forceResync: currentVersion < lastKnownVersion,
+              state: await getFrontendStateTx(tx, currentVersion)
+            };
           }
           return { upToDate: true, stateVersion: currentVersion };
         });

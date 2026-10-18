@@ -35,12 +35,14 @@ check(app.includes('void refreshQueueStatus()'), 'persisted queue is hydrated at
 check(app.includes('reconcileInFlightRef') && app.includes("reason !== 'rejected'"), 'permanent rejection triggers authoritative rebase');
 check(app.includes('if (socket.connected) synchronize()'), 'existing socket receives an immediate sync');
 check(app.includes('data.stateVersion < stateVersionRef.current') && app.includes('forceResync'), 'out-of-order state events are guarded with restore override');
+check(app.includes('syncSequenceRef.current') && app.includes('syncSequence !== syncSequenceRef.current'), 'late SYNC callbacks cannot overwrite more recent recovery results');
 
 const server = read('server.ts');
 check(server.includes("fs.openSync(LOCK_FILE, 'wx')"), 'single-instance lock uses exclusive file creation');
 check(server.includes('owner === process.pid'), 'process releases only its own PID lock');
 check(server.includes('return getFrontendStateTx(tx, versionRow?.version || 0)'), 'REST snapshot includes a state version');
 check(server.includes('if (currentVersion !== lastKnownVersion || lastKnownVersion === 0)'), 'SYNC handles version differences in both directions');
+check(server.includes('forceResync: currentVersion < lastKnownVersion'), 'SYNC identifies a legitimate version rollback after backup restore');
 check(server.includes('UNCAUGHT_EXCEPTION') && server.includes('UNHANDLED_REJECTION'), 'fatal process errors request controlled shutdown');
 check(server.includes('beginDatabaseMaintenance') && server.includes('activeDatabaseRequests') && server.includes('activeSocketOperations'), 'database restore gates new writes and drains active operations');
 check(server.includes("code: 'HUB_MAINTENANCE'"), 'commands and HTTP requests receive explicit retryable maintenance responses');
