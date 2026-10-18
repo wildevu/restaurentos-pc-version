@@ -504,6 +504,7 @@ export function App() {
   const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const stateVersionRef = useRef<number>(0);
   const syncSequenceRef = useRef(0);
+  const syncEpochRef = useRef<string>(localStorage.getItem('restaurantos_sync_epoch') || '');
   const initInFlightRef = useRef(false);
   const reconcileInFlightRef = useRef(false);
   const lastWakeSyncAtRef = useRef(0);
@@ -625,7 +626,7 @@ export function App() {
           disconnectTimer = null;
         }
         setIsConnected(true);
-        socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current }, async (res: any) => {
+        socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current, lastKnownEpoch: syncEpochRef.current }, async (res: any) => {
           if (syncSequence !== syncSequenceRef.current) return;
           let latestTables: any[] = [];
           let latestOrders: any[] = [];
@@ -635,6 +636,10 @@ export function App() {
           if (!res || res.error) {
             console.error('Hub synchronization failed', res?.error || 'No response');
             return;
+          }
+          if (typeof res.syncEpoch === 'string' && res.syncEpoch) {
+            syncEpochRef.current = res.syncEpoch;
+            try { localStorage.setItem('restaurantos_sync_epoch', res.syncEpoch); } catch {}
           }
 
           if (res.upToDate === false && res.state) {

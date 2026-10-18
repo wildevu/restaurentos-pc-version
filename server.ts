@@ -22,6 +22,9 @@ import { CommandPayloadSchema } from './src/schemas';
 import { processCommand, getFrontendStateTx } from './src/db/queries';
 
 const PORT = parseInt(process.env.PORT || '8989', 10);
+// Changes whenever this server instance starts or a backup is restored. State versions
+// can be reused by a restored DB, so clients must compare both version and sync epoch.
+let syncEpoch = uuidv4();
 
 function getLocalLanIps(): string[] {
   const interfaces = os.networkInterfaces();
@@ -283,6 +286,7 @@ async function startServer() {
     });
   });
   app.set('endDatabaseMaintenance', () => { databaseMaintenance = false; });
+  app.set('advanceSyncEpoch', () => { syncEpoch = uuidv4(); return syncEpoch; });
 
   // Health / Liveness Check
   app.get(['/health', '/api/health'], (req, res) => {
@@ -536,14 +540,16 @@ async function startServer() {
           const stateRow = await tx.select().from(hubState)
             .where(eq(hubState.restaurantId, user.restaurantId)).get();
           const currentVersion = stateRow?.version || 0;
-          if (currentVersion !== lastKnownVersion || lastKnownVersion === 0) {
+          const clientEpoch = typeof payload?.lastKnownEpoch === 'string' ? payload.lastKnownEpoch : '';
+          if (currentVersion !== lastKnownVersion || lastKnownVersion === 0 || clientEpoch !== syncEpoch) {
             return {
               upToDate: false,
               forceResync: currentVersion < lastKnownVersion,
+              syncEpoch,
               state: await getFrontendStateTx(tx, currentVersion)
             };
           }
-          return { upToDate: true, stateVersion: currentVersion };
+          return { upToDate: true, stateVersion: currentVersion, syncEpoch };
         });
         if (callback) callback(response);
       } catch (err: any) {

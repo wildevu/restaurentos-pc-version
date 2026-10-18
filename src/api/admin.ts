@@ -1512,6 +1512,8 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
       createdAt: new Date(),
     });
 
+    const advanceSyncEpoch = req.app.get('advanceSyncEpoch');
+    if (typeof advanceSyncEpoch === 'function') advanceSyncEpoch();
     await emitStateUpdate(io, req.user.restaurantId, { forceResync: true });
     res.json({ success: true, message: 'Database successfully restored and validated' });
   } catch (err: any) {
