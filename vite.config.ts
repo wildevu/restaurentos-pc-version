@@ -4,12 +4,20 @@ import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  define: {
+    'process.env': {},
+    'process.argv': '[]',
+    'process.cwd': '(() => "/")'
+  },
   plugins: [
     react(), 
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'logo.svg', 'logo.png'],
+      workbox: {
+        navigateFallbackDenylist: [/^\/api/],
+      },
       manifest: {
         name: 'RestaurantOS',
         short_name: 'RestaurantOS',

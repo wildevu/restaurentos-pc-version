@@ -50,37 +50,54 @@ export async function flushQueue(): Promise<void> {
       
     for (const cmd of pendingCommands) {
       if (!socket.connected) break;
-      
-      await db.commands.update(cmd.actionId, { status: 'SYNCING' });
-      notifyListeners();
-      
-      try {
-        const response: any = await new Promise((resolve, reject) => {
-          socket.emit('COMMAND', { 
-            actionId: cmd.actionId, 
-            type: cmd.type, 
-            payload: cmd.payload 
-          }, (res: any) => resolve(res));
-          
-          setTimeout(() => reject(new Error('TIMEOUT')), 10000);
-        });
 
-        if (response.success || (response.duplicate && response.success !== false)) {
-          // Success or acknowledged duplicate -> remove from queue
-          await db.commands.delete(cmd.actionId);
-        } else if (response.retryable === false) {
-          // Non-retryable error
-          console.error('Permanent command failure:', response.error);
-          await db.commands.update(cmd.actionId, { status: 'REJECTED', lastError: response.error });
-        } else {
-          // Retryable error
-          await db.commands.update(cmd.actionId, { status: 'PENDING', lastError: response.error });
-          break; // Stop flushing on retryable error
+      let attempts = 0;
+      const maxAttempts = 5;
+
+      while (attempts < maxAttempts) {
+        if (!socket.connected) break;
+
+        await db.commands.update(cmd.actionId, { status: 'SYNCING' });
+        notifyListeners();
+
+        try {
+          const response: any = await new Promise((resolve, reject) => {
+            socket.emit('COMMAND', {
+              actionId: cmd.actionId,
+              type: cmd.type,
+              payload: cmd.payload
+            }, (res: any) => resolve(res));
+
+            setTimeout(() => reject(new Error('TIMEOUT')), 12000);
+          });
+
+          if (response.success || (response.duplicate && response.success !== false)) {
+            await db.commands.delete(cmd.actionId);
+            break; // Success - move to next command
+          } else if (response.retryable === false) {
+            console.error('Permanent command failure:', response.error);
+            await db.commands.update(cmd.actionId, { status: 'REJECTED', lastError: response.error });
+            break; // Non-retryable - mark rejected and move on
+          } else if (response.busy) {
+            // Server busy -> backoff and retry this command
+            attempts++;
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(1.5, attempts)));
+            continue;
+          } else {
+            // Other retryable error -> backoff
+            attempts++;
+            await db.commands.update(cmd.actionId, { status: 'PENDING', lastError: response.error });
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(1.5, attempts)));
+          }
+        } catch (err: any) {
+          attempts++;
+          await db.commands.update(cmd.actionId, { status: 'PENDING', lastError: err.message });
+          if (attempts >= maxAttempts) {
+            await db.commands.update(cmd.actionId, { status: 'REJECTED', lastError: `Max retries (${maxAttempts}) exceeded` });
+            break;
+          }
+          await new Promise(r => setTimeout(r, 1000 * Math.pow(1.5, attempts)));
         }
-      } catch (err: any) {
-        // Timeout or network error
-        await db.commands.update(cmd.actionId, { status: 'PENDING', lastError: err.message });
-        break; 
       }
       notifyListeners();
     }
@@ -129,13 +146,4 @@ export function subscribeToOptimistic(callback: OptimisticCommandCallback) {
   };
 }
 
-// Self-healing interval: periodically check for stuck pending/syncing commands
-// and flush them if the socket is connected but not currently flushing.
-setInterval(async () => {
-  if (socket.connected && !isFlushing) {
-    const count = await getPendingCount();
-    if (count > 0) {
-      flushQueue();
-    }
-  }
-}, 5000);
+// We need to modify executeCommand to trigger notifyOptimisticListeners

@@ -23,8 +23,7 @@ export function verifyLicenseKey(
     return { valid: false, error: 'License key is missing or invalid.' };
   }
 
-  // Sanitize license string: remove surrounding quotes, whitespace, and email linebreaks
-  const trimmed = licenseKey.trim().replace(/^["'`]|["'`]$/g, '').replace(/\s+/g, '');
+  const trimmed = licenseKey.trim();
   const parts = trimmed.split('.');
   if (parts.length !== 3) {
     return {
@@ -94,6 +93,7 @@ export function verifyLicenseKey(
     };
   }
 
+  const parsedType = String(parsedPayload.licenseType || 'STANDARD').toUpperCase().trim();
   const canonicalPayload: CanonicalLicensePayload = {
     v: 1,
     product: 'restaurantos',
@@ -102,6 +102,7 @@ export function verifyLicenseKey(
     installationId: parsedPayload.installationId || '',
     durationDays: parsedPayload.durationDays,
     issuedAt: parsedPayload.issuedAt,
+    licenseType: parsedType === 'PREMIUM' ? 'PREMIUM' : 'STANDARD',
   };
 
   // 4. Installation and Restaurant Binding Check
@@ -112,11 +113,16 @@ export function verifyLicenseKey(
     };
   }
 
-  if (expectedRestaurantId && canonicalPayload.restaurantId && canonicalPayload.restaurantId !== expectedRestaurantId) {
-    return {
-      valid: false,
-      error: `License is bound to restaurant ID '${canonicalPayload.restaurantId}', not '${expectedRestaurantId}'.`,
-    };
+  if (expectedRestaurantId && canonicalPayload.restaurantId && canonicalPayload.restaurantId !== 'default' && canonicalPayload.restaurantId !== expectedRestaurantId) {
+    // If hardware installation ID matches this hub, allow seamless renewal/upgrade for the same customer
+    if (expectedInstallationId && canonicalPayload.installationId === expectedInstallationId) {
+      // Hardware match verified!
+    } else {
+      return {
+        valid: false,
+        error: `License is bound to restaurant ID '${canonicalPayload.restaurantId}', not '${expectedRestaurantId}'.`,
+      };
+    }
   }
 
   // 5. Ed25519 Cryptographic Signature Verification

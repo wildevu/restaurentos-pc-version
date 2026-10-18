@@ -17,6 +17,7 @@ export function Backups({ authToken }: { authToken?: string }) {
   const [backups, setBackups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [downloadingFilename, setDownloadingFilename] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   
@@ -71,9 +72,31 @@ export function Backups({ authToken }: { authToken?: string }) {
     }
   };
 
-  const handleDownloadBackup = (filename: string) => {
-    const token = getEffectiveToken();
-    window.location.href = `/api/admin/backups/download/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
+  const handleDownloadBackup = async (filename: string) => {
+    setDownloadingFilename(filename);
+    setError(null);
+    try {
+      const token = getEffectiveToken();
+      const res = await fetch(`/api/admin/backups/download/${encodeURIComponent(filename)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Failed to download backup snapshot');
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setError(err.message || 'Error downloading backup file');
+    } finally {
+      setDownloadingFilename(null);
+    }
   };
 
   const handleConfirmRestore = async () => {
@@ -238,10 +261,11 @@ export function Backups({ authToken }: { authToken?: string }) {
                   <div className="flex items-center gap-2 self-end sm:self-center">
                     <button
                       onClick={() => handleDownloadBackup(backup.filename)}
-                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-xs transition-colors flex items-center gap-1.5"
+                      disabled={downloadingFilename === backup.filename}
+                      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                     >
-                      <Download size={13} />
-                      <span>Download .db</span>
+                      {downloadingFilename === backup.filename ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+                      <span>{downloadingFilename === backup.filename ? 'Downloading...' : 'Download .db'}</span>
                     </button>
                     <button
                       onClick={() => setRestoreCandidate(backup)}

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ChefHat, CheckCircle, XCircle, Camera, Keyboard } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { RestosLogo } from './RestosLogo';
 import { uuidv4 } from '../utils/uuid';
 
 export function PairingScreen({ onLogin }: { onLogin: (token: string) => void }) {
@@ -78,7 +77,9 @@ export function PairingScreen({ onLogin }: { onLogin: (token: string) => void })
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-gray-100">
         <div className="flex justify-center mb-6">
-          <RestosLogo className="h-10 w-auto" />
+          <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
+            <ChefHat size={32} />
+          </div>
         </div>
         
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Connecting Device</h2>

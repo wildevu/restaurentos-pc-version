@@ -7,11 +7,13 @@
 const crypto = require('crypto');
 
 function canonicalizePayload(payload) {
+  const licenseTypeVal = String(payload.licenseType || 'STANDARD').toUpperCase().trim();
   const canonicalObject = {
     durationDays: Math.floor(payload.durationDays),
     installationId: String(payload.installationId || '').trim(),
     issuedAt: String(payload.issuedAt || new Date().toISOString()).trim(),
     licenseId: String(payload.licenseId || `lic_${crypto.randomBytes(8).toString('hex')}`).trim(),
+    licenseType: licenseTypeVal === 'PREMIUM' ? 'PREMIUM' : 'STANDARD',
     product: 'restaurantos',
     restaurantId: String(payload.restaurantId || '').trim(),
     v: 1,
