@@ -72,7 +72,8 @@ const admin = read('src/api/admin.ts');
 check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress') && admin.includes('endMaintenance()'), 'restore is exclusive and releases maintenance gate on every exit');
 check(admin.includes('VACUUM INTO') && admin.includes('Refusing to back up a database that failed integrity_check'), 'backup is consistent and fails on invalid integrity');
 const scheduler = admin.slice(admin.indexOf('export function startAutoBackupScheduler'));
-check(scheduler.includes('if (restoreInProgress)'), 'automatic backups do not race an exclusive restore');
+check(scheduler.includes('if (restoreInProgress)'), 'automatic backups do not start while restore is active');
+check(admin.includes('waitForAutoBackupToFinish()') && admin.includes('autoBackupInProgress = false'), 'restore waits for any auto-backup already in flight before closing the DB');
 check(admin.includes('options.forceResync ? { ...state, forceResync: true } : state'), 'state publishes after commit and restore can force resync');
 check(admin.includes('if (stateVersion === undefined)'), 'state version zero is handled without duplicate hub-state insertion');
 

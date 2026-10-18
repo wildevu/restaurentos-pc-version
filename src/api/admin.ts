@@ -16,6 +16,13 @@ import { logger } from '../logger';
 
 export const adminRouter = Router();
 let restoreInProgress = false;
+let autoBackupInProgress = false;
+let autoBackupWaiters: Array<() => void> = [];
+
+function waitForAutoBackupToFinish(): Promise<void> {
+  if (!autoBackupInProgress) return Promise.resolve();
+  return new Promise(resolve => autoBackupWaiters.push(resolve));
+}
 
 // Middleware to check admin role
 adminRouter.use((req: any, res: any, next) => {
@@ -1479,6 +1486,9 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
       return res.status(404).json({ error: 'Selected backup file does not exist' });
     }
 
+    // Wait for a backup that started immediately before restoreInProgress was set.
+    // New automatic backups are already blocked by the restore flag.
+    await waitForAutoBackupToFinish();
     const beginMaintenance = req.app.get('beginDatabaseMaintenance');
     if (typeof beginMaintenance !== 'function' || typeof endMaintenance !== 'function') {
       throw new Error('Database maintenance gate is unavailable; refusing to replace the live database.');
@@ -1954,10 +1964,11 @@ export function startAutoBackupScheduler() {
   const runAutoBackup = async () => {
     // Do not start a scheduled snapshot while an administrative restore is
     // draining/replacing the database; it is retried on the next daily run.
-    if (restoreInProgress) {
-      console.log('[AutoBackup] Skipping backup because a database restore is in progress.');
+    if (restoreInProgress || autoBackupInProgress) {
+      console.log('[AutoBackup] Skipping backup because a restore/backup is already active.');
       return;
     }
+    autoBackupInProgress = true;
     try {
       const allRest = await db.select({ id: restaurants.id }).from(restaurants).limit(1);
       const restaurantId = allRest[0]?.id;
@@ -1970,6 +1981,11 @@ export function startAutoBackupScheduler() {
       console.log(`[AutoBackup] Successfully created automatic backup at ${new Date().toISOString()}`);
     } catch (e) {
       console.warn('[AutoBackup] Auto-backup check:', e);
+    } finally {
+      autoBackupInProgress = false;
+      const waiters = autoBackupWaiters;
+      autoBackupWaiters = [];
+      waiters.forEach(resolve => resolve());
     }
   };
 
