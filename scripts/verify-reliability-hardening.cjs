@@ -70,6 +70,7 @@ check(db.includes('if (oldDatabaseMoved) {') && db.includes('If moving the origi
 
 const admin = read('src/api/admin.ts');
 check(admin.includes('beginMaintenance()') && admin.includes('restoreInProgress') && admin.includes('endMaintenance()'), 'restore is exclusive and releases maintenance gate on every exit');
+check(admin.indexOf('const advanceSyncEpoch = req.app.get(\'advanceSyncEpoch\')') < admin.indexOf('await db.insert(auditEvents).values({', admin.indexOf("adminRouter.post('/backups/restore'")), 'restore epoch is invalidated immediately after swap, before fallible audit writes');
 check(admin.includes('VACUUM INTO') && admin.includes('Refusing to back up a database that failed integrity_check'), 'backup is consistent and fails on invalid integrity');
 const scheduler = admin.slice(admin.indexOf('export function startAutoBackupScheduler'));
 check(scheduler.includes('if (restoreInProgress)'), 'automatic backups do not start while restore is active');

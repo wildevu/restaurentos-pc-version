@@ -1511,6 +1511,11 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
     }
 
     const result = await restoreDatabaseFile(sourceBackupPath);
+    // Rotate the epoch immediately after the DB swap succeeds. Even if the audit write
+    // below fails, reconnecting clients must not mistake equal state versions for current state.
+    const advanceSyncEpoch = req.app.get('advanceSyncEpoch');
+    if (typeof advanceSyncEpoch === 'function') advanceSyncEpoch();
+
     await db.insert(auditEvents).values({
       id: uuidv4(),
       restaurantId: req.user.restaurantId,
@@ -1522,8 +1527,6 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
       createdAt: new Date(),
     });
 
-    const advanceSyncEpoch = req.app.get('advanceSyncEpoch');
-    if (typeof advanceSyncEpoch === 'function') advanceSyncEpoch();
     await emitStateUpdate(io, req.user.restaurantId, { forceResync: true });
     res.json({ success: true, message: 'Database successfully restored and validated' });
   } catch (err: any) {
