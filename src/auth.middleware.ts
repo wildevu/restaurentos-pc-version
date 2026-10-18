@@ -37,8 +37,6 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     token = authHeader.substring(7);
-  } else if (req.query.token && typeof req.query.token === 'string') {
-    token = req.query.token;
   }
 
   if (!token) {

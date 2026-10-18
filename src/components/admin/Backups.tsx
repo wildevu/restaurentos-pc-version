@@ -77,7 +77,7 @@ export function Backups({ authToken }: { authToken?: string }) {
     setError(null);
     try {
       const token = getEffectiveToken();
-      const res = await fetch(`/api/admin/backups/download/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`, {
+      const res = await fetch(`/api/admin/backups/download/${encodeURIComponent(filename)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Failed to download backup snapshot');

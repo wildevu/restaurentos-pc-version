@@ -346,15 +346,15 @@ authRouter.post('/pair', async (req, res) => {
       // 1. Mark pairing token used
       await tx.update(pairingTokens).set({ usedAt: now }).where(eq(pairingTokens.id, pairingData.id));
       
-      // 2. Manage device
+      // 2. Manage device — block revoked devices from auto-reinstating on re-pair
       let deviceId = null;
       const deviceRecords = await tx.select().from(devices).where(eq(devices.deviceIdentifier, payload.deviceId)).limit(1);
       if (deviceRecords.length > 0) {
+        if (deviceRecords[0].revokedAt) {
+          throw new Error('This device has been revoked by an administrator. Please contact management to restore access.');
+        }
         deviceId = deviceRecords[0].id;
-        
-        // If device was revoked, reinstate it by un-revoking it?
-        // Let's reinstate it (clear revokedAt) since they successfully paired again
-        await tx.update(devices).set({ lastSeenAt: now, revokedAt: null, revokedByUserId: null }).where(eq(devices.id, deviceId));
+        await tx.update(devices).set({ lastSeenAt: now }).where(eq(devices.id, deviceId));
       } else {
         deviceId = uuidv4();
         await tx.insert(devices).values({
