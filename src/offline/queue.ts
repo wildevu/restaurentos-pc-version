@@ -33,11 +33,20 @@ const MAX_ATTEMPTS = 5;
 const ACK_TIMEOUT_MS = 12000;
 let flushPromise: Promise<void> | null = null;
 let flushRequested = false;
+let retryFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 function backoffMs(attempt: number): number {
   return Math.min(8000, 500 * Math.pow(2, Math.max(0, attempt - 1)));
+}
+
+function scheduleFlushRetry(): void {
+  if (retryFlushTimer) return;
+  retryFlushTimer = setTimeout(() => {
+    retryFlushTimer = null;
+    if (socket.connected) void flushQueue();
+  }, 15000);
 }
 
 function sendCommand(command: { actionId: string; type: string; payload: any }): Promise<any> {
@@ -90,12 +99,20 @@ export async function executeCommand(type: string, payload: any): Promise<{ acti
     stablePayload.clientItemId = uuidv4();
   }
 
-  await db.commands.add({
-    actionId,
-    type,
-    payload: stablePayload,
-    createdAt: new Date(),
-    status: 'PENDING'
+  // Use a read/write transaction and a strictly increasing timestamp to preserve
+  // FIFO command ordering even when multiple actions are enqueued in one millisecond
+  // or from separate tabs sharing the same IndexedDB database.
+  await db.transaction('rw', db.commands, async () => {
+    const latest = await db.commands.orderBy('createdAt').last();
+    const latestTime = latest?.createdAt ? new Date(latest.createdAt).getTime() : 0;
+    const createdAt = new Date(Math.max(Date.now(), Number.isFinite(latestTime) ? latestTime + 1 : Date.now()));
+    await db.commands.add({
+      actionId,
+      type,
+      payload: stablePayload,
+      createdAt,
+      status: 'PENDING'
+    });
   });
 
   notifyListeners();
@@ -140,6 +157,7 @@ async function drainQueue(): Promise<void> {
 
         // A timeout is an uncertain outcome, not proof that the mutation failed.
         // Preserve the actionId and stop draining to avoid duplicate side effects.
+        if (attempts >= MAX_ATTEMPTS) scheduleFlushRetry();
         if (!socket.connected || attempts >= MAX_ATTEMPTS) {
           stopDrain = true;
           break;
@@ -174,6 +192,7 @@ async function drainQueue(): Promise<void> {
       notifyListeners();
 
       if (attempts >= MAX_ATTEMPTS) {
+        scheduleFlushRetry();
         stopDrain = true;
         break;
       }
@@ -186,6 +205,10 @@ async function drainQueue(): Promise<void> {
 
 export async function flushQueue(): Promise<void> {
   if (!socket.connected) return;
+  if (retryFlushTimer) {
+    clearTimeout(retryFlushTimer);
+    retryFlushTimer = null;
+  }
   if (flushPromise) {
     flushRequested = true;
     return flushPromise;
