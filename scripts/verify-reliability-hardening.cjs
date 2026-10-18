@@ -74,6 +74,7 @@ check(admin.includes('VACUUM INTO') && admin.includes('Refusing to back up a dat
 const scheduler = admin.slice(admin.indexOf('export function startAutoBackupScheduler'));
 check(scheduler.includes('if (restoreInProgress)'), 'automatic backups do not race an exclusive restore');
 check(admin.includes('options.forceResync ? { ...state, forceResync: true } : state'), 'state publishes after commit and restore can force resync');
+check(admin.includes('if (stateVersion === undefined)'), 'state version zero is handled without duplicate hub-state insertion');
 
 const workflow = read('.github/workflows/build-windows.yml');
 check(workflow.includes('branches: [ main, master, gpt-harness ]'), 'gpt-harness push triggers Windows build');

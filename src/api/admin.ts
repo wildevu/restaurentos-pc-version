@@ -37,7 +37,7 @@ export async function emitStateUpdate(io: any, restaurantId: string, options: { 
       .returning({ version: hubState.version })
       .get();
     let stateVersion = versionRes?.version;
-    if (!stateVersion) {
+    if (stateVersion === undefined) {
       stateVersion = 1;
       await tx.insert(hubState).values({ restaurantId, version: stateVersion, updatedAt: now });
     }
