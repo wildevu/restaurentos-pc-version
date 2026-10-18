@@ -11,10 +11,12 @@ export let socket: Socket = io({
 });
 
 export function connectSocket(token: string) {
-  if (socket.connected) {
-    socket.disconnect();
-  }
-  
+  const currentToken = (socket.auth as { token?: string } | undefined)?.token;
+  // A wake/focus recovery must not tear down a healthy socket: doing so can
+  // discard in-flight acknowledgements for mutations that already committed.
+  if (socket.connected && currentToken === token) return;
+
+  if (socket.connected) socket.disconnect();
   socket.auth = { token };
   socket.connect();
 }

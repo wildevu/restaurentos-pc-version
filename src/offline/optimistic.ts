@@ -14,7 +14,7 @@ export function applyOptimisticCommand(
       case 'OPEN_TABLE': {
         const tableIdx = tables.findIndex(t => t.id === payload.tableId);
         if (tableIdx > -1) {
-          const newOrderId = 'opt_' + uuidv4();
+          const newOrderId = payload.clientOrderId || ('opt_' + uuidv4());
           tables[tableIdx] = { 
             ...tables[tableIdx], 
             status: 'ACTIVE',
@@ -60,7 +60,7 @@ export function applyOptimisticCommand(
              };
           } else {
              newOrder.items.push({
-               id: 'opt_' + uuidv4(),
+               id: payload.clientItemId || ('opt_' + uuidv4()),
                orderId: newOrder.id,
                menuItemId: payload.menuItemId,
                name: payload.name || 'Item',

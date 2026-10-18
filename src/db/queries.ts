@@ -205,7 +205,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         
         await tx.update(tables).set({ status: 'ACTIVE', updatedAt: now }).where(eq(tables.id, tableId));
         const rest = await tx.select().from(restaurants).get();
-        const orderId = uuidv4();
+        const orderId = parsedPayload.clientOrderId || uuidv4();
         await tx.insert(orders).values({
           id: orderId,
           tableId,
@@ -254,7 +254,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       }
       
       case 'ADD_ITEM': {
-        const { tableId, menuItemId, notes } = AddItemPayload.parse(command.payload);
+        const { tableId, menuItemId, notes, clientItemId } = AddItemPayload.parse(command.payload);
         const activeOrder = await tx.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN'))).get();
         if (!activeOrder) throw new CommandError('No active order for this table');
         
@@ -296,7 +296,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
             createdAt: now
           });
         } else {
-          orderItemId = uuidv4();
+          orderItemId = clientItemId || uuidv4();
           await tx.insert(orderItems).values({
             id: orderItemId,
             orderId: activeOrder.id,
