@@ -46,13 +46,18 @@ namespace RestaurantOS.Launcher
                 }
 
                 // 2. Resolve Application Directory and Paths
-                string appDir = AppDomain.CurrentDomain.BaseDirectory;
+                // BaseDirectory ends in a backslash. When used as a quoted Windows argument,
+                // that trailing backslash can escape the closing quote and merge -AppDir with -DataDir.
+                string appDir = NormalizeDirectoryPath(AppDomain.CurrentDomain.BaseDirectory);
                 string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
                 if (string.IsNullOrEmpty(programData))
                 {
                     programData = @"C:\ProgramData";
                 }
-                string dataDir = Path.Combine(programData, "RestaurantOS");
+                string configuredDataDir = Environment.GetEnvironmentVariable("RESTAURANTOS_DATA_DIR");
+                string dataDir = string.IsNullOrWhiteSpace(configuredDataDir)
+                    ? Path.Combine(programData, "RestaurantOS")
+                    : NormalizeDirectoryPath(configuredDataDir);
                 string logsDir = Path.Combine(dataDir, "logs");
                 string supervisorLog = Path.Combine(logsDir, "hub-supervisor.log");
                 string pidFile = Path.Combine(dataDir, "restaurantos.pid");
@@ -103,12 +108,22 @@ namespace RestaurantOS.Launcher
                     return;
                 }
 
+                // Persist exact resolved paths before starting PowerShell so diagnostics do not
+                // depend on a stale supervisor log from an earlier launch attempt.
+                try
+                {
+                    File.AppendAllText(supervisorLog, string.Format(
+                        "[{0:O}] Launcher starting supervisor. AppDir=[{1}], DataDir=[{2}]{3}",
+                        DateTime.Now, appDir, dataDir, Environment.NewLine));
+                }
+                catch { }
+
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = string.Format(
-                        "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{0}\" -AppDir \"{1}\" -DataDir \"{2}\"",
-                        supervisorScript, appDir, dataDir),
+                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File " +
+                        QuoteWindowsArgument(supervisorScript) + " -AppDir " + QuoteWindowsArgument(appDir) +
+                        " -DataDir " + QuoteWindowsArgument(dataDir),
                     WorkingDirectory = appDir,
                     CreateNoWindow = true,
                     UseShellExecute = false,
@@ -194,6 +209,52 @@ namespace RestaurantOS.Launcher
                     "Diagnostic logs:\nC:\\ProgramData\\RestaurantOS\\logs\\"
                 );
             }
+        }
+
+        // Resolve directory paths without a trailing separator, except for filesystem roots.
+        private static string NormalizeDirectoryPath(string path)
+        {
+            string fullPath = Path.GetFullPath(path);
+            string root = Path.GetPathRoot(fullPath);
+            if (!string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase))
+            {
+                fullPath = fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            }
+            return fullPath;
+        }
+
+        // Quote one Windows command-line argument using standard backslash/quote rules.
+        // This is safe for spaces, embedded quotes, and paths ending with a backslash.
+        private static string QuoteWindowsArgument(string value)
+        {
+            if (value == null) value = string.Empty;
+            StringBuilder result = new StringBuilder("\"");
+            int backslashCount = 0;
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                if (c == '\\')
+                {
+                    backslashCount++;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    result.Append('\\', backslashCount * 2 + 1);
+                    result.Append('"');
+                    backslashCount = 0;
+                    continue;
+                }
+                if (backslashCount > 0)
+                {
+                    result.Append('\\', backslashCount);
+                    backslashCount = 0;
+                }
+                result.Append(c);
+            }
+            if (backslashCount > 0) result.Append('\\', backslashCount * 2);
+            result.Append('"');
+            return result.ToString();
         }
 
         private static bool ProbeUrl(string url, int timeoutMs)

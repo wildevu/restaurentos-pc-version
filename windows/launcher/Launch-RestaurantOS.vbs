@@ -8,8 +8,11 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 
 appDir = fso.GetParentFolderName(WScript.ScriptFullName)
 
-dataDir = WshShell.ExpandEnvironmentStrings("%ProgramData%") & "\RestaurantOS"
-If InStr(dataDir, "%") > 0 Then dataDir = "C:\ProgramData\RestaurantOS"
+dataDir = WshShell.ExpandEnvironmentStrings("%RESTAURANTOS_DATA_DIR%")
+If dataDir = "%RESTAURANTOS_DATA_DIR%" Or Len(dataDir) = 0 Then
+    dataDir = WshShell.ExpandEnvironmentStrings("%ProgramData%") & "\RestaurantOS"
+    If InStr(dataDir, "%") > 0 Then dataDir = "C:\ProgramData\RestaurantOS"
+End If
 
 logDir = dataDir & "\logs"
 If Not fso.FolderExists(dataDir) Then fso.CreateFolder(dataDir)

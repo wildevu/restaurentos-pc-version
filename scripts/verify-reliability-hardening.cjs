@@ -56,6 +56,12 @@ check(!mainFlow.includes('KillOrphanedServerProcesses()'), 'launcher does not ki
 check(!mainFlow.includes('process.Kill()'), 'launcher does not kill a hub during slow startup');
 check(mainFlow.includes('run-hub-supervisor.ps1') && mainFlow.includes('RedirectStandardOutput = false') && mainFlow.includes('RedirectStandardError = false'), 'native launcher starts a persistent supervisor without short-lived output pipes');
 check(!mainFlow.includes('RedirectStandardOutput = true') && !mainFlow.includes('RedirectStandardError = true'), 'native launcher does not own the live hub output streams');
+const launcherSource = launcher;
+check(launcherSource.includes('NormalizeDirectoryPath(AppDomain.CurrentDomain.BaseDirectory)'), 'native launcher removes trailing separator before quoting install path');
+check(launcherSource.includes('QuoteWindowsArgument(supervisorScript)') && launcherSource.includes('QuoteWindowsArgument(appDir)') && launcherSource.includes('QuoteWindowsArgument(dataDir)'), 'native launcher quotes each supervisor argument independently');
+check(launcherSource.includes('private static string QuoteWindowsArgument(string value)') && launcherSource.includes("backslashCount * 2"), 'Windows argument quoting handles backslashes and closing quotes correctly');
+check(launcherSource.includes('Environment.GetEnvironmentVariable("RESTAURANTOS_DATA_DIR")'), 'native launcher honors configured shared data directory');
+check(launcherSource.includes('Launcher starting supervisor. AppDir=['), 'launcher logs resolved app/data paths before starting supervisor');
 const fallbackLauncher = read('windows/launcher/Launch-RestaurantOS.vbs');
 check(fallbackLauncher.includes('run-hub-supervisor.ps1') && !fallbackLauncher.includes('server.cjs'), 'fallback launcher uses the same persistent supervisor');
 const logger = read('src/logger.ts');
@@ -70,6 +76,9 @@ check(read('windows/installer/uninstall.ps1').includes('run-hub-supervisor.ps1')
 
 const supervisor = read('windows/service/run-hub-supervisor.ps1');
 check(supervisor.includes('while ($true)') && supervisor.includes('Start-Sleep'), 'Windows supervisor restarts exited server with backoff');
+check(supervisor.includes('[System.IO.Path]::GetFullPath($AppDir)') && supervisor.includes('[System.IO.Path]::GetFullPath($DataDir)'), 'supervisor canonicalizes app and data paths before resolving runtime');
+check(supervisor.includes('AppDir=[$AppDir]') && supervisor.includes('NodeExe=[$NodeExe]'), 'supervisor diagnostics include resolved runtime path');
+check(supervisor.includes('-gt 10MB') && supervisor.includes('$rotatedLog = "$SupervisorLog.1"'), 'supervisor status log is bounded by rotation');
 check(supervisor.includes('$env:NODE_ENV = "production"') && supervisor.includes('$env:RESTAURANTOS_DATA_DIR = $DataDir'), 'Windows supervisor configures production and data paths');
 const installer = read('windows/installer/install.ps1');
 const serviceInstaller = read('windows/service/install-service.ps1');
