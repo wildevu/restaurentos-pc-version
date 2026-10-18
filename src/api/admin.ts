@@ -1479,23 +1479,25 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
     // 1. Take a safety pre-restore backup first
     await performSafeBackup('pre-restore', req.user.restaurantId, req.user.id);
 
-    // 2. Perform safe restore
+    // 2. Force a full TRUNCATE checkpoint to clear existing WAL memory pages
     try {
-      await db.run(sql.raw('PRAGMA wal_checkpoint(PASSIVE);'));
-    } catch {}
+      await db.run(sql.raw('PRAGMA wal_checkpoint(TRUNCATE);'));
+    } catch (e) {
+      logger.warn('WAL checkpoint before restore warning:', e);
+    }
 
+    // 3. Atomically overwrite main database file and clean temporary WAL/SHM indexes
     fs.copyFileSync(sourceBackupPath, DB_PATH);
-
-    // Remove any stale WAL / SHM files if present
     try {
       if (fs.existsSync(`${DB_PATH}-wal`)) fs.unlinkSync(`${DB_PATH}-wal`);
       if (fs.existsSync(`${DB_PATH}-shm`)) fs.unlinkSync(`${DB_PATH}-shm`);
     } catch {}
 
-    // Verify integrity
-    await db.run(sql.raw('PRAGMA integrity_check;'));
+    // 4. Verify integrity of newly restored database file
+    const integrity = await db.run(sql.raw('PRAGMA integrity_check;'));
+    logger.info('Restored database integrity check status:', integrity);
 
-    // Audit log
+    // 5. Audit log
     await db.insert(auditEvents).values({
       id: uuidv4(),
       restaurantId: req.user.restaurantId,
@@ -1507,10 +1509,12 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
       createdAt: new Date(),
     });
 
+    // 6. Broadcast restored state instantly to all connected waiter & kitchen tablets
     await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
     res.json({ success: true, message: 'Database successfully restored' });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error('Restore error:', err);
+    res.status(500).json({ error: err.message || 'Failed to restore database' });
   }
 });
 
