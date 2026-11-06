@@ -25,6 +25,20 @@ class SoundEffects {
   }
 
   /**
+   * Unlock/resume Web Audio after a direct user gesture on mobile devices.
+   */
+  public unlock() {
+    try {
+      const ctx = this.getContext();
+      if (ctx && ctx.state === 'suspended') {
+        void ctx.resume().catch(() => {});
+      }
+    } catch (error) {
+      console.warn('Could not unlock notification audio:', error);
+    }
+  }
+
+  /**
    * Play a clean, bright, harmonious 3-tone chime for newly ready kitchen items:
    * E5 (659Hz) -> A5 (880Hz) -> C#6 (1108Hz) with smooth gain envelopes.
    */

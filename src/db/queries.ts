@@ -160,12 +160,16 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
     }
 
     if (dbUser.role === 'WAITER') {
-      if (command.type !== 'UPDATE_ITEM_KITCHEN_STATUS') {
-        throw new CommandError('Waiters may only mark a ready item as served', false);
+      // Preserve all existing waiter operations. The only kitchen-related
+      // command permitted to waiters is marking an already-ready item as served.
+      if (command.type === 'BATCH_UPDATE_KITCHEN_STATUS') {
+        throw new CommandError('Waiters cannot perform bulk kitchen status changes', false);
       }
-      const waiterStatusPayload = UpdateKitchenStatusPayload.parse(command.payload);
-      if (waiterStatusPayload.status !== 'SERVED') {
-        throw new CommandError('Waiters may only mark a ready item as served', false);
+      if (command.type === 'UPDATE_ITEM_KITCHEN_STATUS') {
+        const waiterStatusPayload = UpdateKitchenStatusPayload.parse(command.payload);
+        if (waiterStatusPayload.status !== 'SERVED') {
+          throw new CommandError('Waiters may only mark ready items as served', false);
+        }
       }
     }
     
@@ -275,8 +279,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
           existingItem = await tx.select().from(orderItems).where(
             and(
               eq(orderItems.orderId, activeOrder.id), 
-              eq(orderItems.menuItemId, menuItemId),
-              eq(orderItems.addedByUserId, user.id),
+              eq(orderItems.menuItemId, menuItemId), 
               sql`${orderItems.notes} IS NULL OR ${orderItems.notes} = ''`
             )
           ).get();
@@ -454,8 +457,8 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         if (!item) throw new CommandError('Order item not found');
 
         const prevStatus = item.kitchenStatus;
-        if (dbUser.role === 'WAITER' && prevStatus !== 'READY') {
-          throw new CommandError('Waiters can only serve items that are currently READY', false);
+        if (dbUser.role === 'WAITER' && (prevStatus !== 'READY' || status !== 'SERVED')) {
+          throw new CommandError('Waiters can only mark READY items as SERVED', false);
         }
         await tx.update(orderItems)
           .set({ kitchenStatus: status, kitchenStatusUpdatedAt: now, updatedAt: now })

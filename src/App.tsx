@@ -22,7 +22,11 @@ import {
   Flame,
   Receipt,
   QrCode,
-  Globe
+  Globe,
+  Volume2,
+  VolumeX,
+  BellRing,
+  X
 } from 'lucide-react';
 
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
@@ -53,6 +57,7 @@ import {
   db as offlineDb
 } from './offline';
 import { RejectedCommandsModal } from './components/RejectedCommandsModal';
+import { soundEffects, triggerVibration, type ReadinessToast } from './utils/notifications';
 
 async function fetchWithTimeout(input: string, init: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
   const controller = new AbortController();
@@ -85,6 +90,15 @@ function AppContent({
   fetchLicenseStatus
 }: any) {
   const [showRejectedModal, setShowRejectedModal] = useState(false);
+  const [readyNotifications, setReadyNotifications] = useState<ReadinessToast[]>([]);
+  const [readySoundEnabled, setReadySoundEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('restaurantos_ready_sound_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const previousOrderStatusesRef = useRef<Map<string, Map<string, string>> | null>(null);
   const location = useLocation();
   const { t, language, setLanguage } = useI18n();
 
@@ -103,6 +117,66 @@ function AppContent({
   const isCashierUser = user?.role === 'CASHIER';
   const isWaiterUser = user?.role === 'WAITER';
   const isOwnerOrManager = user?.role === 'OWNER' || user?.role === 'MANAGER';
+
+  // Detect new READY transitions for the waiter responsible for each item.
+  // The initial snapshot stays silent so old ready tickets do not alert on login.
+  useEffect(() => {
+    const previous = previousOrderStatusesRef.current;
+    const current = new Map<string, Map<string, string>>();
+    const alerts: ReadinessToast[] = [];
+
+    for (const order of orders as Order[]) {
+      const previousStatuses = previous?.get(order.id);
+      current.set(order.id, new Map(order.items.map(item => [item.id, item.kitchenStatus])));
+      if (!isWaiterUser || order.status !== 'OPEN' || !previous) continue;
+
+      const newlyReady = order.items.filter(item => {
+        const assignedWaiterId = item.addedByUserId || order.openedByUserId;
+        return assignedWaiterId === user?.id &&
+          item.kitchenStatus === 'READY' &&
+          previousStatuses?.get(item.id) !== 'READY';
+      });
+
+      if (newlyReady.length > 0) {
+        alerts.push({
+          id: `${order.id}_${newlyReady.map(item => item.id).join('_')}_${Date.now()}`,
+          tableId: order.tableId,
+          tableNumber: order.tableNumber || 0,
+          tableLabel: order.tableLabel || undefined,
+          readyCount: newlyReady.length,
+          totalCount: order.items.length,
+          items: newlyReady.map(item => item.name),
+          isAllReady: order.items.every(item => item.kitchenStatus === 'READY' || item.kitchenStatus === 'SERVED'),
+          timestamp: Date.now()
+        });
+      }
+    }
+
+    previousOrderStatusesRef.current = current;
+    if (alerts.length === 0) return;
+    setReadyNotifications(existing => [...existing, ...alerts].slice(-4));
+    if (readySoundEnabled) {
+      soundEffects.playReadyChime();
+      triggerVibration([180, 80, 180]);
+    }
+    alerts.forEach(alert => {
+      window.setTimeout(() => {
+        setReadyNotifications(existing => existing.filter(item => item.id !== alert.id));
+      }, 9000);
+    });
+  }, [orders, user?.id, isWaiterUser, readySoundEnabled]);
+
+  const toggleReadySound = () => {
+    const enabled = !readySoundEnabled;
+    setReadySoundEnabled(enabled);
+    try {
+      localStorage.setItem('restaurantos_ready_sound_enabled', String(enabled));
+    } catch {}
+    if (enabled) {
+      soundEffects.unlock();
+      soundEffects.playReadyChime();
+    }
+  };
 
   const isExpired = licenseStatus && !licenseStatus.canOperate;
 
@@ -218,6 +292,21 @@ function AppContent({
         </div>
         
         <div className="flex items-center gap-2.5 sm:gap-4">
+          <button
+            type="button"
+            onClick={toggleReadySound}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-colors ${readySoundEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'}`}
+            title={language === 'fr' ? 'Activer ou désactiver le son des plats prêts' : 'Enable or disable ready-item alert sound'}
+            aria-pressed={readySoundEnabled}
+          >
+            {readySoundEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            <span className="hidden sm:inline">
+              {readySoundEnabled
+                ? (language === 'fr' ? 'Son activé' : 'Sound on')
+                : (language === 'fr' ? 'Activer le son' : 'Enable sound')}
+            </span>
+          </button>
+
           {/* Language Switcher */}
           <div className="flex items-center bg-gray-100 p-0.5 rounded-xl border border-gray-200 text-xs font-bold">
             <button
@@ -286,6 +375,36 @@ function AppContent({
           </div>
         </div>
       </header>
+
+      {readyNotifications.length > 0 && (
+        <div
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] w-[calc(100%-1.5rem)] max-w-md space-y-2"
+          role="status"
+          aria-live="polite"
+        >
+          {readyNotifications.map(notification => (
+            <div key={notification.id} className="bg-emerald-600 text-white rounded-2xl shadow-xl border border-emerald-500 px-4 py-3 flex items-start gap-3">
+              <div className="mt-0.5 shrink-0 rounded-full bg-white/15 p-2"><BellRing size={18} /></div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-sm">{language === 'fr' ? 'Plat prêt !' : 'Food ready!'}</p>
+                <p className="text-xs font-bold text-emerald-50 mt-0.5">{notification.tableLabel || `Table ${notification.tableNumber}`}</p>
+                <p className="text-xs text-white mt-1 break-words">{notification.items.join(', ')}</p>
+                <p className="text-[10px] text-emerald-100 mt-1">
+                  {notification.isAllReady
+                    ? (language === 'fr' ? 'Toute la commande est prête' : 'The whole order is ready')
+                    : (language === 'fr' ? `${notification.readyCount} plat(s) prêt(s)` : `${notification.readyCount} item(s) ready`)}
+                </p>
+                <Link to="/" onClick={() => setActiveTableId(notification.tableId)} className="inline-flex mt-2 text-xs font-black underline underline-offset-2">
+                  {language === 'fr' ? 'Ouvrir la table' : 'Open table'}
+                </Link>
+              </div>
+              <button type="button" onClick={() => setReadyNotifications(existing => existing.filter(item => item.id !== notification.id))} className="shrink-0 p-1 rounded-lg hover:bg-white/15" aria-label={language === 'fr' ? 'Fermer la notification' : 'Dismiss notification'}>
+                <X size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-0 bg-gray-50 overflow-y-auto">
