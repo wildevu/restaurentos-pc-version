@@ -25,17 +25,17 @@ export function AdminLayout() {
 
   const navItems = [
     { nameKey: 'admin.navHub', defaultName: 'Local Hub Status', path: '/admin/hub', icon: Server },
-    { nameKey: 'admin.navLicensing', defaultName: 'Licensing', path: '/admin/licensing', icon: Key },
     { nameKey: 'admin.navConsultant', defaultName: 'Consultant', path: '/admin/consultant', icon: Briefcase },
-    { nameKey: 'admin.navSettings', defaultName: 'Settings', path: '/admin/settings', icon: Store },
+    { nameKey: 'admin.navOrders', defaultName: 'Order History', path: '/admin/orders', icon: History },
     { nameKey: 'admin.navStaff', defaultName: 'Staff', path: '/admin/staff', icon: Users },
     { nameKey: 'admin.navMenu', defaultName: 'Menu & CSV', path: '/admin/menu', icon: MenuSquare },
     { nameKey: 'admin.navTables', defaultName: 'Tables', path: '/admin/tables', icon: Grid },
-    { nameKey: 'admin.navDevices', defaultName: 'Devices', path: '/admin/devices', icon: Smartphone },
-    { nameKey: 'admin.navOrders', defaultName: 'Order History', path: '/admin/orders', icon: History },
+    { nameKey: 'admin.navLicensing', defaultName: 'Licensing', path: '/admin/licensing', icon: Key },
+    { nameKey: 'admin.navSettings', defaultName: 'Settings', path: '/admin/settings', icon: Store },
     { nameKey: 'admin.navAudit', defaultName: 'Audit Logs', path: '/admin/audit', icon: ShieldCheck },
     { nameKey: 'admin.navBackups', defaultName: 'Backups', path: '/admin/backups', icon: Database },
     { nameKey: 'admin.navHealth', defaultName: 'System Health', path: '/admin/health', icon: Activity },
+    { nameKey: 'admin.navDevices', defaultName: 'Devices', path: '/admin/devices', icon: Smartphone },
   ];
 
   return (

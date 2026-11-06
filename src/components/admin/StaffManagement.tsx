@@ -18,7 +18,7 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
   const [isActive, setIsActive] = useState(true);
 
   const [pairingUser, setPairingUser] = useState<any>(null);
-  const [pairingData, setPairingData] = useState<{ token: string, url: string } | null>(null);
+  const [pairingData, setPairingData] = useState<{ token: string, url: string, urls: string[] } | null>(null);
   const [generatingQR, setGeneratingQR] = useState(false);
 
   const handleGeneratePairing = async (user: any) => {
@@ -39,13 +39,20 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
       const data = await res.json();
       if (!res.ok) setError(data.error || 'Failed to generate token');
       else {
-        // Construct the URL that the QR will point to, prioritizing LAN IPv4 if available
-        let hubUrl = window.location.origin;
-        if (data.lanIps && data.lanIps.length > 0 && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-          hubUrl = `${window.location.protocol}//${data.lanIps[0]}:${window.location.port || '8989'}`;
+        const hostname = window.location.hostname;
+        const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+        const port = window.location.port || String(data.port || 8989);
+        const lanOrigins = (Array.isArray(data.lanIps) ? data.lanIps : [])
+          .filter((ip: string) => typeof ip === 'string' && ip.length > 0)
+          .map((ip: string) => `${window.location.protocol}//${ip}:${port}`);
+        const origins = isLoopback ? lanOrigins : [window.location.origin, ...lanOrigins];
+        const urls = Array.from(new Set(origins))
+          .map(origin => `${origin}/pair?token=${encodeURIComponent(data.token)}`);
+        if (urls.length === 0) {
+          setError('No usable LAN address was detected. Check the hub network connection and try again.');
+        } else {
+          setPairingData({ token: data.token, url: urls[0], urls });
         }
-        const pairUrl = `${hubUrl}/pair?token=${data.token}`;
-        setPairingData({ token: data.token, url: pairUrl });
       }
     } catch (err: any) {
       setError(err.message);
@@ -253,10 +260,34 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
               )}
             </div>
             
-            <div className="bg-blue-50 text-blue-800 text-sm rounded-lg p-3 mb-6 space-y-1 text-left">
+            <div className="bg-blue-50 text-blue-800 text-sm rounded-lg p-3 mb-3 space-y-1 text-left">
               <p><strong>Expiration:</strong> 15 minutes</p>
               <p><strong>Usage Status:</strong> {pairingData ? 'Pending Scan (Valid)' : 'Invalidated / Used'}</p>
             </div>
+            {pairingData && pairingData.urls.length > 1 && (
+              <div className="mb-3 text-left">
+                <p className="text-xs font-bold text-gray-600 mb-2">Choose the hub address reachable from the staff phone:</p>
+                <div className="flex flex-wrap gap-2">
+                  {pairingData.urls.map(url => {
+                    const host = new URL(url).host;
+                    const selected = pairingData.url === url;
+                    return (
+                      <button
+                        key={url}
+                        type="button"
+                        onClick={() => setPairingData(current => current ? { ...current, url } : current)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border ${selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200'}`}
+                      >
+                        {host}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <p className="text-[11px] leading-relaxed text-gray-500 mb-5 text-left">
+              For reliable long-term access, reserve this PC's LAN IP address in the router (DHCP reservation). An installed phone shortcut remains tied to the address used when it was installed. If that address changes, pair the phone again using the current address.
+            </p>
             
             <div className="flex gap-3 justify-center border-t border-gray-100 pt-4">
               <button

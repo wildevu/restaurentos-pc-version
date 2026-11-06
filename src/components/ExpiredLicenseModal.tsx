@@ -81,10 +81,16 @@ export const ExpiredLicenseModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-2xl w-full border border-gray-200 shadow-2xl overflow-hidden flex flex-col my-auto">
+    <div
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-start sm:items-center justify-center overflow-y-auto p-3 sm:p-4"
+      style={{
+        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))'
+      }}
+    >
+      <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[calc(100dvh-1.5rem)] min-h-0 border border-gray-200 shadow-2xl overflow-hidden flex flex-col my-auto">
         {/* Top Header Warning */}
-        <div className="bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-4 text-white flex items-center gap-3">
+        <div className="bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-4 text-white flex items-center gap-3 shrink-0">
           <ShieldAlert className="w-7 h-7 shrink-0 text-white animate-bounce" />
           <div>
             <h2 className="text-xl font-black tracking-tight leading-tight">{copy.header}</h2>
@@ -93,7 +99,7 @@ export const ExpiredLicenseModal: React.FC<Props> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 sm:p-8 space-y-6 flex-1 overflow-y-auto">
+        <div className="p-4 sm:p-8 space-y-6 flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {/* Main Copy Narrative */}
           <p className="text-gray-700 text-sm sm:text-base font-medium leading-relaxed bg-amber-50/60 p-4 rounded-2xl border border-amber-200/80">
             {copy.body}
@@ -138,7 +144,7 @@ export const ExpiredLicenseModal: React.FC<Props> = ({
 
           {/* Key Input Toggle Form */}
           {isOwnerOrManager && (
-            <div className="pt-4 border-t border-gray-200">
+            <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-8 px-4 sm:px-8 pt-4 pb-2 bg-white/95 backdrop-blur border-t border-gray-200">
               {!showKeyInput ? (
                 <button
                   type="button"

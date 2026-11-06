@@ -162,6 +162,7 @@ async function startServer() {
 
   const lanIps = getLocalLanIps();
   app.set('lanIps', lanIps);
+  app.set('getLanIps', getLocalLanIps);
 
   // Helper to disconnect active sockets when a user is deactivated or password changed
   const disconnectUserSockets = (userId: string) => {
@@ -311,13 +312,15 @@ async function startServer() {
     try {
       await db.run(sql.raw('SELECT 1 as alive;'));
       const hub = await db.select().from(hubState).limit(1);
+      const currentLanIps = getLocalLanIps();
+      app.set('lanIps', currentLanIps);
       res.json({
         ready: true,
         status: 'ready',
         database: 'connected',
         stateInitialized: hub.length > 0,
         version: '1.0.0',
-        lanIps,
+        lanIps: currentLanIps,
         uptimeSeconds: Math.floor(process.uptime()),
         timestamp: new Date().toISOString()
       });
@@ -330,6 +333,8 @@ async function startServer() {
   // Public Local Hub Status Screen Endpoint (Safe summary without credentials)
   app.get('/api/hub/status', async (req: any, res) => {
     try {
+      const currentLanIps = getLocalLanIps();
+      app.set('lanIps', currentLanIps);
       const rest = await db.select().from(restaurants).limit(1);
       const restaurantName = rest[0]?.name || 'RestaurantOS Hub';
 
@@ -352,8 +357,8 @@ async function startServer() {
         status: 'RUNNING',
         version: '1.0.0',
         port: PORT,
-        lanIps,
-        primaryLanUrl: lanIps.length > 0 ? `http://${lanIps[0]}:${PORT}` : `http://localhost:${PORT}`,
+        lanIps: currentLanIps,
+        primaryLanUrl: currentLanIps.length > 0 ? `http://${currentLanIps[0]}:${PORT}` : `http://localhost:${PORT}`,
         connectedDevices: connectedSockets,
         database: {
           status: 'HEALTHY',

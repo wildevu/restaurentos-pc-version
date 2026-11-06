@@ -71,8 +71,15 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
   };
 
   const handleBatchUpdateStatus = async (orderId: string, nextStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED') => {
+    const order = orders.find(candidate => candidate.id === orderId);
+    if (!order) return;
+    const orderItemIds = order.items
+      .filter(item => item.kitchenStatus !== 'SERVED')
+      .map(item => item.id);
+    if (orderItemIds.length === 0) return;
     await executeCommand('BATCH_UPDATE_KITCHEN_STATUS', {
       orderId,
+      orderItemIds,
       status: nextStatus
     });
   };
@@ -328,7 +335,10 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
 
                   {/* Ticket Items List */}
                   <div className="p-3.5 flex-1 divide-y divide-gray-100 space-y-2.5">
-                    {order.items.map(item => {
+                    {(statusFilter === 'SERVED'
+                      ? order.items
+                      : order.items.filter(item => item.kitchenStatus !== 'SERVED')
+                    ).map(item => {
                       const isPending = item.kitchenStatus === 'PENDING';
                       const isPreparing = item.kitchenStatus === 'PREPARING';
                       const isReady = item.kitchenStatus === 'READY';

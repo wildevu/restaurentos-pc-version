@@ -453,7 +453,9 @@ adminRouter.post('/pairing/generate', async (req: any, res) => {
       createdAt: now,
     });
     
-    const lanIps = req.app?.get('lanIps') || [];
+    const getLanIps = req.app?.get('getLanIps');
+    const lanIps = typeof getLanIps === 'function' ? getLanIps() : (req.app?.get('lanIps') || []);
+    req.app?.set('lanIps', lanIps);
     res.json({ token: rawToken, lanIps });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -1721,38 +1723,70 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     }).sort((a, b) => a.date.localeCompare(b.date));
 
     // 5. Staff Performance
-    const staffStatsMap: Record<string, { userName: string, tablesManaged: number, totalRevenue: number }> = {};
-    const allUsers = await db.select().from(users);
-    const userNamesMap = new Map(allUsers.map(u => [u.id, u.name]));
-
+    type StaffReportStats = {
+      userId: string;
+      userName: string;
+      role: string;
+      tablesManaged: number;
+      ordersClosed: number;
+      totalRevenue: number;
+      contributedOrderIds: Set<string>;
+    };
+    // Include active staff even with zero activity, plus inactive historical staff
+    // only when they appear in activity during the selected report period.
+    const allUsers = await db.select({
+      id: users.id, name: users.name, role: users.role, isActive: users.isActive
+    }).from(users).where(eq(users.restaurantId, req.user.restaurantId));
+    const userById = new Map(allUsers.map(staff => [staff.id, staff]));
+    const staffStatsMap = new Map<string, StaffReportStats>();
+    const ensureStaffStats = (staffId: string): StaffReportStats => {
+      const existing = staffStatsMap.get(staffId);
+      if (existing) return existing;
+      const record = userById.get(staffId);
+      const created: StaffReportStats = {
+        userId: staffId,
+        userName: record?.name || (staffId === 'system' ? 'Unassigned / Legacy' : 'Staff'),
+        role: record?.role || (staffId === 'system' ? 'SYSTEM' : 'UNKNOWN'),
+        tablesManaged: 0,
+        ordersClosed: 0,
+        totalRevenue: 0,
+        contributedOrderIds: new Set<string>()
+      };
+      staffStatsMap.set(staffId, created);
+      return created;
+    };
+    for (const staff of allUsers) {
+      if (staff.isActive) ensureStaffStats(staff.id);
+    }
+    const ordersById = new Map(allOrders.map(order => [order.id, order]));
     for (const ord of allOrders) {
-      const staffId = ord.closedByUserId || ord.openedByUserId || 'system';
-      const staffName = userNamesMap.get(staffId) || 'Staff';
-
-      if (!staffStatsMap[staffId]) {
-        staffStatsMap[staffId] = { userName: staffName, tablesManaged: 0, totalRevenue: 0 };
-      }
-      staffStatsMap[staffId].tablesManaged += 1;
+      if (ord.openedByUserId) ensureStaffStats(ord.openedByUserId).tablesManaged += 1;
+      if (ord.closedByUserId) ensureStaffStats(ord.closedByUserId).ordersClosed += 1;
     }
-
+    // Credit sales to the staff member who added each item. Legacy items without
+    // item-level attribution fall back to the order opener, not the closer.
     for (const item of allOrderItems) {
-      const ord = allOrders.find(o => o.id === item.orderId);
-      if (ord) {
-        const staffId = ord.closedByUserId || ord.openedByUserId || 'system';
-        if (staffStatsMap[staffId]) {
-          staffStatsMap[staffId].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
-        }
-      }
+      const ord = ordersById.get(item.orderId);
+      if (!ord) continue;
+      const staffId = item.addedByUserId || ord.openedByUserId || 'system';
+      const stats = ensureStaffStats(staffId);
+      stats.totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+      stats.contributedOrderIds.add(ord.id);
     }
-
-    const staffPerformance = Object.values(staffStatsMap)
-      .map(s => ({
-        userName: s.userName,
-        tablesManaged: s.tablesManaged,
-        totalRevenue: parseFloat(s.totalRevenue.toFixed(2)),
-        averageOrderValue: s.tablesManaged > 0 ? parseFloat((s.totalRevenue / s.tablesManaged).toFixed(2)) : 0
+    const staffPerformance = Array.from(staffStatsMap.values())
+      .map(staff => ({
+        userId: staff.userId,
+        userName: staff.userName,
+        role: staff.role,
+        tablesManaged: staff.tablesManaged,
+        ordersClosed: staff.ordersClosed,
+        ordersContributedTo: staff.contributedOrderIds.size,
+        totalRevenue: parseFloat(staff.totalRevenue.toFixed(2)),
+        averageOrderValue: staff.contributedOrderIds.size > 0
+          ? parseFloat((staff.totalRevenue / staff.contributedOrderIds.size).toFixed(2))
+          : 0
       }))
-      .sort((a, b) => b.tablesManaged - a.tablesManaged);
+      .sort((a, b) => b.tablesManaged - a.tablesManaged || b.totalRevenue - a.totalRevenue);
 
     // 6. Hourly Sales
     const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number, covers: number }> = {};
@@ -1921,7 +1955,9 @@ adminRouter.get('/system/health', async (req: any, res) => {
     const io = req.app.get('io');
     const connectedSockets = io ? io.sockets?.sockets?.size || 0 : 0;
 
-    const lanIps = req.app.get('lanIps') || [];
+    const getLanIps = req.app.get('getLanIps');
+    const lanIps = typeof getLanIps === 'function' ? getLanIps() : (req.app.get('lanIps') || []);
+    req.app.set('lanIps', lanIps);
 
     res.json({
       hubStatus: 'HEALTHY',

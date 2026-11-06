@@ -506,6 +506,7 @@ export function App() {
   const syncSequenceRef = useRef(0);
   const syncEpochRef = useRef<string>(localStorage.getItem('restaurantos_sync_epoch') || '');
   const initInFlightRef = useRef(false);
+  const pendingInitTokenRef = useRef<string | null>(null);
   const reconcileInFlightRef = useRef(false);
   const lastWakeSyncAtRef = useRef(0);
 
@@ -582,7 +583,10 @@ export function App() {
   };
 
   const initApp = async (token: string, retriesLeft = 3) => {
-    if (initInFlightRef.current) return;
+    if (initInFlightRef.current) {
+      pendingInitTokenRef.current = token;
+      return;
+    }
     initInFlightRef.current = true;
     try {
       const res = await fetchWithTimeout('/api/state', {
@@ -625,18 +629,22 @@ export function App() {
           clearTimeout(disconnectTimer);
           disconnectTimer = null;
         }
-        setIsConnected(true);
-        socket.emit('SYNC', { lastKnownVersion: stateVersionRef.current, lastKnownEpoch: syncEpochRef.current }, async (res: any) => {
+        socket.timeout(10000).emit(
+          'SYNC',
+          { lastKnownVersion: stateVersionRef.current, lastKnownEpoch: syncEpochRef.current },
+          async (timeoutError: any, res: any) => {
           if (syncSequence !== syncSequenceRef.current) return;
+          if (timeoutError || !res || res.error) {
+            console.error('Hub synchronization failed', timeoutError || res?.error || 'No response');
+            setIsConnected(false);
+            return;
+          }
+          setIsConnected(true);
           let latestTables: any[] = [];
           let latestOrders: any[] = [];
           setTables(prev => { latestTables = prev; return prev; });
           setOrders(prev => { latestOrders = prev; return prev; });
 
-          if (!res || res.error) {
-            console.error('Hub synchronization failed', res?.error || 'No response');
-            return;
-          }
           if (typeof res.syncEpoch === 'string' && res.syncEpoch) {
             syncEpochRef.current = res.syncEpoch;
             try { localStorage.setItem('restaurantos_sync_epoch', res.syncEpoch); } catch {}
@@ -667,7 +675,8 @@ export function App() {
           }
 
           void flushQueue();
-        });
+          }
+        );
       };
 
       socket.on('connect', synchronize);
@@ -712,6 +721,11 @@ export function App() {
       }
     } finally {
       initInFlightRef.current = false;
+      const pendingToken = pendingInitTokenRef.current;
+      pendingInitTokenRef.current = null;
+      if (pendingToken && localStorage.getItem('restaurantos_auth_token') === pendingToken) {
+        window.setTimeout(() => { void initApp(pendingToken); }, 0);
+      }
     }
   };
 
@@ -734,11 +748,13 @@ export function App() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleWakeAndSync);
     window.addEventListener('focus', handleWakeAndSync);
+    window.addEventListener('pageshow', handleWakeAndSync);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleWakeAndSync);
       window.removeEventListener('focus', handleWakeAndSync);
+      window.removeEventListener('pageshow', handleWakeAndSync);
     };
   }, [authToken]);
 
@@ -755,6 +771,7 @@ export function App() {
   };
 
   const handleLogout = async () => {
+    pendingInitTokenRef.current = null;
     if (authToken) {
       await fetch('/api/auth/logout', {
         method: 'POST',

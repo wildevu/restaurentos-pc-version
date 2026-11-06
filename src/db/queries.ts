@@ -160,8 +160,12 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
     }
 
     if (dbUser.role === 'WAITER') {
-      if (command.type === 'UPDATE_ITEM_KITCHEN_STATUS' || command.type === 'BATCH_UPDATE_KITCHEN_STATUS') {
-        throw new CommandError('Waiters are not permitted to change kitchen preparation statuses', false);
+      if (command.type !== 'UPDATE_ITEM_KITCHEN_STATUS') {
+        throw new CommandError('Waiters may only mark a ready item as served', false);
+      }
+      const waiterStatusPayload = UpdateKitchenStatusPayload.parse(command.payload);
+      if (waiterStatusPayload.status !== 'SERVED') {
+        throw new CommandError('Waiters may only mark a ready item as served', false);
       }
     }
     
@@ -271,7 +275,8 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
           existingItem = await tx.select().from(orderItems).where(
             and(
               eq(orderItems.orderId, activeOrder.id), 
-              eq(orderItems.menuItemId, menuItemId), 
+              eq(orderItems.menuItemId, menuItemId),
+              eq(orderItems.addedByUserId, user.id),
               sql`${orderItems.notes} IS NULL OR ${orderItems.notes} = ''`
             )
           ).get();
@@ -449,6 +454,9 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         if (!item) throw new CommandError('Order item not found');
 
         const prevStatus = item.kitchenStatus;
+        if (dbUser.role === 'WAITER' && prevStatus !== 'READY') {
+          throw new CommandError('Waiters can only serve items that are currently READY', false);
+        }
         await tx.update(orderItems)
           .set({ kitchenStatus: status, kitchenStatusUpdatedAt: now, updatedAt: now })
           .where(eq(orderItems.id, orderItemId));
@@ -469,13 +477,22 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
 
       case 'BATCH_UPDATE_KITCHEN_STATUS': {
         const { orderId, orderItemIds, status } = BatchUpdateKitchenStatusPayload.parse(command.payload);
-        let targetItemIds: string[] = [];
+        let candidateItems: any[] = [];
         if (orderItemIds && orderItemIds.length > 0) {
-          targetItemIds = orderItemIds;
+          candidateItems = await tx.select({
+            id: orderItems.id,
+            kitchenStatus: orderItems.kitchenStatus
+          }).from(orderItems).where(inArray(orderItems.id, orderItemIds));
         } else if (orderId) {
-          const items = await tx.select({ id: orderItems.id }).from(orderItems).where(eq(orderItems.orderId, orderId));
-          targetItemIds = items.map((i: any) => i.id);
+          candidateItems = await tx.select({
+            id: orderItems.id,
+            kitchenStatus: orderItems.kitchenStatus
+          }).from(orderItems).where(eq(orderItems.orderId, orderId));
         }
+        // A bulk READY action must not undo an item's SERVED state.
+        const targetItemIds = candidateItems
+          .filter((item: any) => status !== 'READY' || item.kitchenStatus !== 'SERVED')
+          .map((item: any) => item.id);
 
         if (targetItemIds.length > 0) {
           await tx.update(orderItems)
