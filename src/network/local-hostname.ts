@@ -125,6 +125,7 @@ export class LocalHostnamePublisher {
       try {
         nextIp = this.getPrimaryLanIp();
       } catch (error: any) {
+        await this.closeCurrentClient(true);
         this.failWithoutClient(error);
         return;
       }

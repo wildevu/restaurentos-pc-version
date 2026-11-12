@@ -1960,10 +1960,15 @@ adminRouter.get('/system/health', async (req: any, res) => {
     const getLanIps = req.app.get('getLanIps');
     const lanIps = typeof getLanIps === 'function' ? getLanIps() : (req.app.get('lanIps') || []);
     req.app.set('lanIps', lanIps);
+    const localHostnamePublisher = req.app.get('localHostnamePublisher');
+    const hostnameStatus = localHostnamePublisher?.status || {};
 
     res.json({
       hubStatus: 'HEALTHY',
       appVersion: '1.0.0',
+      localHostname: hostnameStatus.hostname || 'restos.local',
+      mdnsStatus: hostnameStatus.state || 'unavailable',
+      mdnsAddress: hostnameStatus.address || null,
       uptimeSeconds: Math.floor(process.uptime()),
       nodeVersion: process.version,
       platform: process.platform,
