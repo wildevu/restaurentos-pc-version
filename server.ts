@@ -20,6 +20,7 @@ import { eq, and, gt, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { CommandPayloadSchema } from './src/schemas';
 import { processCommand, getFrontendStateTx } from './src/db/queries';
+import { LocalHostnamePublisher, LOCAL_HUB_HOSTNAME } from './src/network/local-hostname';
 
 const PORT = parseInt(process.env.PORT || '8989', 10);
 // Changes whenever this server instance starts or a backup is restored. State versions
@@ -65,6 +66,26 @@ function getLocalLanIps(): string[] {
 
   // Prioritize physical Wi-Fi/Ethernet IPs first!
   return [...physicalIps, ...virtualIps];
+}
+
+function getPrimaryLanIp(): string | null {
+  const interfaces = os.networkInterfaces();
+  const virtualKeywords = [
+    'wsl', 'hyper-v', 'vethernet', 'virtualbox', 'vmware',
+    'docker', 'zerotier', 'tailscale', 'npcap', 'loopback', 'host-only'
+  ];
+
+  for (const name of Object.keys(interfaces)) {
+    if (virtualKeywords.some(keyword => name.toLowerCase().includes(keyword))) continue;
+    const address = (interfaces[name] || []).find(iface =>
+      iface.family === 'IPv4' &&
+      !iface.internal &&
+      !iface.address.startsWith('169.254.')
+    );
+    if (address) return address.address;
+  }
+
+  return null;
 }
 
 function acquireInstanceLock(): boolean {
@@ -162,6 +183,17 @@ async function startServer() {
 
   const lanIps = getLocalLanIps();
   app.set('lanIps', lanIps);
+
+  // Publish one stable mDNS hostname on the preferred physical LAN adapter.
+  // If discovery is unavailable, IP-based access remains available as a fallback.
+  const localHostnamePublisher = new LocalHostnamePublisher({
+    getPrimaryLanIp,
+    port: PORT,
+    logger,
+  });
+  app.set('localHostnamePublisher', localHostnamePublisher);
+  app.set('getLocalHubUrl', () => localHostnamePublisher.url);
+  localHostnamePublisher.start();
   app.set('getLanIps', getLocalLanIps);
 
   // Helper to disconnect active sockets when a user is deactivated or password changed
@@ -321,6 +353,9 @@ async function startServer() {
         stateInitialized: hub.length > 0,
         version: '1.0.0',
         lanIps: currentLanIps,
+        localHostname: LOCAL_HUB_HOSTNAME,
+        mdnsStatus: localHostnamePublisher.status.state,
+        mdnsAddress: localHostnamePublisher.status.address,
         uptimeSeconds: Math.floor(process.uptime()),
         timestamp: new Date().toISOString()
       });
@@ -358,7 +393,10 @@ async function startServer() {
         version: '1.0.0',
         port: PORT,
         lanIps: currentLanIps,
-        primaryLanUrl: currentLanIps.length > 0 ? `http://${currentLanIps[0]}:${PORT}` : `http://localhost:${PORT}`,
+        primaryLanUrl: localHostnamePublisher.url || (currentLanIps.length > 0 ? `http://${currentLanIps[0]}:${PORT}` : `http://localhost:${PORT}`),
+        localHostname: LOCAL_HUB_HOSTNAME,
+        mdnsStatus: localHostnamePublisher.status.state,
+        mdnsAddress: localHostnamePublisher.status.address,
         connectedDevices: connectedSockets,
         database: {
           status: 'HEALTHY',
@@ -641,6 +679,7 @@ async function startServer() {
     logger.info(`   RESTAURANTOS LOCAL HUB — SERVER RUNNING          `);
     logger.info(`====================================================`);
     logger.info(`Local PC Address: http://localhost:${PORT}`);
+    logger.info(`Stable LAN Hostname: http://${LOCAL_HUB_HOSTNAME}:${PORT} (mDNS status: ${localHostnamePublisher.status.state})`);
     if (lanIps.length > 0) {
       lanIps.forEach(ip => {
         logger.info(`Restaurant LAN Access URL: http://${ip}:${PORT}`);
@@ -676,6 +715,9 @@ async function startServer() {
     }
 
     try {
+      // 0. Withdraw the local hostname before closing network services.
+      await localHostnamePublisher.stop();
+
       // 1. Close WebSockets / Socket.IO
       await new Promise<void>((resolve) => {
         try {
