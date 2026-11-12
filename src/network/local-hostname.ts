@@ -3,7 +3,7 @@ import multicastDns from 'multicast-dns';
 export const LOCAL_HUB_HOSTNAME = 'restos.local';
 const MDNS_MULTICAST_ADDRESS = '224.0.0.251';
 const MDNS_PORT = 5353;
-const RECORD_TTL_SECONDS = 120;
+const RECORD_TTL_SECONDS = 30;
 
 export interface LocalHostnameStatus {
   state: 'stopped' | 'waiting-for-network' | 'starting' | 'published' | 'error';
@@ -59,7 +59,7 @@ export interface LocalHostnamePublisherOptions {
 }
 
 function isLocalHostnameQuestion(question: MdnsQuestion): boolean {
-  const questionName = String(question.name || '').replace(/\\.$/, '').toLowerCase();
+  const questionName = String(question.name || '').replace(/\.$/, '').toLowerCase();
   const questionType = String(question.type).toUpperCase();
   return questionName === LOCAL_HUB_HOSTNAME && (questionType === 'A' || questionType === 'ANY');
 }

@@ -146,7 +146,7 @@ export function SystemHealth({ authToken }: { authToken?: string }) {
 
             <div className={`p-3 rounded-xl border text-xs font-semibold ${health.mdnsStatus === 'published' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
               {health.mdnsStatus === 'published'
-                ? `Stable hostname: http://${health.localHostname}:8989 — currently resolves to ${health.mdnsAddress}`
+                ? `mDNS advertising: http://${health.localHostname}:8989 — hub address ${health.mdnsAddress}`
                 : `Stable hostname discovery: ${health.mdnsStatus || 'not available'}. IP-based LAN access remains available.`}
             </div>
 

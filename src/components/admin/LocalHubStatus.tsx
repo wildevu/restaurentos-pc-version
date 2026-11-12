@@ -142,7 +142,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                   </label>
                   <div className={`mb-2 text-xs font-semibold ${status.mdnsStatus === 'published' ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {status.mdnsStatus === 'published'
-                      ? 'Stable local hostname active — IP changes are handled automatically.'
+                      ? 'mDNS announcement is active — confirm staff devices can resolve the hostname on this Wi-Fi.'
                       : 'Local hostname discovery unavailable — using the current LAN IP address.'}
                   </div>
                   <div className="flex items-center gap-2">

@@ -49,7 +49,7 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
           .filter((ip: string) => typeof ip === 'string' && ip.length > 0)
           .map((ip: string) => `${window.location.protocol}//${ip}:${port}`);
         const origins = stableHubOrigin
-          ? [stableHubOrigin]
+          ? [stableHubOrigin, ...lanOrigins]
           : isLoopback
             ? lanOrigins
             : [window.location.origin, ...lanOrigins];
@@ -294,8 +294,8 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
             )}
             <p className="text-[11px] leading-relaxed text-gray-500 mb-5 text-left">
               {pairingData?.usesStableHostname
-                ? 'RestaurantOS is using its stable local network address. Keep staff devices connected to the same restaurant Wi-Fi network; no DHCP reservation is required.'
-                : 'Local hostname discovery is not currently available. This QR code uses the current LAN address, so if the router changes the hub IP, generate a fresh QR code until local discovery is restored.'}
+                ? 'The stable hostname is being advertised. Keep staff devices on the same restaurant Wi-Fi; use the IP address choices above if a device cannot resolve restos.local.'
+                : 'Local hostname discovery is not currently available. This QR code uses the current LAN address, so if the router changes the hub IP, generate a fresh QR code until discovery is restored.'}
             </p>
             
             <div className="flex gap-3 justify-center border-t border-gray-100 pt-4">
