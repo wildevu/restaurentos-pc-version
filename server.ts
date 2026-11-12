@@ -193,7 +193,6 @@ async function startServer() {
   });
   app.set('localHostnamePublisher', localHostnamePublisher);
   app.set('getLocalHubUrl', () => localHostnamePublisher.url);
-  localHostnamePublisher.start();
   app.set('getLanIps', getLocalLanIps);
   app.set('getPrimaryLanIp', getPrimaryLanIp);
 
@@ -676,6 +675,8 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     isServerReady = true;
+    // Advertise the stable name only after the HTTP server is accepting LAN connections.
+    localHostnamePublisher.start();
     logger.info(`====================================================`);
     logger.info(`   RESTAURANTOS LOCAL HUB — SERVER RUNNING          `);
     logger.info(`====================================================`);
