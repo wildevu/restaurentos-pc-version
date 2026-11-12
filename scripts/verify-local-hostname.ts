@@ -65,7 +65,7 @@ async function run(): Promise<void> {
   assert.equal(publisher.url, 'http://restos.local:8989');
   assert.equal(clients[0].responses[0].answers[0].name, LOCAL_HUB_HOSTNAME);
   assert.equal(clients[0].responses[0].answers[0].data, '192.168.1.50');
-  assert.equal(clients[0].responses[0].answers[0].ttl, 120);
+  assert.equal(clients[0].responses[0].answers[0].ttl, 30);
   assert.equal(clients[0].responses[0].answers[0].flush, true);
 
   clients[0].emit('query', { questions: [{ name: 'RESTOS.LOCAL.', type: 'A' }] });
