@@ -195,6 +195,7 @@ async function startServer() {
   app.set('getLocalHubUrl', () => localHostnamePublisher.url);
   localHostnamePublisher.start();
   app.set('getLanIps', getLocalLanIps);
+  app.set('getPrimaryLanIp', getPrimaryLanIp);
 
   // Helper to disconnect active sockets when a user is deactivated or password changed
   const disconnectUserSockets = (userId: string) => {
