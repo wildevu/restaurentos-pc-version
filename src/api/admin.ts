@@ -456,7 +456,9 @@ adminRouter.post('/pairing/generate', async (req: any, res) => {
     const getLanIps = req.app?.get('getLanIps');
     const lanIps = typeof getLanIps === 'function' ? getLanIps() : (req.app?.get('lanIps') || []);
     req.app?.set('lanIps', lanIps);
-    res.json({ token: rawToken, lanIps });
+    const getLocalHubUrl = req.app?.get('getLocalHubUrl');
+    const hubUrl = typeof getLocalHubUrl === 'function' ? getLocalHubUrl() : null;
+    res.json({ token: rawToken, lanIps, hubUrl });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

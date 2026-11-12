@@ -18,7 +18,7 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
   const [isActive, setIsActive] = useState(true);
 
   const [pairingUser, setPairingUser] = useState<any>(null);
-  const [pairingData, setPairingData] = useState<{ token: string, url: string, urls: string[] } | null>(null);
+  const [pairingData, setPairingData] = useState<{ token: string, url: string, urls: string[], usesStableHostname: boolean } | null>(null);
   const [generatingQR, setGeneratingQR] = useState(false);
 
   const handleGeneratePairing = async (user: any) => {
@@ -42,16 +42,23 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
         const hostname = window.location.hostname;
         const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
         const port = window.location.port || String(data.port || 8989);
+        const stableHubOrigin = typeof data.hubUrl === 'string' && data.hubUrl.startsWith('http://restos.local:')
+          ? data.hubUrl.replace(/\/$/, '')
+          : null;
         const lanOrigins = (Array.isArray(data.lanIps) ? data.lanIps : [])
           .filter((ip: string) => typeof ip === 'string' && ip.length > 0)
           .map((ip: string) => `${window.location.protocol}//${ip}:${port}`);
-        const origins = isLoopback ? lanOrigins : [window.location.origin, ...lanOrigins];
+        const origins = stableHubOrigin
+          ? [stableHubOrigin]
+          : isLoopback
+            ? lanOrigins
+            : [window.location.origin, ...lanOrigins];
         const urls = Array.from(new Set(origins))
           .map(origin => `${origin}/pair?token=${encodeURIComponent(data.token)}`);
         if (urls.length === 0) {
           setError('No usable LAN address was detected. Check the hub network connection and try again.');
         } else {
-          setPairingData({ token: data.token, url: urls[0], urls });
+          setPairingData({ token: data.token, url: urls[0], urls, usesStableHostname: !!stableHubOrigin });
         }
       }
     } catch (err: any) {
@@ -286,7 +293,9 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
               </div>
             )}
             <p className="text-[11px] leading-relaxed text-gray-500 mb-5 text-left">
-              For reliable long-term access, reserve this PC's LAN IP address in the router (DHCP reservation). An installed phone shortcut remains tied to the address used when it was installed. If that address changes, pair the phone again using the current address.
+              {pairingData?.usesStableHostname
+                ? 'RestaurantOS is using its stable local network address. Keep staff devices connected to the same restaurant Wi-Fi network; no DHCP reservation is required.'
+                : 'Local hostname discovery is not currently available. This QR code uses the current LAN address, so if the router changes the hub IP, generate a fresh QR code until local discovery is restored.'}
             </p>
             
             <div className="flex gap-3 justify-center border-t border-gray-100 pt-4">
