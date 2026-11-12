@@ -8,7 +8,7 @@
  * 5. Launcher independence from developer tools
  * 6. Non-destructive upgrade & reinstall safety
  * 7. Uninstallation safety (database & backups preserved)
- * 8. Firewall rule parameters (TCP 8989, private/domain only)
+ * 8. Firewall rule parameters (TCP 8989 and mDNS UDP 5353, private/domain only)
  * 9. Inno Setup and PowerShell installer structure
  */
 
@@ -67,6 +67,11 @@ assert(firewallBat.includes('protocol=TCP'), 'Firewall BAT specifies TCP protoco
 assert(firewallBat.includes('profile=private,domain'), 'Firewall BAT restricts access to private and domain networks');
 assert(firewallPs1.includes('localport=$Port') || firewallPs1.includes('8989'), 'Firewall PS1 limits inbound rule to port 8989');
 assert(firewallPs1.includes('profile=private,domain') || firewallPs1.includes('Profile Private,Domain'), 'Firewall PS1 restricts access to private/domain network profile');
+assert(firewallBat.toLowerCase().includes('localport=5353'), 'Firewall BAT allows mDNS discovery on UDP port 5353');
+assert(firewallBat.toLowerCase().includes('protocol=udp'), 'Firewall BAT specifies UDP for mDNS discovery');
+assert(firewallBat.toLowerCase().includes('remoteip=localsubnet'), 'Firewall BAT limits mDNS discovery to the local subnet');
+assert(firewallPs1.includes('-LocalPort 5353'), 'Firewall PS1 allows mDNS discovery on UDP port 5353');
+assert(firewallPs1.includes('-RemoteAddress LocalSubnet'), 'Firewall PS1 limits mDNS discovery to the local subnet');
 
 // TEST 3: Uninstaller Non-Destructive Data Safety Audit
 console.log('\n--- TEST 3: Uninstallation Safety Audit ---');
@@ -114,7 +119,7 @@ try {
   // Verify production node_modules
   const nodeModulesDir = path.join(appDir, 'node_modules');
   assert(fs.existsSync(nodeModulesDir), 'Pre-packaged node_modules exists in RestaurantOS/node_modules');
-  const requiredModules = ['@libsql', 'libsql', 'express', 'socket.io', 'drizzle-orm', 'bcryptjs', 'dotenv', 'uuid', 'zod'];
+  const requiredModules = ['@libsql', 'libsql', 'express', 'socket.io', 'drizzle-orm', 'bcryptjs', 'dotenv', 'uuid', 'zod', 'multicast-dns', 'dns-packet', 'thunky'];
   for (const mod of requiredModules) {
     assert(fs.existsSync(path.join(nodeModulesDir, mod)), `Production dependency '${mod}' is packaged in node_modules`);
   }

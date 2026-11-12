@@ -78,6 +78,7 @@ export class LocalHostnamePublisher {
   private state: LocalHostnameStatus['state'] = 'stopped';
   private lastError: string | null = null;
   private lastLoggedError: string | null = null;
+  private announcementTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(options: LocalHostnamePublisherOptions) {
     this.getPrimaryLanIp = options.getPrimaryLanIp;
@@ -208,12 +209,19 @@ export class LocalHostnamePublisher {
 
     client.on('ready', () => {
       if (this.client !== client) return;
-      this.respond(client, address, RECORD_TTL_SECONDS, (error) => {
-        if (this.client !== client) return;
-        if (error) {
-          this.failClient(client, error);
-          return;
-        }
+      this.publishAddress(client, address, 0);
+    });
+  }
+
+  private publishAddress(client: MdnsClient, address: string, announcementNumber: number): void {
+    this.respond(client, address, RECORD_TTL_SECONDS, (error) => {
+      if (this.client !== client) return;
+      if (error) {
+        this.failClient(client, error);
+        return;
+      }
+
+      if (announcementNumber === 0) {
         this.state = 'published';
         this.lastError = null;
         this.lastLoggedError = null;
@@ -222,7 +230,19 @@ export class LocalHostnamePublisher {
           address,
           port: this.port,
         });
-      });
+      }
+
+      // Repeat the unsolicited announcement to reduce the chance that a
+      // single lost multicast packet leaves clients with a stale address.
+      if (announcementNumber < 2) {
+        const delayMs = announcementNumber === 0 ? 1000 : 2000;
+        const timer = setTimeout(() => {
+          this.announcementTimers.delete(timer);
+          if (this.client === client) this.publishAddress(client, address, announcementNumber + 1);
+        }, delayMs);
+        timer.unref?.();
+        this.announcementTimers.add(timer);
+      }
     });
   }
 
@@ -234,7 +254,7 @@ export class LocalHostnamePublisher {
   ): void {
     try {
       client.respond({ answers: [this.createRecord(address, ttl)] }, (error) => {
-        if (error && this.client === client) {
+        if (error && this.client === client && !callback) {
           this.logger.warn('Could not answer RestaurantOS mDNS request.', { error: error.message });
         }
         callback?.(error);
@@ -281,6 +301,8 @@ export class LocalHostnamePublisher {
   private async closeCurrentClient(sendGoodbye: boolean): Promise<void> {
     const client = this.client;
     const address = this.advertisedIp;
+    for (const timer of this.announcementTimers) clearTimeout(timer);
+    this.announcementTimers.clear();
     this.client = null;
     this.advertisedIp = null;
 

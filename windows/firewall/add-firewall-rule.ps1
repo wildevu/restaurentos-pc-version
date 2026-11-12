@@ -38,7 +38,20 @@ try {
                             -Description "Allows local LAN waiter tablets and kitchen displays to connect to RestaurantOS Local Hub."
     }
 
-    Write-Host "Windows Firewall rule successfully configured."
+    $mdnsRuleName = "RestaurantOS Local Discovery (Inbound UDP 5353)"
+    Get-NetFirewallRule -DisplayName $mdnsRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+
+    New-NetFirewallRule -DisplayName $mdnsRuleName `
+                        -Direction Inbound `
+                        -Action Allow `
+                        -Protocol UDP `
+                        -LocalPort 5353 `
+                        -RemoteAddress LocalSubnet `
+                        -Profile Private,Domain `
+                        -Enabled True `
+                        -Description "Allows mDNS discovery requests from devices on the restaurant's local network."
+
+    Write-Host "Windows Firewall rules successfully configured (TCP 8989 and local-subnet UDP 5353)."
     exit 0
 } catch {
     Write-Error "Failed to configure Windows Firewall rule: $_"

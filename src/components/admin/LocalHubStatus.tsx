@@ -140,6 +140,11 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">
                     Restaurant Wi-Fi / LAN Access URL
                   </label>
+                  <div className={`mb-2 text-xs font-semibold ${status.mdnsStatus === 'published' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {status.mdnsStatus === 'published'
+                      ? 'Stable local hostname active — IP changes are handled automatically.'
+                      : 'Local hostname discovery unavailable — using the current LAN IP address.'}
+                  </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -170,7 +175,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                     <li>Connect the waiter tablet or phone to the restaurant Wi-Fi.</li>
                     <li>Open the Camera or Safari / Chrome and scan the QR code on the right.</li>
                     <li>Or open browser and type <strong className="font-mono text-gray-900">{primaryUrl}</strong>.</li>
-                    <li>Install the web app to the home screen (PWA) for 1-tap offline-ready access.</li>
+                    <li>Add RestaurantOS to the home screen for one-tap access. Keep the device connected to the restaurant Wi-Fi to reach the Local Hub.</li>
                   </ol>
                 </div>
               </div>

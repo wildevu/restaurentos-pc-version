@@ -144,6 +144,12 @@ export function SystemHealth({ authToken }: { authToken?: string }) {
               Staff tablets and kitchen displays on the same local Wi-Fi / Ethernet network can open RestaurantOS at the following addresses:
             </p>
 
+            <div className={`p-3 rounded-xl border text-xs font-semibold ${health.mdnsStatus === 'published' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'}`}>
+              {health.mdnsStatus === 'published'
+                ? `Stable hostname: http://${health.localHostname}:8989 — currently resolves to ${health.mdnsAddress}`
+                : `Stable hostname discovery: ${health.mdnsStatus || 'not available'}. IP-based LAN access remains available.`}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               {health.lanIps && health.lanIps.length > 0 ? (
                 health.lanIps.map((ip: string) => (

@@ -43,6 +43,7 @@ jobs:
         run: |
           node scripts/verify-reliability-hardening.cjs
           npx tsx scripts/verify-command-idempotency.ts
+          npx tsx scripts/verify-local-hostname.ts
 
       - name: Run Localization & Licensing Verification Suites
         run: |

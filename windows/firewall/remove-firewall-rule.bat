@@ -9,4 +9,5 @@ if %errorlevel% neq 0 (
 
 echo Removing Windows Firewall rule for RestaurantOS Local Hub...
 netsh advfirewall firewall delete rule name="RestaurantOS Local Hub" >nul 2>&1
-echo [SUCCESS] Windows Firewall rule removed.
+netsh advfirewall firewall delete rule name="RestaurantOS Local Discovery (Inbound UDP 5353)" >nul 2>&1
+echo [SUCCESS] RestaurantOS TCP and mDNS firewall rules removed.
