@@ -64,32 +64,6 @@ if (-not (Test-Path -LiteralPath $ServerScript -PathType Leaf)) {
     exit 2
 }
 
-# One persistent supervisor owns this data directory, regardless of whether it was
-# started by Task Scheduler (SYSTEM) or by the interactive launcher. The OS keeps
-# the handle lock alive; a stale file after a crash/reboot is harmless and reusable.
-$SupervisorLockFile = Join-Path $DataDir "supervisor.lock"
-try {
-    $script:SupervisorLockStream = [System.IO.File]::Open(
-        $SupervisorLockFile,
-        [System.IO.FileMode]::OpenOrCreate,
-        [System.IO.FileAccess]::ReadWrite,
-        [System.IO.FileShare]::Read
-    )
-    $script:SupervisorLockStream.SetLength(0)
-    $lockOwnerBytes = [System.Text.Encoding]::ASCII.GetBytes([string]$PID + "`r`n")
-    $script:SupervisorLockStream.Write($lockOwnerBytes, 0, $lockOwnerBytes.Length)
-    $script:SupervisorLockStream.Flush()
-    $script:SupervisorLockStream.Position = 0
-} catch {
-    $lockErrorCode = $_.Exception.HResult -band 0xFFFF
-    if ($lockErrorCode -eq 32 -or $lockErrorCode -eq 33) {
-        Write-SupervisorLog "Another RestaurantOS supervisor already owns the lifecycle lock. This duplicate launch is exiting without starting another Node process."
-        exit 10
-    }
-    Write-SupervisorLog "FATAL: could not acquire supervisor lifecycle lock [$SupervisorLockFile]. Error=$($_.Exception.Message)"
-    exit 5
-}
-
 $env:NODE_ENV = "production"
 $env:PORT = "8989"
 $env:RESTAURANTOS_DATA_DIR = $DataDir

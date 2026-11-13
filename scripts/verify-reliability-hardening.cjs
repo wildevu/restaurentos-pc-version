@@ -81,6 +81,8 @@ check(read('windows/installer/uninstall.ps1').includes('run-hub-supervisor.ps1')
 const supervisor = read('windows/service/run-hub-supervisor.ps1');
 check(supervisor.includes('while ($true)') && supervisor.includes('Start-Sleep'), 'Windows supervisor restarts exited server with backoff');
 check(supervisor.includes('$SupervisorLockFile') && supervisor.includes('[System.IO.FileShare]::Read') && supervisor.includes('exit 10'), 'one OS-enforced supervisor lock prevents duplicate supervisors across startup paths');
+check(fs.existsSync(path.join(process.cwd(), 'scripts/verify-supervisor-lock.ps1')), 'Windows supervisor lock has an OS-level integration test');
+check(read('.github/workflows/build-windows.yml').includes('verify-supervisor-lock.ps1'), 'Windows CI executes the supervisor lock integration test');
 check(launcher.includes('process.ExitCode == 10') && launcher.includes('existingSupervisor'), 'launcher waits for the active supervisor instead of treating a duplicate launch as a hub failure');
 check(!launcher.includes('private static void KillOrphanedServerProcesses'), 'launcher contains no unused PID-only process-kill helper');
 check(supervisor.includes('[System.IO.Path]::GetFullPath($AppDir)') && supervisor.includes('[System.IO.Path]::GetFullPath($DataDir)'), 'supervisor canonicalizes app and data paths before resolving runtime');
