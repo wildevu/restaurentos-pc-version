@@ -62,12 +62,10 @@ check(launcherSource.includes('QuoteWindowsArgument(supervisorScript)') && launc
 check(launcherSource.includes('private static string QuoteWindowsArgument(string value)') && launcherSource.includes("backslashCount * 2"), 'Windows argument quoting handles backslashes and closing quotes correctly');
 check(launcherSource.includes('Environment.GetEnvironmentVariable("RESTAURANTOS_DATA_DIR")'), 'native launcher honors configured shared data directory');
 check(launcherSource.includes('Launcher starting supervisor. AppDir=['), 'launcher logs resolved app/data paths before starting supervisor');
-const launcherSource = launcher;
-check(launcherSource.includes('NormalizeDirectoryPath(AppDomain.CurrentDomain.BaseDirectory)'), 'native launcher removes trailing separator before quoting install path');
-check(launcherSource.includes('QuoteWindowsArgument(supervisorScript)') && launcherSource.includes('QuoteWindowsArgument(appDir)') && launcherSource.includes('QuoteWindowsArgument(dataDir)'), 'native launcher quotes each supervisor argument independently');
-check(launcherSource.includes('private static string QuoteWindowsArgument(string value)') && launcherSource.includes("backslashCount * 2"), 'Windows argument quoting handles backslashes and closing quotes correctly');
-check(launcherSource.includes('Environment.GetEnvironmentVariable("RESTAURANTOS_DATA_DIR")'), 'native launcher honors configured shared data directory');
-check(launcherSource.includes('Launcher starting supervisor. AppDir=['), 'launcher logs resolved app/data paths before starting supervisor');
+check(launcher.includes('Get-CimInstance -ClassName Win32_Process') && launcher.includes('expectedServerScript') && launcher.includes('IndexOf(expectedServerScript, StringComparison.OrdinalIgnoreCase)'), 'launcher verifies PID executable and server command line before treating it as the hub');
+check(server.includes('inspectWindowsProcessIdentity') && server.includes("identity === 'match'") && server.includes("identity === 'unknown'"), 'server lock distinguishes a confirmed hub process from a reused or unverifiable PID');
+const processIdentity = read('src/utils/restaurantos-process-identity.ts');
+check(processIdentity.includes('Win32_Process') && processIdentity.includes('matchesRestaurantOSProcessIdentity'), 'Windows process inspection uses OS process metadata and a testable identity matcher');
 const fallbackLauncher = read('windows/launcher/Launch-RestaurantOS.vbs');
 check(fallbackLauncher.includes('run-hub-supervisor.ps1') && !fallbackLauncher.includes('server.cjs'), 'fallback launcher uses the same persistent supervisor');
 const logger = read('src/logger.ts');
@@ -118,7 +116,8 @@ check(admin.includes('options.forceResync ? { ...state, forceResync: true } : st
 check(admin.includes('if (stateVersion === undefined)'), 'state version zero is handled without duplicate hub-state insertion');
 
 const workflow = read('.github/workflows/build-windows.yml');
-check(workflow.includes('branches: [ main, master, gpt-harness ]'), 'gpt-harness push triggers Windows build');
+check(/^\\s*workflow_dispatch:\\s*$/m.test(workflow) && !/^\\s*push\\s*:/m.test(workflow) && !/^\\s*pull_request\\s*:/m.test(workflow), 'local-version Windows build remains manual-only');
+check(workflow.includes('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'), 'Windows workflow explicitly propagates native test exit codes');
 check(workflow.includes("github.event_name == 'push' && github.ref_type == 'tag'"), 'branch builds cannot publish over stable releases');
 
 const pkg = JSON.parse(read('package.json'));

@@ -11,6 +11,7 @@ import { runMigrations, seedDb, db } from './src/db/index';
 import { config } from './src/config';
 import { logger, cleanOldLogs } from './src/logger';
 import { ensureDirectories, LOCK_FILE, DB_PATH, DATA_DIR, BACKUP_DIR } from './src/paths';
+import { inspectWindowsProcessIdentity } from './src/utils/restaurantos-process-identity';
 import { authRouter } from './src/auth.routes';
 import { adminRouter, startAutoBackupScheduler } from './src/api/admin';
 import { licensingRouter, licenseEnforcementMiddleware, LicensingService } from './src/licensing/index';
@@ -103,21 +104,52 @@ function acquireInstanceLock(): boolean {
         logger.error('Unable to acquire Local Hub instance lock; refusing startup.', { error: error?.message });
         return false;
       }
+      let lockContents = '';
       let pid = NaN;
-      try { pid = Number.parseInt(fs.readFileSync(LOCK_FILE, 'utf-8').trim(), 10); } catch {}
+      try {
+        lockContents = fs.readFileSync(LOCK_FILE, 'utf-8');
+        pid = Number.parseInt(lockContents.trim(), 10);
+      } catch {}
+
       if (Number.isInteger(pid) && pid > 0) {
-        try {
-          process.kill(pid, 0);
-          logger.error('Another process owns the Local Hub lock; refusing a second instance.', { pid });
-          return false;
-        } catch (probeError: any) {
-          if (probeError?.code === 'EPERM') {
-            logger.error('The existing process is alive but cannot be inspected; refusing a second instance.', { pid });
+        if (process.platform === 'win32') {
+          const serverEntryPoint = path.resolve(
+            process.cwd(),
+            process.env.NODE_ENV === 'production' ? 'server.cjs' : 'server.ts'
+          );
+          const identity = inspectWindowsProcessIdentity(pid, process.execPath, serverEntryPoint);
+          if (identity === 'match') {
+            logger.error('Another RestaurantOS Local Hub process owns the instance lock; refusing a second instance.', { pid });
             return false;
+          }
+          if (identity === 'unknown') {
+            logger.error('Could not safely verify the process recorded in the Local Hub lock; refusing startup without deleting it.', { pid });
+            return false;
+          }
+          // A missing PID or a different executable/command line means Windows has
+          // reused the PID (or the lock is otherwise stale), not that the hub is alive.
+        } else {
+          try {
+            process.kill(pid, 0);
+            logger.error('Another process owns the Local Hub lock; refusing a second instance.', { pid });
+            return false;
+          } catch (probeError: any) {
+            if (probeError?.code === 'EPERM') {
+              logger.error('The existing process is alive but cannot be inspected; refusing a second instance.', { pid });
+              return false;
+            }
           }
         }
       }
+
       try {
+        // Re-read before unlinking so a concurrent server that replaced the stale
+        // lock cannot have its new lock removed by this startup attempt.
+        const currentLockContents = fs.readFileSync(LOCK_FILE, 'utf-8');
+        if (currentLockContents !== lockContents) {
+          logger.error('The Local Hub lock changed during stale-lock inspection; refusing to remove it.');
+          return false;
+        }
         fs.unlinkSync(LOCK_FILE);
         logger.warn('Removed stale Local Hub lock file.', { previousPid: Number.isFinite(pid) ? pid : null });
       } catch (unlinkError: any) {
