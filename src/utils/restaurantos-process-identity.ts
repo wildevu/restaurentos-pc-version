@@ -9,7 +9,7 @@ export type WindowsProcessDetails = {
 export type WindowsProcessIdentity = 'match' | 'other' | 'missing' | 'unknown';
 
 function normalizeWindowsPath(value: string): string {
-  return path.win32.normalize(value.trim().replace(/^"(.*)"$/, '$1').replace(/\//g, '\\\\')).toLowerCase();
+  return path.win32.normalize(value.trim().replace(/^"(.*)"$/, '$1').replace(/\//g, '\\')).toLowerCase();
 }
 
 export function matchesRestaurantOSProcessIdentity(
@@ -22,7 +22,7 @@ export function matchesRestaurantOSProcessIdentity(
   const actualExecutable = normalizeWindowsPath(details.executablePath);
   const requiredExecutable = normalizeWindowsPath(expectedExecutable);
   const requiredServerScript = normalizeWindowsPath(expectedServerScript);
-  const commandLine = details.commandLine.replace(/\//g, '\\\\').toLowerCase();
+  const commandLine = details.commandLine.replace(/\//g, '\\').toLowerCase();
 
   return actualExecutable === requiredExecutable && commandLine.includes(requiredServerScript);
 }

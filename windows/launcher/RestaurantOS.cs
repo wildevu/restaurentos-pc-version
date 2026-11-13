@@ -72,33 +72,9 @@ namespace RestaurantOS.Launcher
                 }
                 catch { }
 
-                // 3. Only treat the saved PID as an active hub when the executable
-                // and command line both identify this installation's server bundle.
-                PidOwnerState pidOwnerState = GetExistingPidOwnerState(pidFile, appDir);
-                if (pidOwnerState == PidOwnerState.NotRestaurantOS && File.Exists(pidFile))
-                {
-                    try
-                    {
-                        File.AppendAllText(supervisorLog, string.Format(
-                            "[{0:O}] Launcher ignoring stale/non-RestaurantOS PID file; it does not identify this hub.{1}",
-                            DateTime.Now, Environment.NewLine));
-                    }
-                    catch { }
-                }
-                else if (pidOwnerState == PidOwnerState.Unknown)
-                {
-                    try
-                    {
-                        File.AppendAllText(supervisorLog, string.Format(
-                            "[{0:O}] Launcher could not verify the saved PID. It will not terminate or replace any process.{1}",
-                            DateTime.Now, Environment.NewLine));
-                    }
-                    catch { }
-                }
-
-                if (IsPortInUse(8989) ||
-                    pidOwnerState == PidOwnerState.RestaurantOS ||
-                    pidOwnerState == PidOwnerState.Unknown)
+                // 3. Prevent duplicate hub instances. Never kill a process based only on a
+                // port probe or PID file: database migrations may legitimately take time.
+                if (IsPortInUse(8989) || IsExistingPidRunning(pidFile))
                 {
                     DateTime waitStart = DateTime.UtcNow;
                     while ((DateTime.UtcNow - waitStart).TotalSeconds < MaxWaitSeconds)
@@ -111,14 +87,11 @@ namespace RestaurantOS.Launcher
                         Thread.Sleep(400);
                     }
 
-                    string ownershipDetail = pidOwnerState == PidOwnerState.Unknown
-                        ? "The saved PID could not be verified. No existing process was terminated."
-                        : "A RestaurantOS hub may still be starting, or another application may be occupying port 8989. No existing process was terminated.";
                     ShowErrorDialog(
-                        ownershipDetail + "\n\n" +
-                        "The hub did not become ready within " + MaxWaitSeconds + " seconds.\n\n" +
+                        "RestaurantOS is already starting or a process is occupying port 8989, but the hub did not become ready within " +
+                        MaxWaitSeconds + " seconds. No existing process was terminated.\n\n" +
                         "Check diagnostic logs before restarting the hub.\n\n" +
-                        "Diagnostic logs:\n" + logsDir
+                        "Diagnostic logs:\nC:\\ProgramData\\RestaurantOS\\logs\\"
                     );
                     return;
                 }
@@ -392,86 +365,21 @@ namespace RestaurantOS.Launcher
             catch { }
         }
 
-        private enum PidOwnerState
-        {
-            NotRestaurantOS,
-            RestaurantOS,
-            Unknown
-        }
-
-        // A PID is not an identity: Windows can reuse it for an unrelated process.
-        // Ask the OS for the executable and command line, then require both to match
-        // this installation's bundled Node runtime and server bundle.
-        private static PidOwnerState GetExistingPidOwnerState(string pidFile, string appDir)
+        private static bool IsExistingPidRunning(string pidFile)
         {
             try
             {
-                if (!File.Exists(pidFile)) return PidOwnerState.NotRestaurantOS;
-
+                if (!File.Exists(pidFile)) return false;
+                string text = File.ReadAllText(pidFile).Trim();
                 int pid;
-                if (!int.TryParse(File.ReadAllText(pidFile).Trim(), out pid) || pid <= 0)
+                if (int.TryParse(text, out pid))
                 {
-                    return PidOwnerState.NotRestaurantOS;
-                }
-
-                string query = "$ErrorActionPreference='Stop'; " +
-                    "$p=Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId = " +
-                    pid.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                    "' -ErrorAction Stop; " +
-                    "if ($null -eq $p) { exit 3 }; " +
-                    "[Console]::WriteLine($p.ExecutablePath); " +
-                    "[Console]::WriteLine($p.CommandLine)";
-
-                ProcessStartInfo psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command " + QuoteWindowsArgument(query),
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = false,
-                    WindowStyle = ProcessWindowStyle.Hidden
-                };
-
-                using (Process inspector = Process.Start(psi))
-                {
-                    if (inspector == null) return PidOwnerState.Unknown;
-                    if (!inspector.WaitForExit(5000))
-                    {
-                        try { inspector.Kill(); } catch { }
-                        return PidOwnerState.Unknown;
-                    }
-
-                    string output = inspector.StandardOutput.ReadToEnd();
-                    if (inspector.ExitCode == 3) return PidOwnerState.NotRestaurantOS;
-                    if (inspector.ExitCode != 0) return PidOwnerState.Unknown;
-
-                    string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                    if (lines.Length < 2 || string.IsNullOrWhiteSpace(lines[0]) || string.IsNullOrWhiteSpace(lines[1]))
-                    {
-                        return PidOwnerState.Unknown;
-                    }
-
-                    string actualExecutable = Path.GetFullPath(lines[0].Trim().Trim('"'));
-                    string expectedExecutable = Path.GetFullPath(Path.Combine(appDir, "runtime", "node.exe"));
-                    if (!string.Equals(actualExecutable, expectedExecutable, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return PidOwnerState.NotRestaurantOS;
-                    }
-
-                    string expectedServerScript = Path.GetFullPath(Path.Combine(appDir, "server.cjs"));
-                    string commandLine = lines[1].Replace('/', '\\');
-                    return commandLine.IndexOf(expectedServerScript, StringComparison.OrdinalIgnoreCase) >= 0
-                        ? PidOwnerState.RestaurantOS
-                        : PidOwnerState.NotRestaurantOS;
+                    Process proc = Process.GetProcessById(pid);
+                    return proc != null && !proc.HasExited;
                 }
             }
-            catch
-            {
-                // If ownership cannot be inspected, remain conservative and do not start
-                // a second hub or delete the lock based on incomplete information.
-                return PidOwnerState.Unknown;
-            }
+            catch { }
+            return false;
         }
 
         private static void OpenBrowser(string url)

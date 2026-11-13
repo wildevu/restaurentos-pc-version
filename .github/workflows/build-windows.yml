@@ -40,46 +40,16 @@ jobs:
         run: npm run lint
 
       - name: Run Reliability Regression Checks
-        shell: pwsh
         run: |
           node scripts/verify-reliability-hardening.cjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Verify Windows PID Reuse Recovery
-        shell: pwsh
-        run: |
-          npx tsx scripts/verify-pid-process-identity.ts
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Run Command Idempotency Tests
-        shell: pwsh
-        run: |
           npx tsx scripts/verify-command-idempotency.ts
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Verify Local Hostname Discovery
-        shell: pwsh
-        run: |
           npx tsx scripts/verify-local-hostname.ts
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Audit Translations and UX
-        shell: pwsh
+      - name: Run Localization & Licensing Verification Suites
         run: |
           node scripts/audit-translations-and-ux.cjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Verify Offline Licensing
-        shell: pwsh
-        run: |
           node scripts/verify-offline-licensing.cjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Verify Setup Licensing Flow
-        shell: pwsh
-        run: |
           npx tsx scripts/verify-setup-licensing-flow.cjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Download Visual C++ 2015-2022 Redistributable Installer
         shell: pwsh

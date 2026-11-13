@@ -116,7 +116,7 @@ check(admin.includes('options.forceResync ? { ...state, forceResync: true } : st
 check(admin.includes('if (stateVersion === undefined)'), 'state version zero is handled without duplicate hub-state insertion');
 
 const workflow = read('.github/workflows/build-windows.yml');
-check(/^\\s*workflow_dispatch:\\s*$/m.test(workflow) && !/^\\s*push\\s*:/m.test(workflow) && !/^\\s*pull_request\\s*:/m.test(workflow), 'local-version Windows build remains manual-only');
+check(/^\s*workflow_dispatch:\s*$/m.test(workflow) && !/^\s*push\s*:/m.test(workflow) && !/^\s*pull_request\s*:/m.test(workflow), 'local-version Windows build remains manual-only');
 check(workflow.includes('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'), 'Windows workflow explicitly propagates native test exit codes');
 check(workflow.includes("github.event_name == 'push' && github.ref_type == 'tag'"), 'branch builds cannot publish over stable releases');
 
