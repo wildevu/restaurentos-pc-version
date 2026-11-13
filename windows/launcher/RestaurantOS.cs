@@ -170,11 +170,39 @@ namespace RestaurantOS.Launcher
                 // 6. Poll for Readiness
                 DateTime startTime = DateTime.UtcNow;
                 bool isReady = false;
+                bool existingSupervisor = false;
 
                 while ((DateTime.UtcNow - startTime).TotalSeconds < MaxWaitSeconds)
                 {
                     if (process.HasExited)
                     {
+                        // Exit code 10 is the supervisor's explicit "another supervisor
+                        // already owns the OS file lock" signal. Wait for that owner to
+                        // finish startup/recovery instead of reporting a false failure.
+                        if (process.ExitCode == 10)
+                        {
+                            existingSupervisor = true;
+                            try
+                            {
+                                File.AppendAllText(supervisorLog, string.Format(
+                                    "[{0:O}] Another supervisor owns the lifecycle lock; waiting for its hub to become ready.{1}",
+                                    DateTime.Now, Environment.NewLine));
+                            }
+                            catch { }
+
+                            DateTime existingWaitStart = DateTime.UtcNow;
+                            while ((DateTime.UtcNow - existingWaitStart).TotalSeconds < MaxWaitSeconds)
+                            {
+                                if (CheckReadyEndpoint())
+                                {
+                                    isReady = true;
+                                    break;
+                                }
+                                Thread.Sleep(400);
+                            }
+                            break;
+                        }
+
                         string errDetail = "";
                         try
                         {
@@ -214,9 +242,10 @@ namespace RestaurantOS.Launcher
                     // A startup timeout is not proof the server is dead. It may still be migrating,
                     // so do not terminate it or risk interrupting database recovery.
                     ShowErrorDialog(
-                        "RestaurantOS startup timed out.\n\n" +
-                        "The server did not respond within the expected timeframe.\n" +
-                        "Please verify system resources or restart your computer.\n\n" +
+                        (existingSupervisor
+                            ? "Another RestaurantOS supervisor is already running, but its hub did not become ready within the expected timeframe."
+                            : "RestaurantOS startup timed out. The server did not respond within the expected timeframe.") +
+                        "\n\nPlease verify system resources and check the diagnostic logs before restarting your computer.\n\n" +
                         string.Format("Diagnostic logs:\n{0}\\", logsDir)
                     );
                     return;
@@ -358,38 +387,6 @@ namespace RestaurantOS.Launcher
             {
                 return false;
             }
-        }
-
-        private static void KillOrphanedServerProcesses()
-        {
-            try
-            {
-                string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-                if (string.IsNullOrEmpty(programData)) programData = @"C:\ProgramData";
-                string pidFile = Path.Combine(programData, "RestaurantOS", "restaurantos.pid");
-
-                if (File.Exists(pidFile))
-                {
-                    string text = File.ReadAllText(pidFile).Trim();
-                    int pid;
-                    if (int.TryParse(text, out pid))
-                    {
-                        try
-                        {
-                            Process proc = Process.GetProcessById(pid);
-                            if (proc != null && !proc.HasExited)
-                            {
-                                proc.Kill();
-                                proc.WaitForExit(1000);
-                            }
-                        }
-                        catch { }
-                    }
-                    try { File.Delete(pidFile); } catch { }
-                }
-
-            }
-            catch { }
         }
 
         private enum PidOwnerState
