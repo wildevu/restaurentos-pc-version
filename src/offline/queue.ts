@@ -79,16 +79,20 @@ async function rewritePendingItemReferences(
     // Persist the alias first so commands enqueued by this or another app tab
     // during/after reconciliation are canonicalized before they are saved.
     const existingAlias = await db.itemAliases.get(fromId);
-    if (existingAlias && existingAlias.toId !== toId) {
-      const downstreamAliases = await db.itemAliases.where('toId').equals(existingAlias.toId).toArray();
-      for (const alias of downstreamAliases) {
-        await db.itemAliases.update(alias.fromId, { toId });
-      }
-    }
-
     const latestAlias = await db.itemAliases.orderBy('createdAt').last();
     const latestAliasTime = latestAlias?.createdAt ? new Date(latestAlias.createdAt).getTime() : 0;
     const aliasCreatedAt = new Date(Math.max(Date.now(), Number.isFinite(latestAliasTime) ? latestAliasTime + 1 : Date.now()));
+
+    if (existingAlias && existingAlias.toId !== toId) {
+      const previousTarget = existingAlias.toId;
+      // Collapse both upstream aliases and the previous target itself so every
+      // pending/new command resolves straight to the newest committed row.
+      const upstreamAliases = await db.itemAliases.where('toId').equals(previousTarget).toArray();
+      for (const alias of upstreamAliases) {
+        await db.itemAliases.update(alias.fromId, { toId, createdAt: aliasCreatedAt });
+      }
+      await db.itemAliases.put({ fromId: previousTarget, toId, createdAt: aliasCreatedAt });
+    }
     await db.itemAliases.put({ fromId, toId, createdAt: aliasCreatedAt });
 
     const aliases = await db.itemAliases.orderBy('createdAt').toArray();
