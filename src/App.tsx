@@ -52,6 +52,7 @@ import {
   getPendingCount, 
   flushQueue,
   getRejectedCommands,
+  getPendingCommandErrors,
   removeAcknowledgedCommands,
   clearRejectedCommands,
   applyOptimisticCommand,
@@ -86,6 +87,7 @@ function AppContent({
   isConnected, 
   pendingCommands, 
   rejectedCommands,
+  pendingCommandErrors,
   deviceStorageError,
   handleLogout, 
   handleLogin,
@@ -211,6 +213,21 @@ function AppContent({
       {deviceStorageError && (
         <div role="alert" className="mx-3 mt-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
           This device cannot safely save offline RestaurantOS actions. Do not continue taking orders on this device until storage is restored. {deviceStorageError}
+        </div>
+      )}
+
+      {pendingCommandErrors?.length > 0 && (
+        <div role="alert" className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="font-bold">Some actions are waiting for hub confirmation.</div>
+          <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">
+            {pendingCommandErrors.slice(0, 3).map((command: any) => (
+              <li key={command.actionId}>{command.type}: {command.lastError}</li>
+            ))}
+          </ul>
+          {pendingCommandErrors.length > 3 && (
+            <div className="mt-1 text-xs font-semibold">And {pendingCommandErrors.length - 3} more pending action(s).</div>
+          )}
+          <div className="mt-1 text-xs">Do not repeat the same operation manually; RestaurantOS will retry using the original action ID.</div>
         </div>
       )}
 
@@ -580,6 +597,7 @@ export function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [pendingCommands, setPendingCommands] = useState(0);
   const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
+  const [pendingCommandErrors, setPendingCommandErrors] = useState<any[]>([]);
   const [licenseStatus, setLicenseStatus] = useState<any>(null);
   const tablesRef = useRef<Table[]>([]);
   const ordersRef = useRef<Order[]>([]);
@@ -615,9 +633,14 @@ export function App() {
   useEffect(() => {
     const refreshQueueStatus = async () => {
       try {
-        const [count, rejected] = await Promise.all([getPendingCount(), getRejectedCommands()]);
+        const [count, rejected, pendingErrors] = await Promise.all([
+          getPendingCount(),
+          getRejectedCommands(),
+          getPendingCommandErrors()
+        ]);
         setRejectedCommands(rejected);
         setPendingCommands(count);
+        setPendingCommandErrors(pendingErrors);
         setDeviceStorageError(null);
       } catch (error: any) {
         setDeviceStorageError(error?.message || 'Device offline storage is unavailable. Unsynchronized actions cannot be saved safely.');
@@ -1129,6 +1152,7 @@ export function App() {
           isConnected={isConnected}
           pendingCommands={pendingCommands}
           rejectedCommands={rejectedCommands}
+          pendingCommandErrors={pendingCommandErrors}
           deviceStorageError={deviceStorageError}
           handleLogout={handleLogout}
           handleLogin={handleLogin}

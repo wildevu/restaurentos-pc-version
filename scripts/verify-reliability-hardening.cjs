@@ -92,6 +92,7 @@ check(queueLifecycle.includes('await publishAuthoritativeState(response.state') 
 check(queueLifecycle.includes('if (!(await db.commands.get(command.actionId))) break;'), 'queue does not retry a command already confirmed by a room broadcast or reconnect sync');
 check(read('src/App.tsx').includes('if (command.actionId === committedActionId) continue') && read('src/App.tsx').includes('applyOptimisticCommand(reconciled, command.type, command.payload)'), 'acknowledgement rebase reapplies later queued optimistic actions without replaying the committed action');
 check(queueLifecycle.includes('await ensureOfflineStorageReady()'), 'queue drain refuses to discard commands when device storage is unavailable');
+check(queueLifecycle.includes('getPendingCommandErrors') && read('src/App.tsx').includes('pendingCommandErrors.slice(0, 3)'), 'staff can see actionable errors for pending commands instead of a misleading green connection alone');
 const hubStatus = read('server.ts');
 check(hubStatus.includes('databaseHealth') && hubStatus.includes("await client.execute('SELECT 1 as alive;')"), 'hub status probes the actual database instead of hard-coding HEALTHY');
 const statusUi = read('src/components/admin/LocalHubStatus.tsx');

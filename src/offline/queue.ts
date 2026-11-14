@@ -312,6 +312,12 @@ export async function getRejectedCommands() {
   return db.commands.where('status').equals('REJECTED').toArray();
 }
 
+export async function getPendingCommandErrors(): Promise<QueuedCommand[]> {
+  await ensureOfflineStorageReady();
+  const pending = await db.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
+  return pending.filter(command => Boolean(command.lastError));
+}
+
 /**
  * Remove commands the hub confirms are already committed. This is used during
  * reconnect SYNC when a previous COMMAND acknowledgement may have been lost.
