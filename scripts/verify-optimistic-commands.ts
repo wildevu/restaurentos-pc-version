@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { applyOptimisticCommand } from '../src/offline/optimistic';
+import { applyOptimisticCommand, rebasePendingCommands } from '../src/offline/optimistic';
 
 const table: any = {
   id: 'table-1',
@@ -59,7 +59,6 @@ const authoritativeAfterOpen = {
     items: []
   } as any]
 };
-const { rebasePendingCommands } = await import('../src/offline/optimistic');
 const rebased = rebasePendingCommands(
   authoritativeAfterOpen as any,
   [
