@@ -414,20 +414,24 @@ async function startServer() {
       // Report database readiness from a real query and filesystem permission
       // check. A running HTTP process is not sufficient to call the DB healthy.
       let databaseHealth: { status: 'HEALTHY' | 'UNAVAILABLE'; error?: string } = { status: 'HEALTHY' };
+      let restaurantName = 'RestaurantOS Hub';
       try {
         await client.execute('SELECT 1 as alive;');
         fs.accessSync(DB_PATH, fs.constants.R_OK | fs.constants.W_OK);
         if (!fs.statSync(DB_PATH).isFile()) throw new Error('Configured database path is not a regular file.');
+        const rest = await db.select().from(restaurants).limit(1);
+        restaurantName = rest[0]?.name || restaurantName;
       } catch (databaseError: any) {
-        databaseHealth = {
-          status: 'UNAVAILABLE',
-          error: databaseError?.code || databaseError?.message || 'Database health probe failed'
-        };
+        const errorCode = databaseError?.code || 'DATABASE_UNAVAILABLE';
+        databaseHealth = { status: 'UNAVAILABLE', error: errorCode };
+        logger.error('Local Hub status database probe failed.', {
+          errorCode,
+          error: databaseError?.message || String(databaseError),
+          dbPath: DB_PATH
+        });
       }
       const currentLanIps = getLocalLanIps();
       app.set('lanIps', currentLanIps);
-      const rest = await db.select().from(restaurants).limit(1);
-      const restaurantName = rest[0]?.name || 'RestaurantOS Hub';
 
       let backupCount = 0;
       let lastBackupTime: Date | null = null;
