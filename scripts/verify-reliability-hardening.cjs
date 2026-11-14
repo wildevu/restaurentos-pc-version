@@ -36,6 +36,8 @@ check(app.includes('void refreshQueueStatus()'), 'persisted queue is hydrated at
 check(app.includes('reconcileInFlightRef') && app.includes("reason !== 'rejected'"), 'permanent rejection triggers authoritative rebase');
 check(app.includes('if (socket.connected) synchronize()'), 'existing socket receives an immediate sync');
 check(app.includes('data.stateVersion < stateVersionRef.current') && app.includes('forceResync'), 'out-of-order state events are guarded with restore override');
+check(app.includes('committedActionId') && app.includes('removeAcknowledgedCommands([data.committedActionId])'), 'room broadcasts retire the committed local action before replaying pending work');
+check(app.includes('for (const command of pending)') && app.includes('applyOptimisticCommand(reconciled, command.type, command.payload)'), 'room broadcasts rebase remaining offline actions over the latest server snapshot');
 check(app.includes('syncSequenceRef.current') && app.includes('syncSequence !== syncSequenceRef.current'), 'late SYNC callbacks cannot overwrite more recent recovery results');
 check(app.includes('lastKnownEpoch: syncEpochRef.current') && app.includes("localStorage.setItem('restaurantos_sync_epoch'"), 'client persists server epoch across reloads to avoid unnecessary full snapshots');
 

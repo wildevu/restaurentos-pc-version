@@ -617,7 +617,10 @@ async function startServer() {
           syncEpoch,
           state: result.state
         });
-        if (result.state) io.to(restaurantRoom).emit('STATE_UPDATE', result.state);
+        if (result.state) io.to(restaurantRoom).emit('STATE_UPDATE', {
+          ...result.state,
+          committedActionId: command.actionId
+        });
       } catch (err: any) {
         let isRetryable = true;
         let errorCode = 'INTERNAL_UNCERTAIN';

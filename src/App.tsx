@@ -936,12 +936,36 @@ export function App() {
         handleLogout();
       });
       
-      socket.on('STATE_UPDATE', (data: { tables: Table[], orders: Order[], menu?: MenuItem[], stateVersion?: number, restaurant?: any, forceResync?: boolean }) => {
+      socket.on('STATE_UPDATE', async (data: { tables: Table[], orders: Order[], menu?: MenuItem[], stateVersion?: number, restaurant?: any, forceResync?: boolean, committedActionId?: string }) => {
         // Prevent late events from overwriting newer state. A full forced resync is
         // allowed to lower the version after a restore from an older backup.
-        if (data.stateVersion !== undefined && data.stateVersion < stateVersionRef.current && !data.forceResync) return;
-        if (data.stateVersion !== undefined) stateVersionRef.current = data.stateVersion;
-        setRestaurantState(data.tables || [], data.orders || []);
+        const incomingVersion = Number(data.stateVersion || 0);
+        if (data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync) return;
+
+        // The room broadcast is authoritative evidence that its action committed.
+        // Retire that action before replaying later pending local commands; otherwise
+        // a lost socket acknowledgement could apply an increment twice in the UI.
+        if (data.committedActionId) {
+          await removeAcknowledgedCommands([data.committedActionId]);
+        }
+        const pending = await offlineDb.commands
+          .where('status').anyOf('PENDING', 'SYNCING')
+          .sortBy('createdAt');
+
+        // A newer event may arrive while IndexedDB is being read.
+        if (data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync) return;
+
+        let reconciled = {
+          tables: data.tables || [],
+          orders: data.orders || []
+        };
+        for (const command of pending) {
+          if (command.actionId === data.committedActionId) continue;
+          reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
+        }
+
+        if (data.stateVersion !== undefined) stateVersionRef.current = incomingVersion;
+        setRestaurantState(reconciled.tables, reconciled.orders);
         if (data.menu) setMenu(data.menu);
         if (data.restaurant) setRestaurant(data.restaurant);
       });
