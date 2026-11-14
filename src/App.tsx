@@ -767,7 +767,6 @@ export function App() {
             setIsConnected(false);
             return;
           }
-          setIsConnected(true);
           let latestTables: any[] = tablesRef.current;
           let latestOrders: any[] = ordersRef.current;
 
@@ -776,28 +775,45 @@ export function App() {
             try { localStorage.setItem('restaurantos_sync_epoch', res.syncEpoch); } catch {}
           }
 
+          // Capture the version represented by this SYNC response. Loading the
+          // pending IndexedDB queue below is asynchronous, so another device may
+          // publish a newer STATE_UPDATE while that read is in progress.
+          let syncBaseVersion = stateVersionRef.current;
           if (res.upToDate === false && res.state) {
-            // Don't let a slow snapshot overwrite newer events. A server-declared
-            // version rollback is an intentional restore and must be accepted.
             const incomingVersion = Number(res.state.stateVersion || 0);
             if (incomingVersion < stateVersionRef.current && !res.forceResync) return;
             stateVersionRef.current = incomingVersion;
+            syncBaseVersion = incomingVersion;
             latestTables = res.state.tables || [];
             latestOrders = res.state.orders || [];
             if (res.state.menu) setMenu(res.state.menu);
             if (res.state.restaurant) setRestaurant(res.state.restaurant);
+          } else if (res.stateVersion !== undefined) {
+            syncBaseVersion = Number(res.stateVersion);
+            if (syncBaseVersion > stateVersionRef.current) stateVersionRef.current = syncBaseVersion;
           }
 
           try {
             const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
-            let state = { tables: latestTables, orders: latestOrders };
+
+            // If a newer STATE_UPDATE arrived while IndexedDB was being read,
+            // build on that newer state instead of replacing it with this older
+            // SYNC snapshot. This prevents a slow sync callback from rolling
+            // tables/orders backwards on phones and the hub PC.
+            const syncSnapshotIsCurrent = stateVersionRef.current === syncBaseVersion;
+            let state = syncSnapshotIsCurrent
+              ? { tables: latestTables, orders: latestOrders }
+              : { tables: tablesRef.current, orders: ordersRef.current };
             for (const cmd of pending) state = applyOptimisticCommand(state, cmd.type, cmd.payload);
             setRestaurantState(state.tables, state.orders);
           } catch (error) {
             console.error('Optimistic re-apply failed', error);
-            setRestaurantState(latestTables, latestOrders);
+            if (stateVersionRef.current === syncBaseVersion) {
+              setRestaurantState(latestTables, latestOrders);
+            }
           }
 
+          setIsConnected(true);
           void flushQueue();
           }
         );
