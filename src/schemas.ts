@@ -70,7 +70,10 @@ export const UpdateKitchenStatusPayload = z.object({
 });
 export const BatchUpdateKitchenStatusPayload = z.object({
   orderId: z.string().optional(),
-  orderItemIds: z.array(z.string()).optional(),
+  orderItemIds: z.array(z.string()).min(1).optional(),
   status: z.enum(['PENDING', 'PREPARING', 'READY', 'SERVED'])
-});
+}).refine(
+  payload => Boolean(payload.orderId || (payload.orderItemIds && payload.orderItemIds.length > 0)),
+  { message: 'A batch kitchen update must include an order ID or at least one order item ID' }
+);
 

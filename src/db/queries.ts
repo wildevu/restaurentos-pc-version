@@ -190,6 +190,9 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         .where(and(eq(idempotencyKeys.restaurantId, user.restaurantId), eq(idempotencyKeys.id, command.actionId)))
         .get();
       
+      if (existing && (existing.actorUserId !== user.id || existing.operation !== command.type)) {
+        throw new CommandError('Action ID was already used by a different user or operation', false);
+      }
       if (existing && existing.stateVersion !== null) {
         // A retry can arrive after the original acknowledgement or broadcast was
         // lost. Return the current authoritative state, not just "duplicate",
@@ -463,6 +466,9 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         const { orderItemId, status } = UpdateKitchenStatusPayload.parse(command.payload);
         const item = await tx.select().from(orderItems).where(eq(orderItems.id, orderItemId)).get();
         if (!item) throw new CommandError('Order item not found');
+        const parentOrder = await tx.select().from(orders)
+          .where(and(eq(orders.id, item.orderId), eq(orders.status, 'OPEN'))).get();
+        if (!parentOrder) throw new CommandError('Order item is not part of an active order');
 
         const prevStatus = item.kitchenStatus;
         if (dbUser.role === 'WAITER' && (prevStatus !== 'READY' || status !== 'SERVED')) {
@@ -489,16 +495,30 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       case 'BATCH_UPDATE_KITCHEN_STATUS': {
         const { orderId, orderItemIds, status } = BatchUpdateKitchenStatusPayload.parse(command.payload);
         let candidateItems: any[] = [];
-        if (orderItemIds && orderItemIds.length > 0) {
+        if (orderId) {
+          const activeOrder = await tx.select({ id: orders.id }).from(orders)
+            .where(and(eq(orders.id, orderId), eq(orders.status, 'OPEN'))).get();
+          if (!activeOrder) throw new CommandError('Order is not active');
+          const conditions = orderItemIds && orderItemIds.length > 0
+            ? and(eq(orderItems.orderId, orderId), inArray(orderItems.id, orderItemIds))
+            : eq(orderItems.orderId, orderId);
           candidateItems = await tx.select({
             id: orderItems.id,
             kitchenStatus: orderItems.kitchenStatus
-          }).from(orderItems).where(inArray(orderItems.id, orderItemIds));
-        } else if (orderId) {
-          candidateItems = await tx.select({
-            id: orderItems.id,
-            kitchenStatus: orderItems.kitchenStatus
-          }).from(orderItems).where(eq(orderItems.orderId, orderId));
+          }).from(orderItems).where(conditions);
+        } else if (orderItemIds && orderItemIds.length > 0) {
+          const activeOrders = await tx.select({ id: orders.id }).from(orders)
+            .where(eq(orders.status, 'OPEN'));
+          const activeOrderIds = activeOrders.map((order: any) => order.id);
+          if (activeOrderIds.length > 0) {
+            candidateItems = await tx.select({
+              id: orderItems.id,
+              kitchenStatus: orderItems.kitchenStatus
+            }).from(orderItems).where(and(
+              inArray(orderItems.id, orderItemIds),
+              inArray(orderItems.orderId, activeOrderIds)
+            ));
+          }
         }
         // A bulk READY action must not undo an item's SERVED state.
         const targetItemIds = candidateItems

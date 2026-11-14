@@ -548,7 +548,9 @@ async function startServer() {
   // Websockets for live collaboration
   io.on('connection', (socket) => {
     const user = (socket as any).user;
-    logger.info('Client connected via socket', { userId: user.id, username: user.username });
+    const restaurantRoom = `restaurant:${user.restaurantId}`;
+    void socket.join(restaurantRoom);
+    logger.info('Client connected via socket', { userId: user.id, username: user.username, restaurantId: user.restaurantId });
 
     socket.on('COMMAND', async (payload, callback) => {
       if (databaseMaintenance) {
@@ -579,7 +581,7 @@ async function startServer() {
         const command = CommandPayloadSchema.parse(payload);
         const result = await processCommand(command, user, socket.handshake.auth?.clientInstallationId);
         if (callback) callback({ success: true, duplicate: result.duplicate, stateVersion: result.stateVersion });
-        if (result.state) io.emit('STATE_UPDATE', result.state);
+        if (result.state) io.to(restaurantRoom).emit('STATE_UPDATE', result.state);
       } catch (err: any) {
         let isRetryable = true;
         let errorCode = 'INTERNAL_UNCERTAIN';

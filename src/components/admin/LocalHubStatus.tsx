@@ -150,6 +150,10 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                   <div className="text-xs text-gray-500 mb-2">
                     mDNS queries received: <strong>{status.mdnsQueriesReceived ?? 0}</strong>
                     {status.mdnsLastQueryAt ? ` • Last query ${new Date(status.mdnsLastQueryAt).toLocaleTimeString()}` : ' • No matching device query has reached the hub'}
+                    {status.mdnsLastQueryTypes?.length ? ` • Query type(s): ${status.mdnsLastQueryTypes.join(', ')}` : ''}
+                    {status.mdnsResponsesSent !== undefined ? ` • Responses sent: ${status.mdnsResponsesSent}` : ''}
+                    {status.mdnsLastResponseAt ? ` • Last response ${new Date(status.mdnsLastResponseAt).toLocaleTimeString()}` : ''}
+                    {status.mdnsLastResponseError ? ` • Response error: ${status.mdnsLastResponseError}` : ''}
                     {status.mdnsError ? ` • Discovery error: ${status.mdnsError}` : ''}
                   </div>
                   {lanFallbackUrl && (

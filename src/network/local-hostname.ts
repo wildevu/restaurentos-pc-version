@@ -12,6 +12,10 @@ export interface LocalHostnameStatus {
   lastError: string | null;
   queryCount: number;
   lastQueryAt: string | null;
+  lastQueryTypes: string[];
+  responseCount: number;
+  lastResponseAt: string | null;
+  lastResponseError: string | null;
 }
 
 interface MdnsQuestion {
@@ -84,6 +88,10 @@ export class LocalHostnamePublisher {
   private lastLoggedError: string | null = null;
   private queryCount = 0;
   private lastQueryAt: string | null = null;
+  private lastQueryTypes: string[] = [];
+  private responseCount = 0;
+  private lastResponseAt: string | null = null;
+  private lastResponseError: string | null = null;
   private announcementTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(options: LocalHostnamePublisherOptions) {
@@ -102,6 +110,10 @@ export class LocalHostnamePublisher {
       lastError: this.lastError,
       queryCount: this.queryCount,
       lastQueryAt: this.lastQueryAt,
+      lastQueryTypes: [...this.lastQueryTypes],
+      responseCount: this.responseCount,
+      lastResponseAt: this.lastResponseAt,
+      lastResponseError: this.lastResponseError,
     };
   }
 
@@ -215,7 +227,23 @@ export class LocalHostnamePublisher {
       if (this.client !== client || !query.questions?.some(isLocalHostnameQuestion)) return;
       this.queryCount++;
       this.lastQueryAt = new Date().toISOString();
-      this.respond(client, address, RECORD_TTL_SECONDS);
+      this.lastQueryTypes = [...new Set(query.questions?.map(question => String(question.type).toUpperCase()) || [])];
+      this.respond(client, address, RECORD_TTL_SECONDS, (error) => {
+        if (this.client !== client) return;
+        if (error) {
+          this.lastResponseError = error.message;
+          this.logger.warn('Could not answer RestaurantOS mDNS request.', {
+            hostname: LOCAL_HUB_HOSTNAME,
+            address,
+            questionTypes: this.lastQueryTypes,
+            error: error.message
+          });
+          return;
+        }
+        this.responseCount++;
+        this.lastResponseAt = new Date().toISOString();
+        this.lastResponseError = null;
+      });
     });
 
     client.on('ready', () => {

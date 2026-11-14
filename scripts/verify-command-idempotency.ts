@@ -133,7 +133,46 @@ try {
   assert.equal(closedOrder.status, 'CLOSED', 'CLOSE_TABLE closes the active order');
   assert.equal(closedTable.status, 'EMPTY', 'CLOSE_TABLE frees the table');
 
-  console.log('PASS: command idempotency, stable offline IDs, replayed quantity, note update, and table close.');
+  // Two clients racing to open the same EMPTY table must never create two OPEN orders.
+  const raceTableId = randomUUID();
+  await db.insert(schema.tables).values({
+    id: raceTableId,
+    number: 2,
+    label: 'Concurrent open test',
+    status: 'EMPTY',
+    createdAt: now,
+    updatedAt: now,
+  });
+  const raceCommands = [randomUUID(), randomUUID()].map(actionId => ({
+    actionId,
+    type: 'OPEN_TABLE',
+    payload: { tableId: raceTableId, covers: 2, clientOrderId: randomUUID() }
+  }));
+  const raceResults = await Promise.allSettled(raceCommands.map(command => processCommand(command as any, user as any)));
+  assert.equal(raceResults.filter(result => result.status === 'fulfilled').length, 1, 'only one concurrent OPEN_TABLE may succeed');
+  assert.equal(raceResults.filter(result => result.status === 'rejected').length, 1, 'the competing OPEN_TABLE must be rejected');
+  const raceOrders = await db.select().from(schema.orders).where(eq(schema.orders.tableId, raceTableId));
+  assert.equal(raceOrders.filter((order: any) => order.status === 'OPEN').length, 1, 'concurrent opening leaves exactly one OPEN order');
+
+  const otherUserId = randomUUID();
+  await db.insert(schema.users).values({
+    id: otherUserId,
+    restaurantId,
+    name: 'Second Test Owner',
+    username: 'test_' + randomUUID().replace(/-/g, ''),
+    passwordHash: 'not-a-real-login-hash',
+    role: 'OWNER',
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await assert.rejects(
+    () => processCommand(open as any, { ...user, id: otherUserId } as any),
+    /different user or operation/,
+    'another user cannot reuse an existing action ID'
+  );
+
+  console.log('PASS: command idempotency, concurrent table-open safety, actor-bound action IDs, stable offline IDs, replayed quantity, note update, and table close.');
 } finally {
   if (dbModule?.client) {
     try { await dbModule.client.close(); } catch {}

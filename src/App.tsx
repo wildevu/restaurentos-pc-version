@@ -345,23 +345,37 @@ function AppContent({
               </button>
             )}
 
-            <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-gray-100 rounded-full border border-gray-200">
+            <div
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-gray-100 rounded-full border border-gray-200"
+              role="status"
+              aria-live="polite"
+              aria-label={!isConnected
+                ? `Offline. ${pendingCommands} command(s) saved locally and waiting for the hub.`
+                : pendingCommands > 0
+                  ? `${pendingCommands} command(s) waiting for hub confirmation.`
+                  : 'Connected and all queued commands are acknowledged.'}
+              title={!isConnected
+                ? 'Changes are stored on this device and will sync when the hub is reachable.'
+                : pendingCommands > 0
+                  ? 'The hub has not yet acknowledged every queued change.'
+                  : 'No commands are waiting for hub confirmation.'}
+            >
               {isConnected ? (
                 pendingCommands > 0 ? (
                   <>
                     <RefreshCw size={13} className="text-blue-500 animate-spin" />
-                    <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.syncing')} ({pendingCommands})</span>
+                    <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.syncing', 'Waiting for hub')} ({pendingCommands})</span>
                   </>
                 ) : (
                   <>
                     <Cloud size={13} className="text-emerald-500" />
-                    <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.online')}</span>
+                    <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.online', 'Up to date')}</span>
                   </>
                 )
               ) : (
                 <>
                   <CloudOff size={13} className="text-red-500" />
-                  <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.offline')} {pendingCommands > 0 && `(${pendingCommands})`}</span>
+                  <span className="text-xs font-bold text-gray-700 hidden sm:inline">{t('status.offline', 'Offline')} · {pendingCommands} {pendingCommands === 1 ? 'saved change' : 'saved changes'}</span>
                 </>
               )}
             </div>
@@ -608,13 +622,19 @@ export function App() {
         });
         if (!response.ok) return;
         const authoritative = await response.json();
-        if (authoritative.stateVersion !== undefined) stateVersionRef.current = authoritative.stateVersion;
+        const snapshotVersion = Number(authoritative.stateVersion || 0);
+        if (snapshotVersion < stateVersionRef.current) return;
+        stateVersionRef.current = snapshotVersion;
         const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
-        let reconciled = { tables: authoritative.tables || [], orders: authoritative.orders || [] };
+        // The socket may deliver a newer state while IndexedDB is being read.
+        const snapshotStillCurrent = stateVersionRef.current === snapshotVersion;
+        let reconciled = snapshotStillCurrent
+          ? { tables: authoritative.tables || [], orders: authoritative.orders || [] }
+          : { tables: tablesRef.current, orders: ordersRef.current };
         for (const command of pending) reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
         setRestaurantState(reconciled.tables, reconciled.orders);
-        if (authoritative.menu) setMenu(authoritative.menu);
-        if (authoritative.restaurant) setRestaurant(authoritative.restaurant);
+        if (snapshotStillCurrent && authoritative.menu) setMenu(authoritative.menu);
+        if (snapshotStillCurrent && authoritative.restaurant) setRestaurant(authoritative.restaurant);
       } catch (error) {
         console.error('Could not reconcile rejected optimistic command with server state', error);
       } finally {
