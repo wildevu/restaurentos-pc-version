@@ -252,6 +252,11 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
 
   return (
     <div className="h-full flex flex-col pb-24 lg:pb-6 relative space-y-4">
+      {commandError && (
+        <div role="alert" className="mx-1 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
+          {commandError}
+        </div>
+      )}
       {/* STICKY TOP HEADER */}
       <div className="bg-white border-b border-gray-200 p-3 sm:p-4 -mx-6 -mt-6 sticky top-0 z-10 shadow-2xs space-y-3">
         <div className="flex items-center justify-between gap-3">

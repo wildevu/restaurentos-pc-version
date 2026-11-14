@@ -35,7 +35,8 @@ check(app.includes("'HUB_UNAVAILABLE'") && app.includes('Retry connection'), 'st
 check(app.includes('void refreshQueueStatus()'), 'persisted queue is hydrated at boot');
 check(app.includes('reconcileInFlightRef') && app.includes("reason !== 'rejected'"), 'permanent rejection triggers authoritative rebase');
 check(app.includes('if (socket.connected) synchronize()'), 'existing socket receives an immediate sync');
-check(app.includes('data.stateVersion < stateVersionRef.current') && app.includes('forceResync'), 'out-of-order state events are guarded with restore override');
+const staleStateUpdateGuard = 'data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync';
+check(app.split(staleStateUpdateGuard).length === 3, 'out-of-order state events are guarded before and after async reconciliation, with a restore override');
 check(app.includes('committedActionId') && app.includes('removeAcknowledgedCommands([data.committedActionId])'), 'room broadcasts retire the committed local action before replaying pending work');
 check(app.includes('rebasePendingCommands') && read('src/offline/optimistic.ts').includes('committedActionId'), 'acknowledgement, broadcast and reconnect synchronization share a tested pending-command rebase helper');
 check(app.includes('const state = rebasePendingCommands(baseState, pending)') && app.includes('rebasePendingCommands'), 'reconnect synchronization rebases pending offline commands over the latest server snapshot');
@@ -45,6 +46,12 @@ check(app.includes('lastKnownEpoch: syncEpochRef.current') && app.includes("loca
 const server = read('server.ts');
 check(server.includes('SQLITE_(CANTOPEN|READONLY|FULL|IOERR|PERM)') && server.includes('databasePath: databaseUnavailable ? DB_PATH'), 'database file, disk, and permission failures are classified and logged with the actual hub database path');
 check(server.includes('state: result.state') && server.includes('committedActionId: command.actionId'), 'command acknowledgements and room broadcasts carry committed authoritative state and action identity');
+const licenseRejection = server.slice(server.indexOf('if (!licenseCheck.canOperate)'), server.indexOf('const command = CommandPayloadSchema.parse', server.indexOf('if (!licenseCheck.canOperate)')));
+check(licenseRejection.includes('state: rejectionState') && licenseRejection.includes('actionId: payload?.actionId'), 'license rejections return authoritative state to roll back optimistic commands');
+const tableDetail = read('src/components/TableDetail.tsx');
+const activeTableStart = tableDetail.indexOf('return (\n    <div className="h-full flex flex-col pb-24 lg:pb-6 relative space-y-4">');
+const activeTableView = activeTableStart >= 0 ? tableDetail.slice(activeTableStart, activeTableStart + 700) : '';
+check(activeTableView.includes('commandError &&') && activeTableView.includes('role="alert"'), 'waiter storage errors remain visible while editing an active table');
 check(server.includes("fs.openSync(LOCK_FILE, 'wx')"), 'single-instance lock uses exclusive file creation');
 check(server.includes('owner === process.pid'), 'process releases only its own PID lock');
 check(server.includes('return getFrontendStateTx(tx, versionRow?.version || 0)'), 'REST snapshot includes a state version');

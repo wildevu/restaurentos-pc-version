@@ -604,10 +604,27 @@ async function startServer() {
             actionId: payload?.actionId,
             commandType: payload?.type
           });
+          let rejectionState: any = undefined;
+          try {
+            rejectionState = await db.transaction(async (tx: any) => {
+              const versionRow = await tx.select().from(hubState)
+                .where(eq(hubState.restaurantId, user.restaurantId)).get();
+              return getFrontendStateTx(tx, versionRow?.version || 0);
+            });
+          } catch (stateError: any) {
+            logger.warn('Could not load authoritative state after license rejection.', {
+              actionId: payload?.actionId,
+              error: stateError?.message || String(stateError)
+            });
+          }
+
           if (callback) callback({
             success: false,
             retryable: false,
             code: licenseCheck.status === 'EXPIRED' ? 'LICENSE_EXPIRED' : 'LICENSE_REQUIRED',
+            actionId: payload?.actionId,
+            state: rejectionState,
+            syncEpoch,
             error: licenseCheck.status === 'EXPIRED'
               ? 'RestaurantOS license has expired. Please renew the license.'
               : 'Active RestaurantOS license required to perform actions.'
