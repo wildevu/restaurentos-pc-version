@@ -43,16 +43,20 @@ console.log('RestaurantOS dependency security inventory');
 const all = runAudit('All installed dependencies (production + development)', []);
 const production = runAudit('Production dependencies only', ['--omit=dev']);
 
-if (!all && !production) {
-  console.warn('[DEPENDENCY AUDIT] Could not retrieve npm audit data. Treat dependency security status as UNVERIFIED.');
-}
-if (production?.metadata?.vulnerabilities?.critical > 0) {
-  console.error('[DEPENDENCY AUDIT] CRITICAL: production dependencies contain critical advisories. Do not release until reviewed and remediated.');
-} else if (production?.metadata?.vulnerabilities?.high > 0) {
-  console.warn('[DEPENDENCY AUDIT] HIGH: production dependencies contain high-severity advisories. Review before release.');
-} else if (production) {
-  console.log('[DEPENDENCY AUDIT] No high or critical production dependency advisories were reported.');
+if (!all || !production) {
+  console.error('[DEPENDENCY AUDIT] ERROR: complete all-dependency and production-only audit reports are required for release validation.');
+  process.exitCode = 1;
+} else if (production.metadata?.vulnerabilities?.critical > 0 || production.metadata?.vulnerabilities?.high > 0) {
+  console.error('[DEPENDENCY AUDIT] BLOCKED: production dependencies contain critical/high advisories. Remediate them before producing a release installer.');
+  process.exitCode = 1;
+} else {
+  console.log('[DEPENDENCY AUDIT] No critical or high production dependency advisories were reported.');
+  const developmentOnlyHigh = (all.metadata?.vulnerabilities?.critical || 0) - (production.metadata?.vulnerabilities?.critical || 0) +
+    (all.metadata?.vulnerabilities?.high || 0) - (production.metadata?.vulnerabilities?.high || 0);
+  if (developmentOnlyHigh > 0) {
+    console.warn('[DEPENDENCY AUDIT] High/critical findings remain in development/build dependencies; review the detailed inventory and keep the build environment controlled.');
+  }
 }
 
-// Informational only: functional regression checks must still run. Critical/high
-// production findings remain explicit release blockers.
+// The Windows workflow stops before packaging when the inventory is unavailable
+// or high/critical production dependencies are affected.
