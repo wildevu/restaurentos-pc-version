@@ -191,11 +191,18 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         .get();
       
       if (existing && existing.stateVersion !== null) {
-        return { 
-          success: true, 
-          duplicate: true, 
-          actionId: command.actionId, 
-          stateVersion: existing.stateVersion 
+        // A retry can arrive after the original acknowledgement or broadcast was
+        // lost. Return the current authoritative state, not just "duplicate",
+        // so the client can recover without waiting for another reconnect.
+        const currentStateRow = await tx.select().from(hubState)
+          .where(eq(hubState.restaurantId, user.restaurantId)).get();
+        const currentVersion = currentStateRow?.version ?? existing.stateVersion;
+        return {
+          success: true,
+          duplicate: true,
+          actionId: command.actionId,
+          stateVersion: currentVersion,
+          state: await getFrontendStateTx(tx, currentVersion)
         };
       } else {
         throw new CommandError('Command found in invalid state', true);

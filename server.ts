@@ -579,7 +579,7 @@ async function startServer() {
         const command = CommandPayloadSchema.parse(payload);
         const result = await processCommand(command, user, socket.handshake.auth?.clientInstallationId);
         if (callback) callback({ success: true, duplicate: result.duplicate, stateVersion: result.stateVersion });
-        if (!result.duplicate && result.state) io.emit('STATE_UPDATE', result.state);
+        if (result.state) io.emit('STATE_UPDATE', result.state);
       } catch (err: any) {
         let isRetryable = true;
         let errorCode = 'INTERNAL_UNCERTAIN';

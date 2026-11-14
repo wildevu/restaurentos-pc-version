@@ -97,6 +97,13 @@ try {
   assert.equal(addReplay.duplicate, true, 'replayed ADD_ITEM is idempotent');
   assert.equal(addReplay.stateVersion, addFirst.stateVersion, 'replayed ADD_ITEM does not increment state version');
 
+  // A delayed retry of an older action must still receive a current snapshot
+  // so clients recover even when the original broadcast was missed.
+  const delayedOpenReplay = await processCommand(open as any, user as any);
+  assert.equal(delayedOpenReplay.duplicate, true, 'delayed OPEN_TABLE retry remains idempotent');
+  assert.equal(delayedOpenReplay.stateVersion, addFirst.stateVersion, 'duplicate retry reports the current hub version');
+  assert.equal(delayedOpenReplay.state.orders[0].items.length, 1, 'duplicate retry returns current authoritative order contents');
+
   const savedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
   assert.ok(savedItem, 'server persisted the stable client-generated item ID');
   assert.equal(savedItem.quantity, 1, 'replaying ADD_ITEM did not create a second item');
