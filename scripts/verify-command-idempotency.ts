@@ -227,7 +227,10 @@ try {
   );
 
   const close = { actionId: randomUUID(), type: 'CLOSE_TABLE', payload: { tableId } };
-  await processCommand(close as any, cashierUser as any);
+  const closeFirst = await processCommand(close as any, cashierUser as any);
+  const closeReplay = await processCommand(close as any, cashierUser as any);
+  assert.equal(closeReplay.duplicate, true, 'replayed CLOSE_TABLE is idempotent');
+  assert.equal(closeReplay.stateVersion, closeFirst.stateVersion, 'duplicate close does not increment the state version');
   const closedOrder = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId)).get();
   const closedTable = await db.select().from(schema.tables).where(eq(schema.tables.id, tableId)).get();
   assert.equal(closedOrder.status, 'CLOSED', 'CLOSE_TABLE closes the active order');
