@@ -634,8 +634,12 @@ async function startServer() {
         // transaction committed. Report which of its queued action IDs are
         // already committed so it can discard them instead of replaying their
         // optimistic effects on top of an authoritative snapshot.
-        const pendingActionIds = Array.isArray(payload?.pendingActionIds)
-          ? [...new Set(payload.pendingActionIds.filter((id: any) => typeof id === 'string' && id.length <= 64))].slice(0, 500)
+        const pendingActionIds: string[] = Array.isArray(payload?.pendingActionIds)
+          ? [...new Set<string>(
+              (payload.pendingActionIds as unknown[]).filter(
+                (id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 64
+              )
+            )].slice(0, 500)
           : [];
         const response = await db.transaction(async (tx: any) => {
           const stateRow = await tx.select().from(hubState)
