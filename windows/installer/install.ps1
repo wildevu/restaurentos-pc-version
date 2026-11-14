@@ -97,14 +97,22 @@ if (-not (Test-Path $rootLauncher)) {
     }
 }
 
-# 6. Configure Windows Firewall (TCP Port 8989 on Private, Domain, and Public Profiles)
-Write-Log "Configuring Windows Firewall for restaurant LAN access on port 8989..."
+# 6. Configure local-subnet TCP access and mDNS discovery. The stable
+# restos.local address depends on inbound UDP 5353 being reachable.
+Write-Log "Configuring Windows Firewall for RestaurantOS LAN and mDNS..."
 try {
-    netsh advfirewall firewall delete rule name="RestaurantOS Local Hub" 2>&1 | Out-Null
-    netsh advfirewall firewall add rule name="RestaurantOS Local Hub" dir=in action=allow protocol=TCP localport=8989 profile=private,domain description="Allows waiter, kitchen, and manager devices to connect to RestaurantOS Local Hub" | Out-Null
-    Write-Log "Windows Firewall configured successfully." "Green"
+    & netsh advfirewall firewall delete rule name="RestaurantOS Local Hub" 2>&1 | Out-Null
+    & netsh advfirewall firewall delete rule name="RestaurantOS Local Discovery (Inbound UDP 5353)" 2>&1 | Out-Null
+
+    & netsh advfirewall firewall add rule name="RestaurantOS Local Hub" dir=in action=allow protocol=TCP localport=8989 remoteip=localsubnet profile=any description="Allows RestaurantOS devices on the local subnet to connect" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not create TCP 8989 firewall rule (exit $LASTEXITCODE)." }
+
+    & netsh advfirewall firewall add rule name="RestaurantOS Local Discovery (Inbound UDP 5353)" dir=in action=allow protocol=UDP localport=5353 remoteip=localsubnet profile=any description="Allows local-subnet devices to discover the RestaurantOS mDNS hostname" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not create UDP 5353 mDNS firewall rule (exit $LASTEXITCODE)." }
+
+    Write-Log "Windows Firewall configured for local-subnet TCP 8989 and UDP 5353." "Green"
 } catch {
-    Write-Warning "Could not configure firewall automatically: $_"
+    Write-Warning "Could not configure LAN/mDNS firewall rules automatically: $_"
 }
 
 # 7. Configure Background Service / Scheduled Startup Task

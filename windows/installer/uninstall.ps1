@@ -56,6 +56,7 @@ try {
     Write-Host "Removing Windows Firewall rule for RestaurantOS Local Hub..."
     Remove-NetFirewallRule -DisplayName "RestaurantOS Local Hub (Inbound TCP 8989)" -ErrorAction SilentlyContinue
     Remove-NetFirewallRule -DisplayName "RestaurantOS Local Hub" -ErrorAction SilentlyContinue
+    Remove-NetFirewallRule -DisplayName "RestaurantOS Local Discovery (Inbound UDP 5353)" -ErrorAction SilentlyContinue
 } catch {}
 
 try {

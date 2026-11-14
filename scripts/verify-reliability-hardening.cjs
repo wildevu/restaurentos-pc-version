@@ -78,6 +78,14 @@ const serviceUninstaller = read('windows/service/uninstall-service.ps1');
 check(serviceUninstaller.includes('run-hub-supervisor.ps1') && serviceUninstaller.includes('Get-CimInstance'), 'service uninstall terminates this installation supervisor');
 check(read('windows/installer/uninstall.ps1').includes('run-hub-supervisor.ps1'), 'standalone uninstall stops supervisor before removing binaries');
 
+const hostnamePublisher = read('src/network/local-hostname.ts');
+check(hostnamePublisher.includes("questionType === '1'"), 'mDNS answers numeric A-record questions');
+check(hostnamePublisher.includes('queryCount') && hostnamePublisher.includes('lastQueryAt'), 'mDNS exposes received-query diagnostics');
+const hubStatusUi = read('src/components/admin/LocalHubStatus.tsx');
+check(hubStatusUi.includes("status?.primaryLanUrl || 'http://restos.local:8989'"), 'QR onboarding defaults to the stable restos.local address');
+check(hubStatusUi.includes('Temporary direct-IP diagnostic fallback'), 'direct IP is diagnostic only, not the QR origin');
+check(hubStatusUi.includes('<QRCodeSVG value={primaryUrl}'), 'QR uses the canonical stable hostname');
+check(!hubStatusUi.includes("'http://localhost:8989'"), 'QR never points to phone-local localhost');
 const supervisor = read('windows/service/run-hub-supervisor.ps1');
 check(supervisor.includes('while ($true)') && supervisor.includes('Start-Sleep'), 'Windows supervisor restarts exited server with backoff');
 check(supervisor.includes('$SupervisorLockFile') && supervisor.includes('[System.IO.FileShare]::Read') && supervisor.includes('exit 10'), 'one OS-enforced supervisor lock prevents duplicate supervisors across startup paths');

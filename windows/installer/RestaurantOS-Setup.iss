@@ -52,7 +52,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "autostart"; Description: "Start RestaurantOS Local Hub automatically when Windows boots"; GroupDescription: "System Services:"
-Name: "firewall"; Description: "Configure Windows Firewall rule for waiter & kitchen LAN devices (Port 8989)"; GroupDescription: "Network Configuration:"
 
 [Files]
 ; Application binaries and static PWA assets go to {app} (C:\Program Files\RestaurantOS)
@@ -114,7 +113,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\Launch-RestaurantOS.vbs"; I
 Filename: "{app}\windows\redist\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; Flags: runhidden waituntilterminated; Check: VCRedistNeedsInstall
 
 ; Firewall Rule Registration
-Filename: "{app}\windows\firewall\add-firewall-rule.bat"; Flags: runhidden waituntilterminated; Tasks: firewall
+; Required for stable restos.local discovery and LAN device access; rules are scoped to the local subnet.
+Filename: "{app}\windows\firewall\add-firewall-rule.bat"; Flags: runhidden waituntilterminated
 
 ; Auto-Start Task Registration
 Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\windows\service\install-service.ps1"" -AppDir ""{app}"""; Flags: runhidden waituntilterminated; Tasks: autostart

@@ -70,8 +70,15 @@ async function run(): Promise<void> {
 
   clients[0].emit('query', { questions: [{ name: 'RESTOS.LOCAL.', type: 'A' }] });
   assert.equal(clients[0].responses.length, 2);
+  assert.equal(publisher.status.queryCount, 1, 'matching hostname queries are counted');
+  assert.ok(publisher.status.lastQueryAt, 'last matching query time is available');
+
+  clients[0].emit('query', { questions: [{ name: 'restos.local.', type: 1 }] });
+  assert.equal(clients[0].responses.length, 3, 'numeric A record questions are answered');
+  assert.equal(publisher.status.queryCount, 2);
+
   clients[0].emit('query', { questions: [{ name: 'printer.local', type: 'A' }] });
-  assert.equal(clients[0].responses.length, 2);
+  assert.equal(clients[0].responses.length, 3, 'unrelated .local questions are ignored');
 
   currentIp = '192.168.1.73';
   await publisher.refresh();

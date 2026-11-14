@@ -8,7 +8,7 @@
  * 5. Launcher independence from developer tools
  * 6. Non-destructive upgrade & reinstall safety
  * 7. Uninstallation safety (database & backups preserved)
- * 8. Firewall rule parameters (TCP 8989 and mDNS UDP 5353, private/domain only)
+ * 8. Firewall rule parameters (TCP 8989 and mDNS UDP 5353, local-subnet scoped)
  * 9. Inno Setup and PowerShell installer structure
  */
 
@@ -64,14 +64,21 @@ const firewallPs1 = fs.readFileSync(path.resolve(process.cwd(), 'windows/firewal
 
 assert(firewallBat.includes('localport=8989'), 'Firewall BAT limits inbound rule to port 8989');
 assert(firewallBat.includes('protocol=TCP'), 'Firewall BAT specifies TCP protocol');
-assert(firewallBat.includes('profile=private,domain'), 'Firewall BAT restricts access to private and domain networks');
+assert(firewallBat.includes('profile=any') && firewallBat.includes('remoteip=localsubnet'), 'Firewall BAT allows local-subnet clients across Windows network profiles');
 assert(firewallPs1.includes('localport=$Port') || firewallPs1.includes('8989'), 'Firewall PS1 limits inbound rule to port 8989');
-assert(firewallPs1.includes('profile=private,domain') || firewallPs1.includes('Profile Private,Domain'), 'Firewall PS1 restricts access to private/domain network profile');
+assert(firewallPs1.includes('-Profile Any') && firewallPs1.includes('-RemoteAddress LocalSubnet'), 'Firewall PS1 scopes access to the local subnet across Windows profiles');
 assert(firewallBat.toLowerCase().includes('localport=5353'), 'Firewall BAT allows mDNS discovery on UDP port 5353');
 assert(firewallBat.toLowerCase().includes('protocol=udp'), 'Firewall BAT specifies UDP for mDNS discovery');
 assert(firewallBat.toLowerCase().includes('remoteip=localsubnet'), 'Firewall BAT limits mDNS discovery to the local subnet');
 assert(firewallPs1.includes('-LocalPort 5353'), 'Firewall PS1 allows mDNS discovery on UDP port 5353');
 assert(firewallPs1.includes('-RemoteAddress LocalSubnet'), 'Firewall PS1 limits mDNS discovery to the local subnet');
+assert(firewallPs1.includes('-Protocol UDP') && firewallPs1.includes('-Profile Any'), 'Firewall PS1 permits mDNS UDP on all Windows profiles while restricting source to local subnet');
+const installScript = fs.readFileSync(path.resolve(process.cwd(), 'windows/installer/install.ps1'), 'utf-8');
+assert(installScript.includes('localport=5353') && installScript.includes('remoteip=localsubnet'), 'PowerShell installer configures mDNS discovery');
+assert(installScript.includes('localport=8989') && installScript.includes('remoteip=localsubnet'), 'PowerShell installer scopes hub TCP access to local subnet');
+const setupScript = fs.readFileSync(path.resolve(process.cwd(), 'windows/installer/RestaurantOS-Setup.iss'), 'utf-8');
+assert(!setupScript.includes('Tasks: firewall'), 'Inno Setup does not make required LAN discovery optional');
+assert(/add-firewall-rule\\.bat"; Flags: runhidden waituntilterminated/.test(setupScript), 'Inno Setup always applies LAN and mDNS firewall rules');
 
 // TEST 3: Uninstaller Non-Destructive Data Safety Audit
 console.log('\n--- TEST 3: Uninstallation Safety Audit ---');

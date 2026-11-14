@@ -10,6 +10,8 @@ export interface LocalHostnameStatus {
   hostname: string;
   address: string | null;
   lastError: string | null;
+  queryCount: number;
+  lastQueryAt: string | null;
 }
 
 interface MdnsQuestion {
@@ -61,7 +63,9 @@ export interface LocalHostnamePublisherOptions {
 function isLocalHostnameQuestion(question: MdnsQuestion): boolean {
   const questionName = String(question.name || '').replace(/\.$/, '').toLowerCase();
   const questionType = String(question.type).toUpperCase();
-  return questionName === LOCAL_HUB_HOSTNAME && (questionType === 'A' || questionType === 'ANY');
+  // Some DNS libraries expose known RR types as their numeric wire values.
+  return questionName === LOCAL_HUB_HOSTNAME &&
+    (questionType === 'A' || questionType === 'ANY' || questionType === '1' || questionType === '255');
 }
 
 export class LocalHostnamePublisher {
@@ -78,6 +82,8 @@ export class LocalHostnamePublisher {
   private state: LocalHostnameStatus['state'] = 'stopped';
   private lastError: string | null = null;
   private lastLoggedError: string | null = null;
+  private queryCount = 0;
+  private lastQueryAt: string | null = null;
   private announcementTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(options: LocalHostnamePublisherOptions) {
@@ -94,6 +100,8 @@ export class LocalHostnamePublisher {
       hostname: LOCAL_HUB_HOSTNAME,
       address: this.advertisedIp,
       lastError: this.lastError,
+      queryCount: this.queryCount,
+      lastQueryAt: this.lastQueryAt,
     };
   }
 
@@ -205,6 +213,8 @@ export class LocalHostnamePublisher {
 
     client.on('query', (query) => {
       if (this.client !== client || !query.questions?.some(isLocalHostnameQuestion)) return;
+      this.queryCount++;
+      this.lastQueryAt = new Date().toISOString();
       this.respond(client, address, RECORD_TTL_SECONDS);
     });
 

@@ -70,7 +70,9 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
     return `${m}m`;
   };
 
-  const primaryUrl = status?.primaryLanUrl || (status?.lanIps?.[0] ? `http://${status.lanIps[0]}:8989` : 'http://localhost:8989');
+  // QR and saved PWA origin must stay stable when the router renews the hub IP.
+  const primaryUrl = status?.primaryLanUrl || 'http://restos.local:8989';
+  const lanFallbackUrl: string | null = status?.lanFallbackUrl || null;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -142,9 +144,20 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                   </label>
                   <div className={`mb-2 text-xs font-semibold ${status.mdnsStatus === 'published' ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {status.mdnsStatus === 'published'
-                      ? 'mDNS announcement is active — confirm staff devices can resolve the hostname on this Wi-Fi.'
-                      : 'Local hostname discovery unavailable — using the current LAN IP address.'}
+                      ? `Stable hostname is advertised at ${status.mdnsAddress || 'the current LAN address'}; phones must be able to reach mDNS on this Wi-Fi.`
+                      : `Stable hostname is not currently advertised (status: ${status.mdnsStatus || 'unknown'}). The QR remains stable; check mDNS discovery before onboarding phones.`}
                   </div>
+                  <div className="text-xs text-gray-500 mb-2">
+                    mDNS queries received: <strong>{status.mdnsQueriesReceived ?? 0}</strong>
+                    {status.mdnsLastQueryAt ? ` • Last query ${new Date(status.mdnsLastQueryAt).toLocaleTimeString()}` : ' • No matching device query has reached the hub'}
+                    {status.mdnsError ? ` • Discovery error: ${status.mdnsError}` : ''}
+                  </div>
+                  {lanFallbackUrl && (
+                    <div className="text-xs text-amber-700 mb-2">
+                      Temporary direct-IP diagnostic fallback (may change after DHCP renewal): <strong className="font-mono">{lanFallbackUrl}</strong>
+                      <button onClick={() => handleCopyUrl(lanFallbackUrl)} className="ml-2 text-blue-600 font-bold">Copy fallback</button>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -186,7 +199,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                   <QRCodeSVG value={primaryUrl} size={130} level="M" />
                 </div>
                 <span className="text-[11px] font-bold text-gray-500 mt-2.5 text-center">
-                  Scan with phone/tablet camera to open PWA
+                  Scan to open RestaurantOS at the stable restos.local address
                 </span>
               </div>
             </div>

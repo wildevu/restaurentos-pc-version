@@ -388,6 +388,9 @@ async function startServer() {
         localHostname: LOCAL_HUB_HOSTNAME,
         mdnsStatus: localHostnamePublisher.status.state,
         mdnsAddress: localHostnamePublisher.status.address,
+        mdnsError: localHostnamePublisher.status.lastError,
+        mdnsQueriesReceived: localHostnamePublisher.status.queryCount,
+        mdnsLastQueryAt: localHostnamePublisher.status.lastQueryAt,
         uptimeSeconds: Math.floor(process.uptime()),
         timestamp: new Date().toISOString()
       });
@@ -425,10 +428,16 @@ async function startServer() {
         version: '1.0.0',
         port: PORT,
         lanIps: currentLanIps,
-        primaryLanUrl: localHostnamePublisher.url || (currentLanIps.length > 0 ? `http://${currentLanIps[0]}:${PORT}` : `http://localhost:${PORT}`),
+        // Canonical staff origin remains stable across DHCP renewals.
+        primaryLanUrl: `http://${LOCAL_HUB_HOSTNAME}:${PORT}`,
+        // Current IP is diagnostic/manual fallback only; never encode it in QR.
+        lanFallbackUrl: currentLanIps[0] ? `http://${currentLanIps[0]}:${PORT}` : null,
         localHostname: LOCAL_HUB_HOSTNAME,
         mdnsStatus: localHostnamePublisher.status.state,
         mdnsAddress: localHostnamePublisher.status.address,
+        mdnsError: localHostnamePublisher.status.lastError,
+        mdnsQueriesReceived: localHostnamePublisher.status.queryCount,
+        mdnsLastQueryAt: localHostnamePublisher.status.lastQueryAt,
         connectedDevices: connectedSockets,
         database: {
           status: 'HEALTHY',
