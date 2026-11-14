@@ -153,6 +153,7 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                     {status.mdnsLastQueryTypes?.length ? ` • Query type(s): ${status.mdnsLastQueryTypes.join(', ')}` : ''}
                     {status.mdnsResponsesSent !== undefined ? ` • Responses sent: ${status.mdnsResponsesSent}` : ''}
                     {status.mdnsLastResponseAt ? ` • Last response ${new Date(status.mdnsLastResponseAt).toLocaleTimeString()}` : ''}
+                    {status.mdnsLastQuerySourceAddress ? ` • Last query source: ${status.mdnsLastQuerySourceAddress}:${status.mdnsLastQuerySourcePort || '?'}` : ''}
                     {status.mdnsLastResponseError ? ` • Response error: ${status.mdnsLastResponseError}` : ''}
                     {status.mdnsError ? ` • Discovery error: ${status.mdnsError}` : ''}
                   </div>
@@ -229,7 +230,14 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
               </div>
               <div>
                 <span className="text-xs font-semibold text-gray-400 block">Database</span>
-                <span className="text-lg font-black text-gray-900">● Healthy (WAL)</span>
+                <span className={`text-lg font-black ${status.database?.status === 'HEALTHY' ? 'text-emerald-700' : 'text-red-700'}`}>
+                  ● {status.database?.status === 'HEALTHY' ? 'Healthy (WAL)' : 'Unavailable'}
+                </span>
+                {status.database?.error && (
+                  <span className="mt-1 block max-w-[220px] break-words text-[10px] font-semibold text-red-700">
+                    {status.database.error}
+                  </span>
+                )}
               </div>
             </div>
 
