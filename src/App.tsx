@@ -548,6 +548,34 @@ export function App() {
   const [restaurant, setRestaurant] = useState<any>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
 
+  const [tables, setTables] = useState<Table[]>([]);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [pendingCommands, setPendingCommands] = useState(0);
+  const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const tablesRef = useRef<Table[]>([]);
+  const ordersRef = useRef<Order[]>([]);
+
+  // Keep the two related collections in lockstep. Table status/orderId and the
+  // corresponding order must always be committed from the same calculated snapshot.
+  const setRestaurantState = (nextTables: Table[], nextOrders: Order[]) => {
+    tablesRef.current = nextTables;
+    ordersRef.current = nextOrders;
+    setTables(nextTables);
+    setOrders(nextOrders);
+  };
+
+  const stateVersionRef = useRef<number>(0);
+  const syncSequenceRef = useRef(0);
+  const syncEpochRef = useRef<string>(localStorage.getItem('restaurantos_sync_epoch') || '');
+  const initInFlightRef = useRef(false);
+  const pendingInitTokenRef = useRef<string | null>(null);
+  const reconcileInFlightRef = useRef(false);
+  const lastWakeSyncAtRef = useRef(0);
+
   // Auto-login persistence check on app boot
   useEffect(() => {
     const token = localStorage.getItem('restaurantos_auth_token');
@@ -583,8 +611,7 @@ export function App() {
         const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
         let reconciled = { tables: authoritative.tables || [], orders: authoritative.orders || [] };
         for (const command of pending) reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
-        setTables(reconciled.tables);
-        setOrders(reconciled.orders);
+        setRestaurantState(reconciled.tables, reconciled.orders);
         if (authoritative.menu) setMenu(authoritative.menu);
         if (authoritative.restaurant) setRestaurant(authoritative.restaurant);
       } catch (error) {
@@ -596,15 +623,14 @@ export function App() {
     void refreshQueueStatus();
 
     const unsubOpt = subscribeToOptimistic((type, payload) => {
-      setTables(prevTables => {
-        let newTables = prevTables;
-        setOrders(prevOrders => {
-           const result = applyOptimisticCommand({ tables: prevTables, orders: prevOrders }, type, payload);
-           newTables = result.tables;
-           return result.orders;
-        });
-        return newTables;
-      });
+      // Never nest one React state setter inside another state updater. React may
+      // defer the inner updater, causing the table to retain its old EMPTY status
+      // while the new order is calculated separately.
+      const nextState = applyOptimisticCommand({
+        tables: tablesRef.current,
+        orders: ordersRef.current
+      }, type, payload);
+      setRestaurantState(nextState.tables, nextState.orders);
     });
 
     return () => {
@@ -612,22 +638,6 @@ export function App() {
       unsubOpt();
     };
   }, []);
-
-  const [tables, setTables] = useState<Table[]>([]);
-  const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [activeTableId, setActiveTableId] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [pendingCommands, setPendingCommands] = useState(0);
-  const [rejectedCommands, setRejectedCommands] = useState<any[]>([]);
-  const [licenseStatus, setLicenseStatus] = useState<any>(null);
-  const stateVersionRef = useRef<number>(0);
-  const syncSequenceRef = useRef(0);
-  const syncEpochRef = useRef<string>(localStorage.getItem('restaurantos_sync_epoch') || '');
-  const initInFlightRef = useRef(false);
-  const pendingInitTokenRef = useRef<string | null>(null);
-  const reconcileInFlightRef = useRef(false);
-  const lastWakeSyncAtRef = useRef(0);
 
   const fetchLicenseStatus = async () => {
     try {
@@ -715,9 +725,8 @@ export function App() {
       if (res.ok) {
         const data = await res.json();
         if (data.stateVersion !== undefined) stateVersionRef.current = data.stateVersion;
-        setTables(data.tables);
-        setMenu(data.menu);
-        setOrders(data.orders);
+        setRestaurantState(data.tables || [], data.orders || []);
+        setMenu(data.menu || []);
         if (data.restaurant) {
           setRestaurant(data.restaurant);
         }
@@ -759,10 +768,8 @@ export function App() {
             return;
           }
           setIsConnected(true);
-          let latestTables: any[] = [];
-          let latestOrders: any[] = [];
-          setTables(prev => { latestTables = prev; return prev; });
-          setOrders(prev => { latestOrders = prev; return prev; });
+          let latestTables: any[] = tablesRef.current;
+          let latestOrders: any[] = ordersRef.current;
 
           if (typeof res.syncEpoch === 'string' && res.syncEpoch) {
             syncEpochRef.current = res.syncEpoch;
@@ -785,12 +792,10 @@ export function App() {
             const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
             let state = { tables: latestTables, orders: latestOrders };
             for (const cmd of pending) state = applyOptimisticCommand(state, cmd.type, cmd.payload);
-            setTables(state.tables);
-            setOrders(state.orders);
+            setRestaurantState(state.tables, state.orders);
           } catch (error) {
             console.error('Optimistic re-apply failed', error);
-            setTables(latestTables);
-            setOrders(latestOrders);
+            setRestaurantState(latestTables, latestOrders);
           }
 
           void flushQueue();
@@ -826,8 +831,7 @@ export function App() {
         // allowed to lower the version after a restore from an older backup.
         if (data.stateVersion !== undefined && data.stateVersion < stateVersionRef.current && !data.forceResync) return;
         if (data.stateVersion !== undefined) stateVersionRef.current = data.stateVersion;
-        setTables(data.tables || []);
-        setOrders(data.orders || []);
+        setRestaurantState(data.tables || [], data.orders || []);
         if (data.menu) setMenu(data.menu);
         if (data.restaurant) setRestaurant(data.restaurant);
       });

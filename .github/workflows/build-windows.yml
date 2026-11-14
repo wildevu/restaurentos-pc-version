@@ -57,6 +57,12 @@ jobs:
           ./scripts/verify-supervisor-lock.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Verify Optimistic Table & Order Workflow
+        shell: pwsh
+        run: |
+          npx tsx scripts/verify-optimistic-commands.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run Command Idempotency Tests
         shell: pwsh
         run: |
