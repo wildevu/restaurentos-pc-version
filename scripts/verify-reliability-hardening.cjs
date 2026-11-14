@@ -29,6 +29,14 @@ check(queue.indexOf('if (flushPromise)', flushStart) < queue.indexOf('if (retryF
 check(queue.includes("db.transaction('rw', db.commands") && queue.includes('latestTime + 1'), 'queue preserves strict FIFO order for same-millisecond actions');
 check(queue.includes("notifyListeners('rejected')"), 'permanent rejection signals authoritative reconciliation');
 check(queue.includes('stablePayload.clientOrderId') && queue.includes('stablePayload.clientItemId'), 'offline entity IDs are persisted in queued payloads');
+check(queue.includes('committedAddItemAlias') && queue.includes('rewritePendingItemReferences') && queue.includes('remapOrderItemReferences'), 'stale ADD_ITEM merge fallback rewrites dependent offline item references');
+check(queue.includes('await reconcileCommittedAddItemAlias(command, response.state as HubAuthoritativeState)'), 'direct command acknowledgements reconcile canonical item IDs before publishing state');
+check(queue.includes('reconcileCommittedAddItemAlias(command, authoritativeState, excludedIds)'), 'reconnect SYNC acknowledgement recovery remaps pending item references before deleting acknowledged commands');
+check(app.includes('removeAcknowledgedCommands(res.acknowledgedActionIds') && app.includes('res.state || { tables: tablesRef.current, orders: ordersRef.current }'), 'reconnect SYNC passes its authoritative snapshot into item-ID alias reconciliation');
+const commandQueries = read('src/db/queries.ts');
+check(commandQueries.includes('mergeIntoItemId') && commandQueries.includes("eq(orderItems.kitchenStatus, 'PENDING')"), 'server merges an add only into its exact explicitly selected PENDING row');
+const optimisticItems = read('src/offline/optimistic.ts');
+check(optimisticItems.includes('payload.mergeIntoItemId') && optimisticItems.includes('remapOrderItemReferences'), 'optimistic item merging and queued ID remapping use the same explicit item identity contract');
 
 const app = read('src/App.tsx');
 check(app.includes("'HUB_UNAVAILABLE'") && app.includes('Retry connection'), 'startup failure is bounded and recoverable');
@@ -37,7 +45,7 @@ check(app.includes('reconcileInFlightRef') && app.includes("reason !== 'rejected
 check(app.includes('if (socket.connected) synchronize()'), 'existing socket receives an immediate sync');
 const staleStateUpdateGuard = 'data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync';
 check(app.split(staleStateUpdateGuard).length === 3, 'out-of-order state events are guarded before and after async reconciliation, with a restore override');
-check(app.includes('committedActionId') && app.includes('removeAcknowledgedCommands([data.committedActionId])'), 'room broadcasts retire the committed local action before replaying pending work');
+check(app.includes('committedActionId') && app.includes('removeAcknowledgedCommands([data.committedActionId], data)'), 'room broadcasts retire the committed local action and provide authoritative state for item-ID reconciliation');
 check(app.includes('rebasePendingCommands') && read('src/offline/optimistic.ts').includes('committedActionId'), 'acknowledgement, broadcast and reconnect synchronization share a tested pending-command rebase helper');
 check(app.includes('const state = rebasePendingCommands(baseState, pending)') && app.includes('rebasePendingCommands'), 'reconnect synchronization rebases pending offline commands over the latest server snapshot');
 check(app.includes('syncSequenceRef.current') && app.includes('syncSequence !== syncSequenceRef.current'), 'late SYNC callbacks cannot overwrite more recent recovery results');
