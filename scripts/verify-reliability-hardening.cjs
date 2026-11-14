@@ -115,6 +115,9 @@ check(dbRuntime.includes('verifyDatabaseFileWritable') && dbRuntime.includes('en
 check(dbRuntime.includes('fs.openSync(DB_PATH, \'a+\')'), 'database path is explicitly opened before migrations');
 const offlineDb = read('src/offline/db.ts');
 check(offlineDb.includes('ensureOfflineStorageReady') && offlineDb.includes("db.transaction('rw', db.commands"), 'phone IndexedDB is opened and write-tested before accepting commands');
+check(offlineDb.includes('db.version(2).stores') && offlineDb.includes('itemAliases'), 'existing phone command queues upgrade safely with a durable item-ID alias store');
+const queueAliasDurability = read('src/offline/queue.ts');
+check(queueAliasDurability.includes("db.transaction('rw', db.commands, db.itemAliases") && queueAliasDurability.includes('db.itemAliases.orderBy(\'createdAt\')'), 'item aliases are committed atomically with queue reconciliation and read when enqueueing new commands');
 const queueLifecycle = read('src/offline/queue.ts');
 check(queueLifecycle.includes('response.retryable === false') && queueLifecycle.includes('publishAuthoritativeState(response.state as HubAuthoritativeState, command.actionId)'), 'rejected commands roll back to authoritative hub state before remaining pending work is replayed');
 check(server.includes('rejectionState = await db.transaction') && server.includes('state: rejectionState'), 'non-retryable command rejections return an authoritative state snapshot when the database is available');
