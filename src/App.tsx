@@ -658,11 +658,29 @@ export function App() {
     });
     void refreshQueueStatus();
 
-    const unsubAuthoritative = subscribeToAuthoritativeState((state) => {
+    const unsubAuthoritative = subscribeToAuthoritativeState(async (state, committedActionId) => {
       const incomingVersion = Number(state.stateVersion || 0);
       if (incomingVersion < stateVersionRef.current) return;
+
+      // Read later pending commands after the hub commit. Replaying them over
+      // the snapshot preserves rapid multi-action waiter workflows without
+      // re-applying the action that this acknowledgement just committed.
+      const pending = await offlineDb.commands
+        .where('status').anyOf('PENDING', 'SYNCING')
+        .sortBy('createdAt');
+      if (incomingVersion < stateVersionRef.current) return;
+
+      let reconciled = {
+        tables: state.tables || [],
+        orders: state.orders || []
+      };
+      for (const command of pending) {
+        if (command.actionId === committedActionId) continue;
+        reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
+      }
+
       stateVersionRef.current = incomingVersion;
-      setRestaurantState(state.tables || [], state.orders || []);
+      setRestaurantState(reconciled.tables, reconciled.orders);
       if (state.menu) setMenu(state.menu);
       if (state.restaurant) setRestaurant(state.restaurant);
     });

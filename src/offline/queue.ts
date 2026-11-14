@@ -30,7 +30,7 @@ export interface HubAuthoritativeState {
   restaurant?: any;
 }
 
-export type AuthoritativeStateCallback = (state: HubAuthoritativeState) => void;
+export type AuthoritativeStateCallback = (state: HubAuthoritativeState, committedActionId: string) => void | Promise<void>;
 let authoritativeStateListeners: AuthoritativeStateCallback[] = [];
 
 export function subscribeToAuthoritativeState(callback: AuthoritativeStateCallback) {
@@ -40,9 +40,11 @@ export function subscribeToAuthoritativeState(callback: AuthoritativeStateCallba
   };
 }
 
-function publishAuthoritativeState(state: HubAuthoritativeState): void {
+async function publishAuthoritativeState(state: HubAuthoritativeState, committedActionId: string): Promise<void> {
+  // Await app reconciliation so the queue is not retired before the UI has
+  // rebased the committed snapshot with every later pending operation.
   for (const listener of authoritativeStateListeners) {
-    try { listener(state); } catch (error) { console.error('Authoritative state listener failed', error); }
+    await listener(state, committedActionId);
   }
 }
 
@@ -195,7 +197,7 @@ async function drainQueue(): Promise<void> {
       if (response.success === true || (response.duplicate === true && response.success !== false)) {
         if (response.state && Array.isArray(response.state.tables) && Array.isArray(response.state.orders)) {
           // Reconcile the authoritative commit before retiring its durable command.
-          publishAuthoritativeState(response.state as HubAuthoritativeState);
+          await publishAuthoritativeState(response.state as HubAuthoritativeState, command.actionId);
           await db.commands.delete(command.actionId);
           notifyListeners();
           break;

@@ -86,7 +86,8 @@ check(dbRuntime.includes('fs.openSync(DB_PATH, \'a+\')'), 'database path is expl
 const offlineDb = read('src/offline/db.ts');
 check(offlineDb.includes('ensureOfflineStorageReady') && offlineDb.includes("db.transaction('rw', db.commands"), 'phone IndexedDB is opened and write-tested before accepting commands');
 const queueLifecycle = read('src/offline/queue.ts');
-check(queueLifecycle.includes('publishAuthoritativeState(response.state') && queueLifecycle.includes('await db.commands.delete(command.actionId)'), 'queued command is reconciled with committed hub state before it is retired');
+check(queueLifecycle.includes('await publishAuthoritativeState(response.state') && queueLifecycle.includes('await db.commands.delete(command.actionId)'), 'queued command waits for committed hub state reconciliation before it is retired');
+check(read('src/App.tsx').includes('if (command.actionId === committedActionId) continue') && read('src/App.tsx').includes('applyOptimisticCommand(reconciled, command.type, command.payload)'), 'acknowledgement rebase reapplies later queued optimistic actions without replaying the committed action');
 check(queueLifecycle.includes('await ensureOfflineStorageReady()'), 'queue drain refuses to discard commands when device storage is unavailable');
 const hubStatus = read('server.ts');
 check(hubStatus.includes('databaseHealth') && hubStatus.includes("await client.execute('SELECT 1 as alive;')"), 'hub status probes the actual database instead of hard-coding HEALTHY');
