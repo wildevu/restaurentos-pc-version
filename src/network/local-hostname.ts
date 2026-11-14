@@ -282,7 +282,7 @@ export class LocalHostnamePublisher {
         if (responseMode === 'unicast') this.unicastResponseCount++;
         this.lastResponseAt = new Date().toISOString();
         this.lastResponseError = null;
-      });
+      }, query, remoteInfo);
     });
 
     client.on('ready', () => {
