@@ -82,7 +82,9 @@ async function run(): Promise<void> {
 
   currentIp = '192.168.1.73';
   await publisher.refresh();
-  assert.equal(clients[0].responses[2].answers[0].ttl, 0, 'old IP should be withdrawn with a goodbye record');
+  const oldIpGoodbye = clients[0].responses.at(-1);
+  assert.equal(oldIpGoodbye?.answers?.[0]?.data, '192.168.1.50', 'goodbye record should withdraw the previously advertised IP');
+  assert.equal(oldIpGoodbye?.answers?.[0]?.ttl, 0, 'old IP should be withdrawn with a goodbye record');
   assert.equal(clients[0].destroyed, true);
   assert.equal(clients.length, 2);
   assert.equal(clients[1].options.interface, '192.168.1.73');
