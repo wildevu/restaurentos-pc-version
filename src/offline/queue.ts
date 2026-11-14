@@ -166,6 +166,9 @@ async function drainQueue(): Promise<void> {
     let stopDrain = false;
 
     while (attempts < MAX_ATTEMPTS && socket.connected) {
+      // A STATE_UPDATE or reconnect SYNC may already have confirmed and removed
+      // this action while its transport acknowledgement was still in flight.
+      if (!(await db.commands.get(command.actionId))) break;
       await db.commands.update(command.actionId, { status: 'SYNCING' });
       notifyListeners();
 
