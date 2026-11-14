@@ -55,6 +55,8 @@ import {
   removeAcknowledgedCommands,
   clearRejectedCommands,
   applyOptimisticCommand,
+  ensureOfflineStorageReady,
+  subscribeToAuthoritativeState,
   db as offlineDb
 } from './offline';
 import { RejectedCommandsModal } from './components/RejectedCommandsModal';
@@ -83,7 +85,8 @@ function AppContent({
   setActiveTableId, 
   isConnected, 
   pendingCommands, 
-  rejectedCommands, 
+  rejectedCommands,
+  deviceStorageError,
   handleLogout, 
   handleLogin,
   checkStatus,
@@ -204,6 +207,12 @@ function AppContent({
         isOpen={showRejectedModal} 
         onClose={() => setShowRejectedModal(false)} 
       />
+
+      {deviceStorageError && (
+        <div role="alert" className="mx-3 mt-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+          This device cannot safely save offline RestaurantOS actions. Do not continue taking orders on this device until storage is restored. {deviceStorageError}
+        </div>
+      )}
 
       {/* Expired License Renewal Modal Window */}
       <ExpiredLicenseModal
@@ -562,6 +571,7 @@ export function App() {
   });
   const [restaurant, setRestaurant] = useState<any>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [deviceStorageError, setDeviceStorageError] = useState<string | null>(null);
 
   const [tables, setTables] = useState<Table[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
@@ -604,9 +614,14 @@ export function App() {
 
   useEffect(() => {
     const refreshQueueStatus = async () => {
-      const [count, rejected] = await Promise.all([getPendingCount(), getRejectedCommands()]);
-      setRejectedCommands(rejected);
-      setPendingCommands(count);
+      try {
+        const [count, rejected] = await Promise.all([getPendingCount(), getRejectedCommands()]);
+        setRejectedCommands(rejected);
+        setPendingCommands(count);
+        setDeviceStorageError(null);
+      } catch (error: any) {
+        setDeviceStorageError(error?.message || 'Device offline storage is unavailable. Unsynchronized actions cannot be saved safely.');
+      }
     };
 
     const unsubQueue = subscribeToQueue(async (reason) => {
@@ -643,6 +658,15 @@ export function App() {
     });
     void refreshQueueStatus();
 
+    const unsubAuthoritative = subscribeToAuthoritativeState((state) => {
+      const incomingVersion = Number(state.stateVersion || 0);
+      if (incomingVersion < stateVersionRef.current) return;
+      stateVersionRef.current = incomingVersion;
+      setRestaurantState(state.tables || [], state.orders || []);
+      if (state.menu) setMenu(state.menu);
+      if (state.restaurant) setRestaurant(state.restaurant);
+    });
+
     const unsubOpt = subscribeToOptimistic((type, payload) => {
       // Never nest one React state setter inside another state updater. React may
       // defer the inner updater, causing the table to retain its old EMPTY status
@@ -657,6 +681,7 @@ export function App() {
     return () => {
       unsubQueue();
       unsubOpt();
+      unsubAuthoritative();
     };
   }, []);
 
@@ -739,6 +764,15 @@ export function App() {
     }
     initInFlightRef.current = true;
     try {
+      // The offline command queue is mandatory for safe POS operation. Keep
+      // authentication intact but expose a blocking warning if device storage fails.
+      try {
+        await ensureOfflineStorageReady();
+        setDeviceStorageError(null);
+      } catch (storageError: any) {
+        setDeviceStorageError(storageError?.message || 'Local device storage is unavailable.');
+      }
+
       const res = await fetchWithTimeout('/api/state', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -1043,6 +1077,7 @@ export function App() {
           isConnected={isConnected}
           pendingCommands={pendingCommands}
           rejectedCommands={rejectedCommands}
+          deviceStorageError={deviceStorageError}
           handleLogout={handleLogout}
           handleLogin={handleLogin}
           checkStatus={checkStatus}

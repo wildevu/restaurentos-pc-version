@@ -36,6 +36,7 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [noteValue, setNoteValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [commandError, setCommandError] = useState<string | null>(null);
   const [showOrderSheet, setShowOrderSheet] = useState(false);
 
   const quickNotes = [
@@ -55,9 +56,13 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
 
   const dispatchCommand = async (type: string, payload: any, callback?: () => void) => {
     try {
+      setCommandError(null);
       setIsProcessing(true);
       await executeCommand(type, payload);
       if (callback) callback();
+    } catch (error: any) {
+      setCommandError(error?.message || 'The action could not be saved on this device. No change was confirmed.');
+      throw error;
     } finally {
       setIsProcessing(false);
     }
@@ -75,28 +80,28 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
   };
 
   const handleAddItem = (menuItem: any) => {
-    dispatchCommand('ADD_ITEM', { 
-      tableId: table.id, 
+    void dispatchCommand('ADD_ITEM', {
+      tableId: table.id,
       menuItemId: menuItem.id,
       name: menuItem.name,
-      price: menuItem.price 
-    });
+      price: menuItem.price
+    }).catch(() => undefined);
   };
 
   const handleIncrement = (orderItemId: string) => {
-    dispatchCommand('INCREMENT_ITEM', { tableId: table.id, orderItemId });
+    void dispatchCommand('INCREMENT_ITEM', { tableId: table.id, orderItemId }).catch(() => undefined);
   };
 
   const handleDecrement = (orderItemId: string) => {
-    dispatchCommand('DECREMENT_ITEM', { tableId: table.id, orderItemId });
+    void dispatchCommand('DECREMENT_ITEM', { tableId: table.id, orderItemId }).catch(() => undefined);
   };
 
   const handleRemove = (orderItemId: string) => {
-    dispatchCommand('REMOVE_ITEM', { tableId: table.id, orderItemId });
+    void dispatchCommand('REMOVE_ITEM', { tableId: table.id, orderItemId }).catch(() => undefined);
   };
 
   const handleMarkItemServed = (orderItemId: string) => {
-    dispatchCommand('UPDATE_ITEM_KITCHEN_STATUS', { orderItemId, status: 'SERVED' });
+    void dispatchCommand('UPDATE_ITEM_KITCHEN_STATUS', { orderItemId, status: 'SERVED' }).catch(() => undefined);
   };
 
   const handleOpenNoteEditor = (item: any) => {
@@ -106,14 +111,14 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
 
   const handleSaveNote = () => {
     if (!editingNoteItemId) return;
-    dispatchCommand('SET_ITEM_NOTE', { 
-      tableId: table.id, 
-      orderItemId: editingNoteItemId, 
-      notes: noteValue.trim() 
+    void dispatchCommand('SET_ITEM_NOTE', {
+      tableId: table.id,
+      orderItemId: editingNoteItemId,
+      notes: noteValue.trim()
     }, () => {
       setEditingNoteItemId(null);
       setNoteValue('');
-    });
+    }).catch(() => undefined);
   };
 
   // Filtered menu items
@@ -207,7 +212,12 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
           </div>
         </div>
 
-        <CoversModal
+        {commandError && (
+        <div role="alert" className="mx-3 my-2 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
+          {commandError}
+        </div>
+      )}
+      <CoversModal
           isOpen={showCoversModal}
           tableNumber={table.number}
           tableName={table.label}
