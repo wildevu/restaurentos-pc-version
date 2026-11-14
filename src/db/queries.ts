@@ -237,6 +237,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         const covers = parsedPayload.covers || 1;
         const t = await tx.select().from(tables).where(eq(tables.id, tableId)).get();
         if (!t) throw new CommandError('Table not found');
+        if (t.archivedAt) throw new CommandError('Archived tables cannot be opened. Refresh the table list.');
         if (t.status !== 'EMPTY') throw new CommandError('Table is already active');
         const orphanedActiveOrders = await tx.select({ id: orders.id }).from(orders)
           .where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN')))

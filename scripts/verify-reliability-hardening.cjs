@@ -88,6 +88,7 @@ check(dbPaths.includes('verifyWritable') && dbPaths.includes('fs.fsyncSync'), 'r
 const commandQueries = read('src/db/queries.ts');
 check(commandQueries.includes('isSqliteLockContention') && commandQueries.includes('SQLITE_(BUSY|LOCKED)'), 'command transactions retry SQLite BUSY and LOCKED variants without treating business errors as transient');
 check(commandQueries.includes('getUniqueActiveOrderForTable') && commandQueries.includes('multiple active orders'), 'table commands refuse ambiguous multiple active orders instead of mutating an arbitrary order');
+check(commandQueries.includes('if (t.archivedAt) throw new CommandError'), 'archived tables cannot be reopened through a stale or forged command');
 
 const dbRuntime = read('src/db/index.ts');
 check(dbRuntime.includes('verifyDatabaseFileWritable') && dbRuntime.includes('ensureDirectories({ strict: true, verifyWritable: true })'), 'database startup fails early when the configured database file cannot be opened');
