@@ -72,4 +72,18 @@ assert.equal(rebased.orders[0].items.length, 1, 'remaining pending ADD_ITEM is r
 assert.equal(rebased.orders[0].items[0].quantity, 2, 'remaining pending INCREMENT_ITEM is replayed after acknowledgement');
 assert.equal(rebased.tables[0].itemCount, 2, 'table item count is rebased with later pending commands');
 
-console.log('Optimistic command workflow and acknowledgement rebase checks passed.');
+const authoritativeAfterRejectedOpen = {
+  tables: [{ ...table, status: 'EMPTY', orderId: null, itemCount: 0 }],
+  orders: []
+};
+const rolledBack = rebasePendingCommands(
+  authoritativeAfterRejectedOpen as any,
+  [
+    { actionId: 'rejected-open', type: 'OPEN_TABLE', payload: { tableId: 'table-1', covers: 2, clientOrderId: 'rejected-order' } }
+  ],
+  'rejected-open'
+);
+assert.equal(rolledBack.tables[0].status, 'EMPTY', 'rejected optimistic OPEN_TABLE is rolled back to the authoritative empty table');
+assert.equal(rolledBack.orders.length, 0, 'rejected optimistic order is removed from the local view');
+
+console.log('Optimistic command workflow and acknowledgement/rejection rebase checks passed.');
