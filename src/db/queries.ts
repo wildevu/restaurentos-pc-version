@@ -308,7 +308,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       }
       
       case 'ADD_ITEM': {
-        const { tableId, menuItemId, notes, clientItemId } = AddItemPayload.parse(command.payload);
+        const { tableId, menuItemId, notes, clientItemId, mergeIntoItemId } = AddItemPayload.parse(command.payload);
         const activeOrder = await getUniqueActiveOrderForTable(tx, tableId);
         if (!activeOrder) throw new CommandError('No active order for this table');
         
@@ -317,15 +317,19 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
           throw new CommandError('Menu item not available');
         }
 
-        // If notes are provided, or if no matching item without notes exists, insert new orderItem
+        // Merge only into the exact PENDING row the device displayed. Never
+        // guess by menu item: another device may have added an identical item,
+        // or this row may have advanced in the kitchen while this command waited.
         const trimmedNotes = notes ? notes.trim() : null;
         let existingItem = null;
 
-        if (!trimmedNotes) {
+        if (!trimmedNotes && mergeIntoItemId) {
           existingItem = await tx.select().from(orderItems).where(
             and(
-              eq(orderItems.orderId, activeOrder.id), 
-              eq(orderItems.menuItemId, menuItemId), 
+              eq(orderItems.id, mergeIntoItemId),
+              eq(orderItems.orderId, activeOrder.id),
+              eq(orderItems.menuItemId, menuItemId),
+              eq(orderItems.kitchenStatus, 'PENDING'),
               sql`${orderItems.notes} IS NULL OR ${orderItems.notes} = ''`
             )
           ).get();

@@ -61,7 +61,13 @@ export const CommandPayloadSchema = z.object({
 
 export const OpenTablePayload = z.object({ tableId: z.string(), covers: z.number().int().min(1).optional().default(1), clientOrderId: z.string().uuid().optional() });
 export const CloseTablePayload = z.object({ tableId: z.string() });
-export const AddItemPayload = z.object({ tableId: z.string(), menuItemId: z.string(), notes: z.string().max(255).optional(), clientItemId: z.string().uuid().optional() });
+export const AddItemPayload = z.object({
+  tableId: z.string(),
+  menuItemId: z.string(),
+  notes: z.string().max(255).optional(),
+  clientItemId: z.string().uuid().optional(),
+  mergeIntoItemId: z.string().uuid().optional()
+});
 export const UpdateItemPayload = z.object({ tableId: z.string(), orderItemId: z.string() });
 export const NoteItemPayload = z.object({ tableId: z.string(), orderItemId: z.string(), notes: z.string().max(255) });
 export const UpdateKitchenStatusPayload = z.object({
