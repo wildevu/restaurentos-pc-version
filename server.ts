@@ -659,7 +659,7 @@ async function startServer() {
           commandType: payload?.type,
           errorCode,
           retryable: isRetryable,
-          errorCode: rawErrorCode || errorCode,
+          databaseErrorCode: rawErrorCode || undefined,
           databasePath: databaseUnavailable ? DB_PATH : undefined,
           error: rawErrorMessage
         });

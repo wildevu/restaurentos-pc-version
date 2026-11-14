@@ -1,4 +1,4 @@
-import { db, ensureOfflineStorageReady } from './db';
+import { db, ensureOfflineStorageReady, type QueuedCommand } from './db';
 import { socket } from '../socket';
 import { uuidv4 } from '../utils/uuid';
 
