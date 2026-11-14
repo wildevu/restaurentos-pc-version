@@ -197,7 +197,19 @@ async function drainQueue(): Promise<void> {
       if (response.success === true || (response.duplicate === true && response.success !== false)) {
         if (response.state && Array.isArray(response.state.tables) && Array.isArray(response.state.orders)) {
           // Reconcile the authoritative commit before retiring its durable command.
-          await publishAuthoritativeState(response.state as HubAuthoritativeState, command.actionId);
+          try {
+            await publishAuthoritativeState(response.state as HubAuthoritativeState, command.actionId);
+          } catch (reconcileError: any) {
+            await db.commands.update(command.actionId, {
+              status: 'PENDING',
+              lastError: 'The hub committed this action, but this device could not reconcile the returned state. It will retry with the same action ID.'
+            });
+            console.error('Could not reconcile committed command state; preserving its idempotency key.', reconcileError);
+            notifyListeners();
+            scheduleFlushRetry();
+            stopDrain = true;
+            break;
+          }
           await db.commands.delete(command.actionId);
           notifyListeners();
           break;
