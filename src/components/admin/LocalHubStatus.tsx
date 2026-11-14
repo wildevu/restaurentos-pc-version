@@ -155,6 +155,8 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                     {status.mdnsLastQueryAt ? ` • Last query ${new Date(status.mdnsLastQueryAt).toLocaleTimeString()}` : ' • No matching device query has reached the hub'}
                     {status.mdnsLastQueryTypes?.length ? ` • Query type(s): ${status.mdnsLastQueryTypes.join(', ')}` : ''}
                     {status.mdnsResponsesSent !== undefined ? ` • Responses sent: ${status.mdnsResponsesSent}` : ''}
+                    {status.mdnsLegacyUnicastResponses !== undefined ? ` • Android-compatible unicast replies: ${status.mdnsLegacyUnicastResponses}` : ''}
+                    {status.mdnsLastResponseMode ? ` • Last response mode: ${status.mdnsLastResponseMode}` : ''}
                     {status.mdnsLastResponseAt ? ` • Last response ${new Date(status.mdnsLastResponseAt).toLocaleTimeString()}` : ''}
                     {status.mdnsLastQuerySourceAddress ? ` • Last query source: ${status.mdnsLastQuerySourceAddress}:${status.mdnsLastQuerySourcePort || '?'}` : ''}
                     {status.mdnsLastResponseError ? ` • Response error: ${status.mdnsLastResponseError}` : ''}

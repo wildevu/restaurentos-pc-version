@@ -16,6 +16,9 @@ export interface LocalHostnameStatus {
   lastQuerySourceAddress: string | null;
   lastQuerySourcePort: number | null;
   responseCount: number;
+  legacyUnicastResponseCount: number;
+  unicastResponseCount: number;
+  lastResponseMode: 'multicast' | 'legacy-unicast' | 'unicast' | null;
   lastResponseAt: string | null;
   lastResponseError: string | null;
 }
@@ -23,9 +26,12 @@ export interface LocalHostnameStatus {
 interface MdnsQuestion {
   name: string;
   type: string | number;
+  class?: string | number;
 }
 
 interface MdnsQuery {
+  id?: number;
+  flags?: number;
   questions?: MdnsQuestion[];
 }
 
@@ -39,15 +45,26 @@ interface MdnsRecord {
   type: 'A';
   class: 'IN';
   ttl: number;
-  flush: true;
+  flush: boolean;
   data: string;
 }
+
+interface MdnsResponsePacket {
+  id?: number;
+  flags?: number;
+  questions?: MdnsQuestion[];
+  answers: MdnsRecord[];
+}
+
+type MdnsResponseMode = 'multicast' | 'legacy-unicast' | 'unicast';
+type MdnsResponseCallback = (error?: Error | null, mode?: MdnsResponseMode) => void;
 
 interface MdnsClient {
   on(event: 'ready', listener: () => void): this;
   on(event: 'query', listener: (query: MdnsQuery, remoteInfo?: MdnsRemoteInfo) => void): this;
   on(event: 'error' | 'warning', listener: (error: Error) => void): this;
-  respond(packet: { answers: MdnsRecord[] }, callback?: (error?: Error | null) => void): void;
+  respond(packet: MdnsResponsePacket, callback?: (error?: Error | null) => void): void;
+  respond(packet: MdnsResponsePacket, remoteInfo: MdnsRemoteInfo, callback?: (error?: Error | null) => void): void;
   destroy(callback?: () => void): void;
 }
 
@@ -99,6 +116,9 @@ export class LocalHostnamePublisher {
   private lastQuerySourceAddress: string | null = null;
   private lastQuerySourcePort: number | null = null;
   private responseCount = 0;
+  private legacyUnicastResponseCount = 0;
+  private unicastResponseCount = 0;
+  private lastResponseMode: MdnsResponseMode | null = null;
   private lastResponseAt: string | null = null;
   private lastResponseError: string | null = null;
   private announcementTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -123,6 +143,9 @@ export class LocalHostnamePublisher {
       lastQuerySourceAddress: this.lastQuerySourceAddress,
       lastQuerySourcePort: this.lastQuerySourcePort,
       responseCount: this.responseCount,
+      legacyUnicastResponseCount: this.legacyUnicastResponseCount,
+      unicastResponseCount: this.unicastResponseCount,
+      lastResponseMode: this.lastResponseMode,
       lastResponseAt: this.lastResponseAt,
       lastResponseError: this.lastResponseError,
     };
@@ -192,13 +215,13 @@ export class LocalHostnamePublisher {
     this.state = 'stopped';
   }
 
-  private createRecord(address: string, ttl = RECORD_TTL_SECONDS): MdnsRecord {
+  private createRecord(address: string, ttl = RECORD_TTL_SECONDS, flush = true): MdnsRecord {
     return {
       name: LOCAL_HUB_HOSTNAME,
       type: 'A',
       class: 'IN',
       ttl,
-      flush: true,
+      flush,
       data: address,
     };
   }
@@ -241,7 +264,7 @@ export class LocalHostnamePublisher {
       this.lastQuerySourcePort = Number.isInteger(remoteInfo?.port) ? remoteInfo!.port! : null;
       this.lastQueryAt = new Date().toISOString();
       this.lastQueryTypes = [...new Set(query.questions?.map(question => String(question.type).toUpperCase()) || [])];
-      this.respond(client, address, RECORD_TTL_SECONDS, (error) => {
+      this.respond(client, address, RECORD_TTL_SECONDS, (error, responseMode) => {
         if (this.client !== client) return;
         if (error) {
           this.lastResponseError = error.message;
@@ -254,6 +277,9 @@ export class LocalHostnamePublisher {
           return;
         }
         this.responseCount++;
+        this.lastResponseMode = responseMode || 'multicast';
+        if (responseMode === 'legacy-unicast') this.legacyUnicastResponseCount++;
+        if (responseMode === 'unicast') this.unicastResponseCount++;
         this.lastResponseAt = new Date().toISOString();
         this.lastResponseError = null;
       });
@@ -302,15 +328,48 @@ export class LocalHostnamePublisher {
     client: MdnsClient,
     address: string,
     ttl: number,
-    callback?: (error?: Error | null) => void,
+    callback?: MdnsResponseCallback,
+    query?: MdnsQuery,
+    remoteInfo?: MdnsRemoteInfo,
   ): void {
     try {
-      client.respond({ answers: [this.createRecord(address, ttl)] }, (error) => {
+      // Android's system resolver uses RFC 6762 one-shot mDNS queries from an
+      // ephemeral UDP source port. Legacy queries MUST receive a conventional
+      // unicast DNS response to that exact address/port, with the original ID
+      // and question, TTL <= 10 seconds, and no cache-flush bit.
+      const isLegacyUnicast = Number.isInteger(remoteInfo?.port) && remoteInfo!.port !== MDNS_PORT;
+      const requestsUnicast = !isLegacyUnicast && Boolean(query?.questions?.some((question) => {
+        const questionClass = typeof question.class === 'number' ? question.class : Number(question.class);
+        return Number.isFinite(questionClass) && (questionClass & 0x8000) !== 0;
+      }));
+      const responseMode: MdnsResponseMode = isLegacyUnicast
+        ? 'legacy-unicast'
+        : requestsUnicast ? 'unicast' : 'multicast';
+
+      const response: MdnsResponsePacket = {
+        answers: [this.createRecord(address, isLegacyUnicast ? Math.min(ttl, 10) : ttl, !isLegacyUnicast)]
+      };
+
+      if (isLegacyUnicast) {
+        response.id = query?.id ?? 0;
+        response.questions = query?.questions || [];
+        if (query?.flags !== undefined) response.flags = query.flags;
+      } else if (requestsUnicast) {
+        response.id = 0;
+      }
+
+      const onSent = (error?: Error | null) => {
         if (error && this.client === client && !callback) {
           this.logger.warn('Could not answer RestaurantOS mDNS request.', { error: error.message });
         }
-        callback?.(error);
-      });
+        callback?.(error, responseMode);
+      };
+
+      if (responseMode !== 'multicast' && remoteInfo?.address && remoteInfo.port) {
+        client.respond(response, remoteInfo, onSent);
+      } else {
+        client.respond(response, onSent);
+      }
     } catch (error: any) {
       const normalized = error instanceof Error ? error : new Error(String(error));
       callback?.(normalized);

@@ -105,6 +105,8 @@ const hostnamePublisher = read('src/network/local-hostname.ts');
 check(hostnamePublisher.includes("questionType === '1'"), 'mDNS answers numeric A-record questions');
 check(hostnamePublisher.includes('queryCount') && hostnamePublisher.includes('lastQueryAt'), 'mDNS exposes received-query diagnostics');
 check(hostnamePublisher.includes('lastQuerySourceAddress') && hostnamePublisher.includes('remoteInfo'), 'mDNS diagnostics identify the source device requesting the hostname');
+check(hostnamePublisher.includes('isLegacyUnicast') && hostnamePublisher.includes('query?.id') && hostnamePublisher.includes('Math.min(ttl, 10)'), 'mDNS answers Android one-shot queries with RFC-compliant legacy unicast responses');
+check(hostnamePublisher.includes('requestsUnicast') && hostnamePublisher.includes('0x8000'), 'mDNS supports QU questions requesting unicast responses');
 const hubStatusUi = read('src/components/admin/LocalHubStatus.tsx');
 check(hubStatusUi.includes("status?.primaryLanUrl || 'http://restos.local:8989'"), 'QR onboarding defaults to the stable restos.local address');
 check(hubStatusUi.includes('Temporary direct-IP diagnostic fallback'), 'direct IP is diagnostic only, not the QR origin');
