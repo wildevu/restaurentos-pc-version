@@ -75,13 +75,33 @@ async function rewritePendingItemReferences(
   const cutoff = new Date(afterCreatedAt).getTime();
   const excluded = new Set(excludedActionIds);
 
-  await db.transaction('rw', db.commands, async () => {
+  await db.transaction('rw', db.commands, db.itemAliases, async () => {
+    // Persist the alias first so commands enqueued by this or another app tab
+    // during/after reconciliation are canonicalized before they are saved.
+    const existingAlias = await db.itemAliases.get(fromId);
+    if (existingAlias && existingAlias.toId !== toId) {
+      const downstreamAliases = await db.itemAliases.where('toId').equals(existingAlias.toId).toArray();
+      for (const alias of downstreamAliases) {
+        await db.itemAliases.update(alias.fromId, { toId });
+      }
+    }
+
+    const latestAlias = await db.itemAliases.orderBy('createdAt').last();
+    const latestAliasTime = latestAlias?.createdAt ? new Date(latestAlias.createdAt).getTime() : 0;
+    const aliasCreatedAt = new Date(Math.max(Date.now(), Number.isFinite(latestAliasTime) ? latestAliasTime + 1 : Date.now()));
+    await db.itemAliases.put({ fromId, toId, createdAt: aliasCreatedAt });
+
+    const aliases = await db.itemAliases.orderBy('createdAt').toArray();
     const pending = await db.commands.where('status').anyOf('PENDING', 'SYNCING').toArray();
     for (const command of pending) {
       if (excluded.has(command.actionId)) continue;
       const createdAt = new Date(command.createdAt).getTime();
       if (Number.isFinite(cutoff) && Number.isFinite(createdAt) && createdAt <= cutoff) continue;
-      const nextPayload = remapOrderItemReferences(command.payload, fromId, toId);
+
+      let nextPayload = command.payload;
+      for (const alias of aliases) {
+        nextPayload = remapOrderItemReferences(nextPayload, alias.fromId, alias.toId);
+      }
       if (nextPayload !== command.payload) {
         await db.commands.update(command.actionId, { payload: nextPayload });
       }
@@ -178,17 +198,24 @@ export async function executeCommand(type: string, payload: any): Promise<{ acti
     stablePayload.clientItemId = uuidv4();
   }
 
-  // Use a read/write transaction and a strictly increasing timestamp to preserve
-  // FIFO command ordering even when multiple actions are enqueued in one millisecond
-  // or from separate tabs sharing the same IndexedDB database.
-  await db.transaction('rw', db.commands, async () => {
+  let queuedPayload = stablePayload;
+
+  // Command enqueue and alias lookup share one IndexedDB transaction. This
+  // closes the race where a new tap arrives as an older ACK is recording an
+  // item-ID replacement, and it also survives PWA reloads and duplicate tabs.
+  await db.transaction('rw', db.commands, db.itemAliases, async () => {
+    const aliases = await db.itemAliases.orderBy('createdAt').toArray();
+    for (const alias of aliases) {
+      queuedPayload = remapOrderItemReferences(queuedPayload, alias.fromId, alias.toId);
+    }
+
     const latest = await db.commands.orderBy('createdAt').last();
     const latestTime = latest?.createdAt ? new Date(latest.createdAt).getTime() : 0;
     const createdAt = new Date(Math.max(Date.now(), Number.isFinite(latestTime) ? latestTime + 1 : Date.now()));
     await db.commands.add({
       actionId,
       type,
-      payload: stablePayload,
+      payload: queuedPayload,
       createdAt,
       status: 'PENDING'
     });
@@ -196,7 +223,7 @@ export async function executeCommand(type: string, payload: any): Promise<{ acti
 
   notifyListeners();
   optimisticListeners.forEach(listener => {
-    try { listener(type, stablePayload); } catch (error) { console.error('Optimistic listener failed', error); }
+    try { listener(type, queuedPayload); } catch (error) { console.error('Optimistic listener failed', error); }
   });
 
   if (socket.connected) void flushQueue();
