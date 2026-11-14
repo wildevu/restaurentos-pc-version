@@ -30,7 +30,15 @@ async function getUniqueActiveOrderForTable(tx: any, tableId: string): Promise<a
   if (matches.length > 1) {
     throw new CommandError('This table has multiple active orders. Ask a manager to repair the table state before continuing.', false);
   }
-  return matches[0] || null;
+
+  const activeOrder = matches[0] || null;
+  if (!activeOrder) return null;
+
+  const table = await tx.select().from(tables).where(eq(tables.id, tableId)).get();
+  if (!table || table.status !== 'ACTIVE') {
+    throw new CommandError('Table state is inconsistent with its active order. Refresh the POS and ask a manager to review the table state.', false);
+  }
+  return activeOrder;
 }
 
 export async function getFrontendStateTx(tx: any, stateVersion?: number) {
@@ -496,6 +504,10 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         const parentOrder = await tx.select().from(orders)
           .where(and(eq(orders.id, item.orderId), eq(orders.status, 'OPEN'))).get();
         if (!parentOrder) throw new CommandError('Order item is not part of an active order');
+        const uniqueActiveOrder = await getUniqueActiveOrderForTable(tx, parentOrder.tableId);
+        if (!uniqueActiveOrder || uniqueActiveOrder.id !== parentOrder.id) {
+          throw new CommandError('Order item is not associated with the table\'s unique active order.', false);
+        }
 
         const prevStatus = item.kitchenStatus;
         if (prevStatus === 'SERVED' && status !== 'SERVED') {
@@ -526,9 +538,13 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         const { orderId, orderItemIds, status } = BatchUpdateKitchenStatusPayload.parse(command.payload);
         let candidateItems: any[] = [];
         if (orderId) {
-          const activeOrder = await tx.select({ id: orders.id }).from(orders)
+          const orderRow = await tx.select({ id: orders.id, tableId: orders.tableId }).from(orders)
             .where(and(eq(orders.id, orderId), eq(orders.status, 'OPEN'))).get();
-          if (!activeOrder) throw new CommandError('Order is not active');
+          if (!orderRow) throw new CommandError('Order is not active');
+          const activeOrder = await getUniqueActiveOrderForTable(tx, orderRow.tableId);
+          if (!activeOrder || activeOrder.id !== orderId) {
+            throw new CommandError('Order is not associated with the table\'s unique active order.', false);
+          }
           const conditions = orderItemIds && orderItemIds.length > 0
             ? and(eq(orderItems.orderId, orderId), inArray(orderItems.id, orderItemIds))
             : eq(orderItems.orderId, orderId);

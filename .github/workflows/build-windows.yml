@@ -39,6 +39,12 @@ jobs:
       - name: Validate TypeScript Types & Code Quality
         run: npm run lint
 
+      - name: Verify Approved Regression Fixes
+        shell: pwsh
+        run: |
+          node scripts/verify-approved-fixes.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run Reliability Regression Checks
         shell: pwsh
         run: |

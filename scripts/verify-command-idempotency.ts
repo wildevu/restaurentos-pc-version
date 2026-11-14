@@ -106,6 +106,18 @@ try {
 
   const savedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
   assert.ok(savedItem, 'server persisted the stable client-generated item ID');
+
+  await db.update(schema.tables).set({ status: 'EMPTY' }).where(eq(schema.tables.id, tableId));
+  await assert.rejects(
+    () => processCommand({
+      actionId: randomUUID(),
+      type: 'INCREMENT_ITEM',
+      payload: { tableId, orderItemId: itemId }
+    } as any, user as any),
+    /table state is inconsistent with its active order/i,
+    'order mutations are blocked when the table is marked EMPTY'
+  );
+  await db.update(schema.tables).set({ status: 'ACTIVE' }).where(eq(schema.tables.id, tableId));
   assert.equal(savedItem.quantity, 1, 'replaying ADD_ITEM did not create a second item');
   assert.equal(savedItem.notes, 'offline note', 'initial item notes survive server persistence');
 

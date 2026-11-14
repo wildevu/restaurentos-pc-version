@@ -95,6 +95,7 @@ check(dbPaths.includes('verifyWritable') && dbPaths.includes('fs.fsyncSync'), 'r
 const commandQueries = read('src/db/queries.ts');
 check(commandQueries.includes('isSqliteLockContention') && commandQueries.includes('SQLITE_(BUSY|LOCKED)'), 'command transactions retry SQLite BUSY and LOCKED variants without treating business errors as transient');
 check(commandQueries.includes('getUniqueActiveOrderForTable') && commandQueries.includes('multiple active orders'), 'table commands refuse ambiguous multiple active orders instead of mutating an arbitrary order');
+check(commandQueries.includes('Table state is inconsistent with its active order'), 'order mutations enforce that an active order belongs to an ACTIVE table');
 check(commandQueries.includes('Served items cannot be returned to the kitchen queue') && commandQueries.includes('item.kitchenStatus !== \'SERVED\' || status === \'SERVED\''), 'served kitchen items cannot re-enter active KDS through individual or batch commands');
 check(commandQueries.includes('if (t.archivedAt) throw new CommandError'), 'archived tables cannot be reopened through a stale or forged command');
 
