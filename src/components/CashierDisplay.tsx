@@ -37,6 +37,7 @@ export function CashierDisplay({
   const [sectionFilter, setSectionFilter] = useState<string>('ALL');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [commandError, setCommandError] = useState<string | null>(null);
 
   // Active unarchived tables
   const allActiveTables = useMemo(() => tables.filter(t => !t.archivedAt), [tables]);
@@ -114,6 +115,7 @@ export function CashierDisplay({
 
   const handleCloseAndClearTable = async () => {
     if (!activeModalTable) return;
+    setCommandError(null);
     setIsProcessing(true);
     try {
       if (onDispatchCommand) {
@@ -123,8 +125,9 @@ export function CashierDisplay({
       }
       setShowConfirmModal(false);
       setSelectedTableId(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to clear table:', err);
+      setCommandError(err?.message || 'The table could not be closed. No payment or clearance was confirmed.');
     } finally {
       setIsProcessing(false);
     }
@@ -509,6 +512,12 @@ export function CashierDisplay({
                 {formatCurrency(subtotal, activeModalOrder.currencySnapshot || currency)}
               </div>
             </div>
+
+            {commandError && (
+              <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-left text-xs font-semibold text-red-800">
+                {commandError}
+              </div>
+            )}
 
             <div className="flex gap-2.5 pt-2">
               <button

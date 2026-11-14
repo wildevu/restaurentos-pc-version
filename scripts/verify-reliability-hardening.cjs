@@ -100,6 +100,7 @@ check(queueLifecycle.includes('if (!(await db.commands.get(command.actionId))) b
 check(read('src/App.tsx').includes('if (command.actionId === committedActionId) continue') && read('src/App.tsx').includes('applyOptimisticCommand(reconciled, command.type, command.payload)'), 'acknowledgement rebase reapplies later queued optimistic actions without replaying the committed action');
 check(queueLifecycle.includes('await ensureOfflineStorageReady()'), 'queue drain refuses to discard commands when device storage is unavailable');
 check(queueLifecycle.includes('getPendingCommandErrors') && read('src/App.tsx').includes('pendingCommandErrors.slice(0, 3)'), 'staff can see actionable errors for pending commands instead of a misleading green connection alone');
+check(read('src/components/KitchenDisplay.tsx').includes('The kitchen update could not be saved') && read('src/components/CashierDisplay.tsx').includes('The table could not be closed'), 'kitchen and cashier actions show local command persistence failures to staff');
 const hubStatus = read('server.ts');
 check(hubStatus.includes('databaseHealth') && hubStatus.includes("await client.execute('SELECT 1 as alive;')"), 'hub status probes the actual database instead of hard-coding HEALTHY');
 const statusUi = read('src/components/admin/LocalHubStatus.tsx');

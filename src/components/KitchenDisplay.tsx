@@ -29,6 +29,7 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
   const [viewMode, setViewMode] = useState<'TICKETS' | 'AGGREGATE'>('TICKETS');
   const [now, setNow] = useState<number>(Date.now());
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [commandError, setCommandError] = useState<string | null>(null);
 
   // Update timer every 10 seconds for live elapsed calculation
   useEffect(() => {
@@ -58,13 +59,18 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
     );
   }, [orders]);
 
-  const handleUpdateItemStatus = async (orderItemId: string, nextStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED') => {
+  const handleUpdateItemStatus = async (orderItemId: string, nextStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED'): Promise<boolean> => {
+    setCommandError(null);
     setUpdatingItemId(orderItemId);
     try {
       await executeCommand('UPDATE_ITEM_KITCHEN_STATUS', {
         orderItemId,
         status: nextStatus
       });
+      return true;
+    } catch (error: any) {
+      setCommandError(error?.message || 'The kitchen update could not be saved on this device.');
+      return false;
     } finally {
       setUpdatingItemId(null);
     }
@@ -77,11 +83,16 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
       .filter(item => item.kitchenStatus !== 'SERVED')
       .map(item => item.id);
     if (orderItemIds.length === 0) return;
-    await executeCommand('BATCH_UPDATE_KITCHEN_STATUS', {
-      orderId,
-      orderItemIds,
-      status: nextStatus
-    });
+    setCommandError(null);
+    try {
+      await executeCommand('BATCH_UPDATE_KITCHEN_STATUS', {
+        orderId,
+        orderItemIds,
+        status: nextStatus
+      });
+    } catch (error: any) {
+      setCommandError(error?.message || 'The kitchen batch update could not be saved on this device.');
+    }
   };
 
   // 1-Click Bump All Active Units of a Specific Dish to READY in Mode RUSH
@@ -89,7 +100,7 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
     for (const order of activeOrders) {
       for (const item of order.items) {
         if (item.name === dishName && (item.kitchenStatus === 'PENDING' || item.kitchenStatus === 'PREPARING')) {
-          await handleUpdateItemStatus(item.id, 'READY');
+          if (!(await handleUpdateItemStatus(item.id, 'READY'))) return;
         }
       }
     }
@@ -162,6 +173,11 @@ export function KitchenDisplay({ orders, onBack, isStandalone }: Props) {
 
   return (
     <div className="flex flex-col h-full space-y-4 pb-6">
+      {commandError && (
+        <div role="alert" className="mb-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+          {commandError}
+        </div>
+      )}
       {/* Top Controls Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-gray-200 shadow-xs">
         <div className="flex items-center gap-3">
