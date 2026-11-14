@@ -181,7 +181,7 @@ check(workflow.includes('node scripts/verify-approved-fixes.cjs'), 'Windows CI e
 check(workflow.includes('npm run audit:dependencies'), 'Windows CI inventories production and development dependency advisories');
 const dependencyAudit = read('scripts/audit-dependencies.cjs');
 check(dependencyAudit.includes("if (!all || !production)") && dependencyAudit.includes("process.exitCode = 1"), 'an incomplete npm security inventory blocks release validation');
-check(dependencyAudit.includes("production.metadata?.vulnerabilities?.critical > 0 || production.metadata?.vulnerabilities?.high > 0") && dependencyAudit.includes("process.exitCode = 1"), 'critical or high production dependency advisories block release packaging');
+check(dependencyAudit.includes("allCounts.critical") && dependencyAudit.includes("allCounts.high") && dependencyAudit.includes("process.exitCode = 1"), 'critical or high production or build dependency advisories block release packaging');
 check(workflow.includes('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'), 'Windows workflow explicitly propagates native test exit codes');
 check(workflow.includes("github.event_name == 'push' && github.ref_type == 'tag'"), 'branch builds cannot publish over stable releases');
 
