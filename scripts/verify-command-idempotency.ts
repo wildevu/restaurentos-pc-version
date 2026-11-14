@@ -186,11 +186,6 @@ try {
   const validBatchResult = await processCommand(validBatch as any, kitchenUser as any);
   assert.equal(validBatchResult.success, true, 'kitchen batch update applies to the exact active-order item set');
 
-  await assert.rejects(
-    () => processCommand({ actionId: randomUUID(), type: 'CLOSE_TABLE', payload: { tableId } } as any, user as any),
-    /kitchen items remain unserved/i,
-    'table cannot be closed while kitchen items remain unserved'
-  );
   await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: batchItemId, status: 'READY' } } as any, kitchenUser as any);
   await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: batchItemId, status: 'SERVED' } } as any, waiterUser as any);
 

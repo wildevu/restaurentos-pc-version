@@ -1,6 +1,6 @@
 import { db } from './index';
 import { tables, menuCategories, menuItems, orders, orderItems, auditEvents, idempotencyKeys, hubState, users, restaurants } from './schema';
-import { eq, and, asc, sql, inArray, isNull, ne } from 'drizzle-orm';
+import { eq, and, asc, sql, inArray, isNull } from 'drizzle-orm';
 import { uuidv4 } from '../utils/uuid';
 import { z } from 'zod';
 import { 
@@ -281,13 +281,6 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         if (!activeTable || activeTable.status !== 'ACTIVE') {
           throw new CommandError('Table state is inconsistent with its active order. Refresh the POS and ask a manager to review it.', false);
         }
-        const unservedItems = await tx.select({ id: orderItems.id }).from(orderItems)
-          .where(and(eq(orderItems.orderId, activeOrder.id), ne(orderItems.kitchenStatus, 'SERVED')))
-          .limit(1);
-        if (unservedItems.length > 0) {
-          throw new CommandError('This table cannot be closed while kitchen items remain unserved. Mark ready items as served or remove cancelled items first.', false);
-        }
-
         await tx.update(orders).set({ status: 'CLOSED', closedByUserId: user.id, updatedAt: now }).where(eq(orders.id, activeOrder.id));
         await tx.update(tables).set({ status: 'EMPTY', updatedAt: now }).where(eq(tables.id, tableId));
         
