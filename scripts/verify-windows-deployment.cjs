@@ -78,7 +78,7 @@ assert(installScript.includes('localport=5353') && installScript.includes('remot
 assert(installScript.includes('localport=8989') && installScript.includes('remoteip=localsubnet'), 'PowerShell installer scopes hub TCP access to local subnet');
 const setupScript = fs.readFileSync(path.resolve(process.cwd(), 'windows/installer/RestaurantOS-Setup.iss'), 'utf-8');
 assert(!setupScript.includes('Tasks: firewall'), 'Inno Setup does not make required LAN discovery optional');
-assert(/add-firewall-rule\\.bat"; Flags: runhidden waituntilterminated/.test(setupScript), 'Inno Setup always applies LAN and mDNS firewall rules');
+assert(setupScript.includes('add-firewall-rule.bat"; Flags: runhidden waituntilterminated'), 'Inno Setup always applies LAN and mDNS firewall rules');
 
 // TEST 3: Uninstaller Non-Destructive Data Safety Audit
 console.log('\n--- TEST 3: Uninstallation Safety Audit ---');
