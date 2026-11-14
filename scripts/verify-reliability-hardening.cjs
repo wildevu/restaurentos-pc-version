@@ -173,6 +173,8 @@ check(admin.includes('if (stateVersion === undefined)'), 'state version zero is 
 
 const workflow = read('.github/workflows/build-windows.yml');
 check(/^\s*workflow_dispatch:\s*$/m.test(workflow) && !/^\s*push\s*:/m.test(workflow) && !/^\s*pull_request\s*:/m.test(workflow), 'local-version Windows build remains manual-only');
+check(workflow.includes('node scripts/verify-approved-fixes.cjs'), 'Windows CI executes the approved-fix regression suite');
+check(workflow.includes('npm run audit:dependencies'), 'Windows CI inventories production and development dependency advisories');
 check(workflow.includes('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'), 'Windows workflow explicitly propagates native test exit codes');
 check(workflow.includes("github.event_name == 'push' && github.ref_type == 'tag'"), 'branch builds cannot publish over stable releases');
 

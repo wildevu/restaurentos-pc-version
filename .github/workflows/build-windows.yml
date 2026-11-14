@@ -33,6 +33,12 @@ jobs:
       - name: Rebuild Native Modules
         run: npm rebuild
 
+      - name: Inventory npm Security Advisories
+        shell: pwsh
+        run: |
+          npm run audit:dependencies
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Dynamic Windows Native Dependency Audit & Verification
         run: node scripts/audit-windows-native-deps.cjs
 
