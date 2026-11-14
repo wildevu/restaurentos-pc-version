@@ -9,12 +9,26 @@ export interface QueuedCommand {
   lastError?: string;
 }
 
+export interface ItemIdAlias {
+  fromId: string;
+  toId: string;
+  createdAt: Date;
+}
+
 export const db = new Dexie('RestaurantOS_OfflineDB') as Dexie & {
   commands: EntityTable<QueuedCommand, 'actionId'>;
+  itemAliases: EntityTable<ItemIdAlias, 'fromId'>;
 };
 
 db.version(1).stores({
   commands: 'actionId, createdAt, status'
+});
+
+// Preserve the existing durable command queue and add a persistent local map
+// for server-canonical item IDs discovered during offline reconciliation.
+db.version(2).stores({
+  commands: 'actionId, createdAt, status',
+  itemAliases: 'fromId, toId, createdAt'
 });
 
 let openingDatabase: Promise<void> | null = null;
@@ -52,7 +66,7 @@ export async function ensureOfflineStorageReady(): Promise<void> {
       await db.open();
       storageProbeSequence += 1;
       const probeId = `__restaurantos_storage_probe__${Date.now()}_${storageProbeSequence}`;
-      await db.transaction('rw', db.commands, async () => {
+      await db.transaction('rw', db.commands, db.itemAliases, async () => {
         await db.commands.put({
           actionId: probeId,
           type: '__STORAGE_PROBE__',
@@ -61,6 +75,10 @@ export async function ensureOfflineStorageReady(): Promise<void> {
           status: 'PENDING'
         });
         await db.commands.delete(probeId);
+
+        const aliasProbeId = `__restaurantos_alias_probe__${probeId}`;
+        await db.itemAliases.put({ fromId: aliasProbeId, toId: aliasProbeId, createdAt: new Date() });
+        await db.itemAliases.delete(aliasProbeId);
       });
     } catch (error: any) {
       try { db.close(); } catch {}
