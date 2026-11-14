@@ -189,3 +189,20 @@ export function applyOptimisticCommand(
   }
   return { tables, orders };
 }
+
+
+/**
+ * Rebuild the local view from an authoritative hub snapshot plus commands that
+ * remain pending on this device. A command known to have committed is excluded
+ * because its effect is already present in the snapshot.
+ */
+export function rebasePendingCommands(
+  authoritativeState: { tables: Table[], orders: Order[] },
+  pendingCommands: Array<{ actionId: string; type: string; payload: any }>,
+  committedActionId?: string
+): { tables: Table[], orders: Order[] } {
+  return pendingCommands.reduce((state, command) => {
+    if (committedActionId && command.actionId === committedActionId) return state;
+    return applyOptimisticCommand(state, command.type, command.payload);
+  }, authoritativeState);
+}

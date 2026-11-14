@@ -46,4 +46,31 @@ assert.equal(state.tables[0].status, 'EMPTY', 'CLOSE_TABLE must return the table
 assert.equal(state.tables[0].orderId, null, 'closed table must not retain an order ID');
 assert.equal(state.orders.length, 0, 'closed table must remove its open order');
 
-console.log('Optimistic command workflow checks passed.');
+// An acknowledgement snapshot contains the committed action but not later
+// pending actions. Rebase skips the committed action and replays the remainder.
+const authoritativeAfterOpen = {
+  tables: [{ ...table, status: 'ACTIVE', orderId: 'order-client-1', itemCount: 0 }],
+  orders: [{
+    id: 'order-client-1',
+    tableId: 'table-1',
+    tableNumber: 1,
+    covers: 3,
+    status: 'OPEN',
+    items: []
+  } as any]
+};
+const { rebasePendingCommands } = await import('../src/offline/optimistic');
+const rebased = rebasePendingCommands(
+  authoritativeAfterOpen as any,
+  [
+    { actionId: 'committed-open', type: 'OPEN_TABLE', payload: { tableId: 'table-1', covers: 3, clientOrderId: 'order-client-1' } },
+    { actionId: 'pending-add', type: 'ADD_ITEM', payload: { tableId: 'table-1', menuItemId: 'menu-1', clientItemId: 'item-pending', name: 'Coffee', price: 250 } },
+    { actionId: 'pending-increment', type: 'INCREMENT_ITEM', payload: { tableId: 'table-1', orderItemId: 'item-pending' } }
+  ],
+  'committed-open'
+);
+assert.equal(rebased.orders[0].items.length, 1, 'remaining pending ADD_ITEM is replayed after acknowledgement');
+assert.equal(rebased.orders[0].items[0].quantity, 2, 'remaining pending INCREMENT_ITEM is replayed after acknowledgement');
+assert.equal(rebased.tables[0].itemCount, 2, 'table item count is rebased with later pending commands');
+
+console.log('Optimistic command workflow and acknowledgement rebase checks passed.');

@@ -56,6 +56,7 @@ import {
   removeAcknowledgedCommands,
   clearRejectedCommands,
   applyOptimisticCommand,
+  rebasePendingCommands,
   ensureOfflineStorageReady,
   subscribeToAuthoritativeState,
   db as offlineDb
@@ -698,14 +699,10 @@ export function App() {
       }
       if (incomingVersion < stateVersionRef.current) return;
 
-      let reconciled = {
+      const reconciled = rebasePendingCommands({
         tables: state.tables || [],
         orders: state.orders || []
-      };
-      for (const command of pending) {
-        if (command.actionId === committedActionId) continue;
-        reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
-      }
+      }, pending, committedActionId);
 
       stateVersionRef.current = incomingVersion;
       setRestaurantState(reconciled.tables, reconciled.orders);
@@ -923,10 +920,10 @@ export function App() {
             // SYNC snapshot. This prevents a slow sync callback from rolling
             // tables/orders backwards on phones and the hub PC.
             const syncSnapshotIsCurrent = stateVersionRef.current === syncBaseVersion;
-            let state = syncSnapshotIsCurrent
+            const baseState = syncSnapshotIsCurrent
               ? { tables: latestTables, orders: latestOrders }
               : { tables: tablesRef.current, orders: ordersRef.current };
-            for (const cmd of pending) state = applyOptimisticCommand(state, cmd.type, cmd.payload);
+            const state = rebasePendingCommands(baseState, pending);
             setRestaurantState(state.tables, state.orders);
           } catch (error) {
             console.error('Optimistic re-apply failed', error);
@@ -988,14 +985,10 @@ export function App() {
         // A newer event may arrive while IndexedDB is being read.
         if (data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync) return;
 
-        let reconciled = {
+        const reconciled = rebasePendingCommands({
           tables: data.tables || [],
           orders: data.orders || []
-        };
-        for (const command of pending) {
-          if (command.actionId === data.committedActionId) continue;
-          reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
-        }
+        }, pending, data.committedActionId);
 
         if (data.stateVersion !== undefined) stateVersionRef.current = incomingVersion;
         setRestaurantState(reconciled.tables, reconciled.orders);
