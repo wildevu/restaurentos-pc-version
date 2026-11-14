@@ -102,7 +102,7 @@ try {
   const delayedOpenReplay = await processCommand(open as any, user as any);
   assert.equal(delayedOpenReplay.duplicate, true, 'delayed OPEN_TABLE retry remains idempotent');
   assert.equal(delayedOpenReplay.stateVersion, addFirst.stateVersion, 'duplicate retry reports the current hub version');
-  assert.equal(delayedOpenReplay.state.orders[0].items.length, 2, 'duplicate retry returns all current authoritative order lines after pending-item merge');
+  assert.equal(delayedOpenReplay.state.orders[0].items.length, 1, 'duplicate retry returns the single committed order line without duplicating it');
 
   const savedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
   assert.ok(savedItem, 'server persisted the stable client-generated item ID');

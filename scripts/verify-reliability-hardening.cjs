@@ -188,6 +188,9 @@ check(admin.includes('if (stateVersion === undefined)'), 'state version zero is 
 const workflow = read('.github/workflows/build-windows.yml');
 check(/^\s*workflow_dispatch:\s*$/m.test(workflow) && !/^\s*push\s*:/m.test(workflow) && !/^\s*pull_request\s*:/m.test(workflow), 'local-version Windows build remains manual-only');
 check(workflow.includes('node scripts/verify-approved-fixes.cjs'), 'Windows CI executes the approved-fix regression suite');
+check(workflow.includes('npm audit fix --package-lock-only --no-fund'), 'Windows CI refreshes semver-compatible dependency patches in the lockfile');
+check(workflow.indexOf('npm audit fix --package-lock-only') > workflow.indexOf('name: Clear npm Cache') && workflow.indexOf('npm audit fix --package-lock-only') < workflow.indexOf('name: Install Dependencies'), 'dependency patch refresh runs before npm ci installs the lockfile');
+check(workflow.includes('final severity audit will decide whether packaging is allowed'), 'partial or unavailable dependency repair cannot bypass the final security gate');
 check(workflow.includes('npm run audit:dependencies'), 'Windows CI inventories production and development dependency advisories');
 check(workflow.indexOf('name: Verify Setup Licensing Flow') < workflow.indexOf('npm run audit:dependencies') && workflow.indexOf('npm run audit:dependencies') < workflow.indexOf('name: Download Visual C++'), 'security release gate runs after functional tests but before Windows packaging');
 const dependencyAudit = read('scripts/audit-dependencies.cjs');

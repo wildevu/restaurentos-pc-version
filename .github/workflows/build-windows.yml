@@ -27,6 +27,19 @@ jobs:
       - name: Clear npm Cache
         run: npm cache clean --force
 
+      - name: Apply compatible npm security patches to lockfile
+        # No --force: only dependency versions permitted by the existing semver
+        # ranges are refreshed. The final audit remains a hard gate for
+        # critical/high findings.
+        shell: pwsh
+        run: |
+          npm audit fix --package-lock-only --no-fund
+          $fixExitCode = $LASTEXITCODE
+          if ($fixExitCode -ne 0) {
+            Write-Warning "npm audit fix returned exit code $fixExitCode. Continuing to execute the full test suite; the final severity audit will decide whether packaging is allowed."
+          }
+          $global:LASTEXITCODE = 0
+
       - name: Install Dependencies
         run: npm ci --prefer-offline
 
