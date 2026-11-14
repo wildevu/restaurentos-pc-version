@@ -217,32 +217,7 @@ export function remapOrderItemReferences(payload: any, fromId: string, toId: str
     changed = true;
   }
   if (Array.isArray(next.orderItemIds) && next.orderItemIds.includes(fromId)) {
-    next.orderItemIds = next.orderItemIds.map((id: string) => id === fromId ? toId : id);
-    changed = true;
-  }
-
-  return changed ? next : payload;
-}
-
-/**
- * Rewrites item references inside queued command payloads when a stale ADD_ITEM
- * is persisted as a new canonical row instead of merging into its expected row.
- */
-export function remapOrderItemReferences(payload: any, fromId: string, toId: string): any {
-  if (!payload || typeof payload !== 'object' || !fromId || !toId || fromId === toId) return payload;
-  const next = { ...payload };
-  let changed = false;
-
-  if (next.orderItemId === fromId) {
-    next.orderItemId = toId;
-    changed = true;
-  }
-  if (next.mergeIntoItemId === fromId) {
-    next.mergeIntoItemId = toId;
-    changed = true;
-  }
-  if (Array.isArray(next.orderItemIds) && next.orderItemIds.includes(fromId)) {
-    next.orderItemIds = next.orderItemIds.map((id: string) => id === fromId ? toId : id);
+    next.orderItemIds = [...new Set(next.orderItemIds.map((id: string) => id === fromId ? toId : id))];
     changed = true;
   }
 
