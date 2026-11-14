@@ -67,9 +67,11 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
     setShowCoversModal(true);
   };
 
-  const handleConfirmCovers = (coversCount: number) => {
+  const handleConfirmCovers = async (coversCount: number) => {
+    // Let the modal own the pending/error state. Close it only after the command
+    // has been safely persisted to the offline queue and optimistic state applied.
+    await dispatchCommand('OPEN_TABLE', { tableId: table.id, covers: coversCount });
     setShowCoversModal(false);
-    dispatchCommand('OPEN_TABLE', { tableId: table.id, covers: coversCount });
   };
 
   const handleAddItem = (menuItem: any) => {
