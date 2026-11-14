@@ -244,6 +244,17 @@ export async function getRejectedCommands() {
   return db.commands.where('status').equals('REJECTED').toArray();
 }
 
+/**
+ * Remove commands the hub confirms are already committed. This is used during
+ * reconnect SYNC when a previous COMMAND acknowledgement may have been lost.
+ */
+export async function removeAcknowledgedCommands(actionIds: string[]): Promise<void> {
+  const uniqueIds = [...new Set(actionIds.filter(id => typeof id === 'string' && id.length > 0))];
+  if (uniqueIds.length === 0) return;
+  await db.commands.bulkDelete(uniqueIds);
+  notifyListeners();
+}
+
 export async function retryCommand(actionId: string) {
   await db.commands.update(actionId, { status: 'PENDING', lastError: undefined });
   notifyListeners();

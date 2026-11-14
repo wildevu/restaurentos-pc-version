@@ -52,6 +52,7 @@ import {
   getPendingCount, 
   flushQueue,
   getRejectedCommands,
+  removeAcknowledgedCommands,
   clearRejectedCommands,
   applyOptimisticCommand,
   db as offlineDb
@@ -750,16 +751,34 @@ export function App() {
 
       let disconnectTimer: any = null;
 
-      const synchronize = () => {
+      const synchronize = async () => {
         if (!socket.connected) return;
         const syncSequence = ++syncSequenceRef.current;
         if (disconnectTimer) {
           clearTimeout(disconnectTimer);
           disconnectTimer = null;
         }
+
+        // Send the queued action IDs with SYNC. The hub can distinguish commands
+        // that committed before a lost acknowledgement from commands still pending.
+        let pendingActionIds: string[] = [];
+        try {
+          const queued = await offlineDb.commands
+            .where('status').anyOf('PENDING', 'SYNCING')
+            .sortBy('createdAt');
+          pendingActionIds = queued.slice(0, 500).map(command => command.actionId);
+        } catch (error) {
+          console.error('Could not inspect pending commands before synchronization', error);
+        }
+        if (!socket.connected || syncSequence !== syncSequenceRef.current) return;
+
         socket.timeout(10000).emit(
           'SYNC',
-          { lastKnownVersion: stateVersionRef.current, lastKnownEpoch: syncEpochRef.current },
+          {
+            lastKnownVersion: stateVersionRef.current,
+            lastKnownEpoch: syncEpochRef.current,
+            pendingActionIds
+          },
           async (timeoutError: any, res: any) => {
           if (syncSequence !== syncSequenceRef.current) return;
           if (timeoutError || !res || res.error) {
@@ -794,6 +813,9 @@ export function App() {
           }
 
           try {
+            if (Array.isArray(res.acknowledgedActionIds) && res.acknowledgedActionIds.length > 0) {
+              await removeAcknowledgedCommands(res.acknowledgedActionIds);
+            }
             const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
 
             // If a newer STATE_UPDATE arrived while IndexedDB was being read,

@@ -16,8 +16,8 @@ import { authRouter } from './src/auth.routes';
 import { adminRouter, startAutoBackupScheduler } from './src/api/admin';
 import { licensingRouter, licenseEnforcementMiddleware, LicensingService } from './src/licensing/index';
 import { hashToken } from './src/crypto';
-import { sessions, users, devices, hubState, restaurants } from './src/db/schema';
-import { eq, and, gt, isNull, sql } from 'drizzle-orm';
+import { sessions, users, devices, hubState, restaurants, idempotencyKeys } from './src/db/schema';
+import { eq, and, gt, isNull, isNotNull, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { CommandPayloadSchema } from './src/schemas';
 import { processCommand, getFrontendStateTx } from './src/db/queries';
@@ -620,20 +620,39 @@ async function startServer() {
       try {
         const suppliedVersion = Number(payload?.lastKnownVersion);
         const lastKnownVersion = Number.isSafeInteger(suppliedVersion) && suppliedVersion >= 0 ? suppliedVersion : 0;
+        // A client may have lost the COMMAND acknowledgement after the database
+        // transaction committed. Report which of its queued action IDs are
+        // already committed so it can discard them instead of replaying their
+        // optimistic effects on top of an authoritative snapshot.
+        const pendingActionIds = Array.isArray(payload?.pendingActionIds)
+          ? [...new Set(payload.pendingActionIds.filter((id: any) => typeof id === 'string' && id.length <= 64))].slice(0, 500)
+          : [];
         const response = await db.transaction(async (tx: any) => {
           const stateRow = await tx.select().from(hubState)
             .where(eq(hubState.restaurantId, user.restaurantId)).get();
           const currentVersion = stateRow?.version || 0;
+          let acknowledgedActionIds: string[] = [];
+          if (pendingActionIds.length > 0) {
+            const committed = await tx.select({ id: idempotencyKeys.id })
+              .from(idempotencyKeys)
+              .where(and(
+                eq(idempotencyKeys.restaurantId, user.restaurantId),
+                inArray(idempotencyKeys.id, pendingActionIds),
+                isNotNull(idempotencyKeys.stateVersion)
+              ));
+            acknowledgedActionIds = committed.map((row: any) => row.id);
+          }
           const clientEpoch = typeof payload?.lastKnownEpoch === 'string' ? payload.lastKnownEpoch : '';
           if (currentVersion !== lastKnownVersion || lastKnownVersion === 0 || clientEpoch !== syncEpoch) {
             return {
               upToDate: false,
               forceResync: currentVersion < lastKnownVersion,
               syncEpoch,
+              acknowledgedActionIds,
               state: await getFrontendStateTx(tx, currentVersion)
             };
           }
-          return { upToDate: true, stateVersion: currentVersion, syncEpoch };
+          return { upToDate: true, stateVersion: currentVersion, syncEpoch, acknowledgedActionIds };
         });
         if (callback) callback(response);
       } catch (err: any) {
