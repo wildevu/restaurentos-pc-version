@@ -662,12 +662,17 @@ export function App() {
       const incomingVersion = Number(state.stateVersion || 0);
       if (incomingVersion < stateVersionRef.current) return;
 
-      // Read later pending commands after the hub commit. Replaying them over
-      // the snapshot preserves rapid multi-action waiter workflows without
-      // re-applying the action that this acknowledgement just committed.
-      const pending = await offlineDb.commands
-        .where('status').anyOf('PENDING', 'SYNCING')
-        .sortBy('createdAt');
+      let pending: any[] = [];
+      try {
+        pending = await offlineDb.commands
+          .where('status').anyOf('PENDING', 'SYNCING')
+          .sortBy('createdAt');
+      } catch (storageError: any) {
+        // The hub snapshot is still authoritative even if this device's local
+        // queue is temporarily inaccessible. Keep the action record untouched
+        // and surface the storage failure rather than blocking visible state.
+        setDeviceStorageError(storageError?.message || 'Local command storage is unavailable.');
+      }
       if (incomingVersion < stateVersionRef.current) return;
 
       let reconciled = {
@@ -945,12 +950,17 @@ export function App() {
         // The room broadcast is authoritative evidence that its action committed.
         // Retire that action before replaying later pending local commands; otherwise
         // a lost socket acknowledgement could apply an increment twice in the UI.
-        if (data.committedActionId) {
-          await removeAcknowledgedCommands([data.committedActionId]);
+        let pending: any[] = [];
+        try {
+          if (data.committedActionId) {
+            await removeAcknowledgedCommands([data.committedActionId]);
+          }
+          pending = await offlineDb.commands
+            .where('status').anyOf('PENDING', 'SYNCING')
+            .sortBy('createdAt');
+        } catch (storageError: any) {
+          setDeviceStorageError(storageError?.message || 'Local command storage is unavailable.');
         }
-        const pending = await offlineDb.commands
-          .where('status').anyOf('PENDING', 'SYNCING')
-          .sortBy('createdAt');
 
         // A newer event may arrive while IndexedDB is being read.
         if (data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync) return;
