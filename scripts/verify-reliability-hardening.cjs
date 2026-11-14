@@ -194,6 +194,7 @@ const workflow = read('.github/workflows/build-windows.yml');
 check(/^\s*workflow_dispatch:\s*$/m.test(workflow) && !/^\s*push\s*:/m.test(workflow) && !/^\s*pull_request\s*:/m.test(workflow), 'local-version Windows build remains manual-only');
 check(workflow.includes('node scripts/verify-approved-fixes.cjs'), 'Windows CI executes the approved-fix regression suite');
 check(workflow.includes('npm run audit:dependencies'), 'Windows CI inventories production and development dependency advisories');
+check(workflow.indexOf('name: Verify Setup Licensing Flow') < workflow.indexOf('npm run audit:dependencies') && workflow.indexOf('npm run audit:dependencies') < workflow.indexOf('name: Download Visual C++'), 'security release gate runs after functional tests but before Windows packaging');
 const dependencyAudit = read('scripts/audit-dependencies.cjs');
 check(dependencyAudit.includes("if (!all || !production)") && dependencyAudit.includes("process.exitCode = 1"), 'an incomplete npm security inventory blocks release validation');
 check(dependencyAudit.includes("allCounts.critical") && dependencyAudit.includes("allCounts.high") && dependencyAudit.includes("process.exitCode = 1"), 'critical or high production or build dependency advisories block release packaging');
