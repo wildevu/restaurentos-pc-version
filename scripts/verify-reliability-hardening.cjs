@@ -29,6 +29,13 @@ check(queue.indexOf('if (flushPromise)', flushStart) < queue.indexOf('if (retryF
 check(queue.includes("db.transaction('rw', db.commands") && queue.includes('latestTime + 1'), 'queue preserves strict FIFO order for same-millisecond actions');
 check(queue.includes("notifyListeners('rejected')"), 'permanent rejection signals authoritative reconciliation');
 check(queue.includes('stablePayload.clientOrderId') && queue.includes('stablePayload.clientItemId'), 'offline entity IDs are persisted in queued payloads');
+check(queue.includes('committedAddItemAlias') && queue.includes('rewritePendingItemReferences') && queue.includes('remapOrderItemReferences'), 'stale ADD_ITEM merge fallback remaps dependent queued item references');
+check(queue.includes('await reconcileCommittedAddItemAlias(command, response.state as HubAuthoritativeState)'), 'direct command acknowledgements reconcile canonical item IDs before publishing state');
+check(queue.includes('reconcileCommittedAddItemAlias(command, authoritativeState, excludedIds)'), 'SYNC acknowledgement recovery remaps item references before retiring acknowledged queue rows');
+check(queue.includes('authoritativeState?: HubAuthoritativeState') && app.includes('removeAcknowledgedCommands([data.committedActionId], data)'), 'state broadcasts provide the authoritative snapshot needed for item alias recovery');
+check(app.includes('removeAcknowledgedCommands(res.acknowledgedActionIds') && app.includes('res.state || { tables: tablesRef.current, orders: ordersRef.current }'), 'reconnect SYNC passes server state into item alias recovery');
+check(commandQueries.includes('mergeIntoItemId') && commandQueries.includes("eq(orderItems.kitchenStatus, 'PENDING')"), 'ADD_ITEM merges only into an explicitly selected PENDING line');
+check(read('src/offline/optimistic.ts').includes('payload.mergeIntoItemId') && read('src/offline/optimistic.ts').includes('remapOrderItemReferences'), 'optimistic item merges and stale ID recovery share the same item identity contract');
 check(queue.includes('committedAddItemAlias') && queue.includes('rewritePendingItemReferences') && queue.includes('remapOrderItemReferences'), 'stale ADD_ITEM merge fallback rewrites dependent offline item references');
 check(queue.includes('await reconcileCommittedAddItemAlias(command, response.state as HubAuthoritativeState)'), 'direct command acknowledgements reconcile canonical item IDs before publishing state');
 check(queue.includes('reconcileCommittedAddItemAlias(command, authoritativeState, excludedIds)'), 'reconnect SYNC acknowledgement recovery remaps pending item references before deleting acknowledged commands');

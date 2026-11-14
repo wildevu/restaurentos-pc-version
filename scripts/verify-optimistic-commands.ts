@@ -127,6 +127,10 @@ const remappedBatch = remapOrderItemReferences(
   { orderItemIds: ['keep', 'stale-item'] }, 'stale-item', 'canonical-item'
 );
 assert.deepEqual(remappedBatch.orderItemIds, ['keep', 'canonical-item'], 'batch kitchen targets follow the canonical item ID');
+const dedupedBatch = remapOrderItemReferences(
+  { orderItemIds: ['stale-item', 'canonical-item'] }, 'stale-item', 'canonical-item'
+);
+assert.deepEqual(dedupedBatch.orderItemIds, ['canonical-item'], 'remapping cannot introduce duplicate batch targets');
 
 const remappedAdd = remapOrderItemReferences(
   { mergeIntoItemId: 'stale-item', clientItemId: 'newer-client-item' }, 'stale-item', 'canonical-item'
