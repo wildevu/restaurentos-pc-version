@@ -82,6 +82,7 @@ export async function getFrontendStateTx(tx: any, stateVersion?: number) {
         tableNumber: table?.number,
         tableLabel: table?.label,
         tableSection: table?.section || 'Main Dining',
+        covers: o.covers || 1,
         status: o.status,
         currencySnapshot: o.currencySnapshot || 'USD',
         openedByUserId: o.openedByUserId,

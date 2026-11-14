@@ -21,6 +21,7 @@ assert.equal(state.tables[0].orderId, 'order-client-1', 'table must point to the
 assert.equal(state.orders.length, 1, 'OPEN_TABLE must create its optimistic order');
 assert.equal(state.orders[0].id, state.tables[0].orderId, 'table and order IDs must match');
 assert.equal(state.orders[0].tableId, 'table-1', 'order must belong to the opened table');
+assert.equal(state.orders[0].covers, 3, 'optimistic order must preserve selected guest count');
 
 state = applyOptimisticCommand(state, 'ADD_ITEM', {
   tableId: 'table-1',

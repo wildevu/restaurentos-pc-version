@@ -25,6 +25,7 @@ export function applyOptimisticCommand(
             id: newOrderId,
             tableId: payload.tableId,
             tableNumber: tables[tableIdx].number,
+            covers: payload.covers || 1,
             status: 'OPEN',
             openedByUserId: '',
             createdAt: new Date().toISOString(),
