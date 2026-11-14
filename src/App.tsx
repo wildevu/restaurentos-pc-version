@@ -613,6 +613,7 @@ export function App() {
   };
 
   const stateVersionRef = useRef<number>(0);
+  const stateApplySequenceRef = useRef(0);
   const syncSequenceRef = useRef(0);
   const syncEpochRef = useRef<string>(localStorage.getItem('restaurantos_sync_epoch') || '');
   const initInFlightRef = useRef(false);
@@ -655,6 +656,7 @@ export function App() {
       if (!token) return;
 
       reconcileInFlightRef.current = true;
+      const reconcileSequence = ++stateApplySequenceRef.current;
       try {
         const response = await fetchWithTimeout('/api/state', {
           headers: { 'Authorization': 'Bearer ' + token }
@@ -665,7 +667,9 @@ export function App() {
         if (snapshotVersion < stateVersionRef.current) return;
         stateVersionRef.current = snapshotVersion;
         const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
-        // The socket may deliver a newer state while IndexedDB is being read.
+        // A newer apply operation, same-version broadcast, or local optimistic
+        // command may have happened while this HTTP/IndexedDB work was pending.
+        if (reconcileSequence !== stateApplySequenceRef.current) return;
         const snapshotStillCurrent = stateVersionRef.current === snapshotVersion;
         let reconciled = snapshotStillCurrent
           ? { tables: authoritative.tables || [], orders: authoritative.orders || [] }
@@ -685,6 +689,10 @@ export function App() {
     const unsubAuthoritative = subscribeToAuthoritativeState(async (state, committedActionId) => {
       const incomingVersion = Number(state.stateVersion || 0);
       if (incomingVersion < stateVersionRef.current) return;
+      const reconcileSequence = ++stateApplySequenceRef.current;
+      // Reserve the accepted version before awaiting IndexedDB so older
+      // snapshots cannot slip in while this reconciliation is in flight.
+      stateVersionRef.current = incomingVersion;
 
       let pending: any[] = [];
       try {
@@ -697,6 +705,7 @@ export function App() {
         // and surface the storage failure rather than blocking visible state.
         setDeviceStorageError(storageError?.message || 'Local command storage is unavailable.');
       }
+      if (reconcileSequence !== stateApplySequenceRef.current) return;
       if (incomingVersion < stateVersionRef.current) return;
 
       const reconciled = rebasePendingCommands({
@@ -711,6 +720,8 @@ export function App() {
     });
 
     const unsubOpt = subscribeToOptimistic((type, payload) => {
+      // Invalidate any asynchronous rebase that started before this local action.
+      stateApplySequenceRef.current++;
       // Never nest one React state setter inside another state updater. React may
       // defer the inner updater, causing the table to retain its old EMPTY status
       // while the new order is calculated separately.
@@ -883,6 +894,7 @@ export function App() {
             setIsConnected(false);
             return;
           }
+          const reconcileSequence = ++stateApplySequenceRef.current;
           let latestTables: any[] = tablesRef.current;
           let latestOrders: any[] = ordersRef.current;
 
@@ -923,15 +935,17 @@ export function App() {
             const baseState = syncSnapshotIsCurrent
               ? { tables: latestTables, orders: latestOrders }
               : { tables: tablesRef.current, orders: ordersRef.current };
+            if (reconcileSequence !== stateApplySequenceRef.current) return;
             const state = rebasePendingCommands(baseState, pending);
             setRestaurantState(state.tables, state.orders);
           } catch (error) {
             console.error('Optimistic re-apply failed', error);
-            if (stateVersionRef.current === syncBaseVersion) {
+            if (reconcileSequence === stateApplySequenceRef.current && stateVersionRef.current === syncBaseVersion) {
               setRestaurantState(latestTables, latestOrders);
             }
           }
 
+          if (reconcileSequence !== stateApplySequenceRef.current) return;
           setIsConnected(true);
           void flushQueue();
           }
@@ -966,6 +980,8 @@ export function App() {
         // allowed to lower the version after a restore from an older backup.
         const incomingVersion = Number(data.stateVersion || 0);
         if (data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync) return;
+        const reconcileSequence = ++stateApplySequenceRef.current;
+        if (data.stateVersion !== undefined) stateVersionRef.current = incomingVersion;
 
         // The room broadcast is authoritative evidence that its action committed.
         // Retire that action before replaying later pending local commands; otherwise
@@ -982,7 +998,9 @@ export function App() {
           setDeviceStorageError(storageError?.message || 'Local command storage is unavailable.');
         }
 
-        // A newer event may arrive while IndexedDB is being read.
+        // Do not let a slower same-version event or old queue read replace a
+        // newer broadcast, acknowledgement, SYNC response, or local optimistic action.
+        if (reconcileSequence !== stateApplySequenceRef.current) return;
         if (data.stateVersion !== undefined && incomingVersion < stateVersionRef.current && !data.forceResync) return;
 
         const reconciled = rebasePendingCommands({

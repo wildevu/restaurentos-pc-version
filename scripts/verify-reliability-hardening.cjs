@@ -41,6 +41,8 @@ check(app.includes('committedActionId') && app.includes('removeAcknowledgedComma
 check(app.includes('rebasePendingCommands') && read('src/offline/optimistic.ts').includes('committedActionId'), 'acknowledgement, broadcast and reconnect synchronization share a tested pending-command rebase helper');
 check(app.includes('const state = rebasePendingCommands(baseState, pending)') && app.includes('rebasePendingCommands'), 'reconnect synchronization rebases pending offline commands over the latest server snapshot');
 check(app.includes('syncSequenceRef.current') && app.includes('syncSequence !== syncSequenceRef.current'), 'late SYNC callbacks cannot overwrite more recent recovery results');
+check(app.includes('stateApplySequenceRef') && app.includes('reconcileSequence !== stateApplySequenceRef.current'), 'async state reconciliation is fenced across broadcasts, acknowledgements, SYNC, rejection recovery, and optimistic writes');
+check(app.includes('stateVersionRef.current = incomingVersion;') && app.includes('stateApplySequenceRef.current++'), 'accepted server versions are reserved before async queue reads and local optimistic writes invalidate older snapshots');
 check(app.includes('lastKnownEpoch: syncEpochRef.current') && app.includes("localStorage.setItem('restaurantos_sync_epoch'"), 'client persists server epoch across reloads to avoid unnecessary full snapshots');
 
 const server = read('server.ts');
