@@ -409,6 +409,19 @@ async function startServer() {
   // Public Local Hub Status Screen Endpoint (Safe summary without credentials)
   app.get('/api/hub/status', async (req: any, res) => {
     try {
+      // Report database readiness from a real query and filesystem permission
+      // check. A running HTTP process is not sufficient to call the DB healthy.
+      let databaseHealth: { status: 'HEALTHY' | 'UNAVAILABLE'; error?: string } = { status: 'HEALTHY' };
+      try {
+        await client.execute('SELECT 1 as alive;');
+        fs.accessSync(DB_PATH, fs.constants.R_OK | fs.constants.W_OK);
+        if (!fs.statSync(DB_PATH).isFile()) throw new Error('Configured database path is not a regular file.');
+      } catch (databaseError: any) {
+        databaseHealth = {
+          status: 'UNAVAILABLE',
+          error: databaseError?.code || databaseError?.message || 'Database health probe failed'
+        };
+      }
       const currentLanIps = getLocalLanIps();
       app.set('lanIps', currentLanIps);
       const rest = await db.select().from(restaurants).limit(1);
@@ -450,7 +463,8 @@ async function startServer() {
         mdnsLastResponseError: localHostnamePublisher.status.lastResponseError,
         connectedDevices: connectedSockets,
         database: {
-          status: 'HEALTHY',
+          ...databaseHealth,
+          path: DB_PATH,
           mode: 'WAL',
         },
         backups: {

@@ -45,6 +45,12 @@ jobs:
           node scripts/verify-reliability-hardening.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Verify RestaurantOS Data Directory and Write Access
+        shell: pwsh
+        run: |
+          npx tsx scripts/verify-data-storage.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Verify Windows PID Reuse Recovery
         shell: pwsh
         run: |
