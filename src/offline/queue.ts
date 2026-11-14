@@ -1,6 +1,7 @@
 import { db, ensureOfflineStorageReady, type QueuedCommand } from './db';
 import { socket } from '../socket';
 import { uuidv4 } from '../utils/uuid';
+import { remapOrderItemReferences } from './optimistic';
 
 export type QueueChangeReason = 'changed' | 'rejected' | 'hydrate';
 export type CommandStatusChangeCallback = (reason?: QueueChangeReason) => void;
@@ -46,6 +47,56 @@ async function publishAuthoritativeState(state: HubAuthoritativeState, committed
   for (const listener of authoritativeStateListeners) {
     await listener(state, committedActionId);
   }
+}
+
+function committedAddItemAlias(
+  command: QueuedCommand,
+  state: HubAuthoritativeState
+): { fromId: string; toId: string } | null {
+  if (command.type !== 'ADD_ITEM') return null;
+  const fromId = command.payload?.mergeIntoItemId;
+  const toId = command.payload?.clientItemId;
+  const tableId = command.payload?.tableId;
+  if (typeof fromId !== 'string' || typeof toId !== 'string' || fromId === toId || typeof tableId !== 'string') return null;
+
+  const createdItemIsCommitted = state.orders.some(order =>
+    order.tableId === tableId && (order.items || []).some((item: any) => item.id === toId)
+  );
+  return createdItemIsCommitted ? { fromId, toId } : null;
+}
+
+async function rewritePendingItemReferences(
+  fromId: string,
+  toId: string,
+  afterCreatedAt: Date,
+  excludedActionIds: string[] = []
+): Promise<void> {
+  if (!fromId || !toId || fromId === toId) return;
+  const cutoff = new Date(afterCreatedAt).getTime();
+  const excluded = new Set(excludedActionIds);
+
+  await db.transaction('rw', db.commands, async () => {
+    const pending = await db.commands.where('status').anyOf('PENDING', 'SYNCING').toArray();
+    for (const command of pending) {
+      if (excluded.has(command.actionId)) continue;
+      const createdAt = new Date(command.createdAt).getTime();
+      if (Number.isFinite(cutoff) && Number.isFinite(createdAt) && createdAt <= cutoff) continue;
+      const nextPayload = remapOrderItemReferences(command.payload, fromId, toId);
+      if (nextPayload !== command.payload) {
+        await db.commands.update(command.actionId, { payload: nextPayload });
+      }
+    }
+  });
+}
+
+async function reconcileCommittedAddItemAlias(
+  command: QueuedCommand,
+  state: HubAuthoritativeState,
+  excludedActionIds: string[] = [command.actionId]
+): Promise<void> {
+  const alias = committedAddItemAlias(command, state);
+  if (!alias) return;
+  await rewritePendingItemReferences(alias.fromId, alias.toId, command.createdAt, excludedActionIds);
 }
 
 export function subscribeToOptimistic(callback: OptimisticCommandCallback) {
@@ -201,6 +252,7 @@ async function drainQueue(): Promise<void> {
         if (response.state && Array.isArray(response.state.tables) && Array.isArray(response.state.orders)) {
           // Reconcile the authoritative commit before retiring its durable command.
           try {
+            await reconcileCommittedAddItemAlias(command, response.state as HubAuthoritativeState);
             await publishAuthoritativeState(response.state as HubAuthoritativeState, command.actionId);
           } catch (reconcileError: any) {
             await db.commands.update(command.actionId, {
@@ -331,10 +383,24 @@ export async function getPendingCommandErrors(): Promise<QueuedCommand[]> {
  * Remove commands the hub confirms are already committed. This is used during
  * reconnect SYNC when a previous COMMAND acknowledgement may have been lost.
  */
-export async function removeAcknowledgedCommands(actionIds: string[]): Promise<void> {
+export async function removeAcknowledgedCommands(
+  actionIds: string[],
+  authoritativeState?: HubAuthoritativeState
+): Promise<void> {
   await ensureOfflineStorageReady();
   const uniqueIds = [...new Set(actionIds.filter(id => typeof id === 'string' && id.length > 0))];
   if (uniqueIds.length === 0) return;
+
+  if (authoritativeState && Array.isArray(authoritativeState.orders)) {
+    const acknowledged = (await db.commands.bulkGet(uniqueIds))
+      .filter((command): command is QueuedCommand => Boolean(command))
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const excludedIds = acknowledged.map(command => command.actionId);
+    for (const command of acknowledged) {
+      await reconcileCommittedAddItemAlias(command, authoritativeState, excludedIds);
+    }
+  }
+
   await db.commands.bulkDelete(uniqueIds);
   notifyListeners();
 }
