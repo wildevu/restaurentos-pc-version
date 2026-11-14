@@ -92,6 +92,7 @@ async function run(): Promise<void> {
   const androidResponse = clients[0].responses[2];
   assert.deepEqual(clients[0].destinations[2], { address: '192.168.1.77', port: 49152 }, 'legacy response is unicast to Android query source');
   assert.equal(androidResponse.id, 0x4a21, 'legacy response repeats the query ID');
+  assert.equal(androidResponse.flags, 0x0100, 'legacy response preserves only the DNS Recursion Desired flag');
   assert.deepEqual(androidResponse.questions, androidQuery.questions, 'legacy response repeats the query question');
   assert.equal(androidResponse.answers[0].ttl, 10, 'legacy unicast TTL is capped at ten seconds');
   assert.equal(androidResponse.answers[0].flush, false, 'legacy response omits cache-flush bit');

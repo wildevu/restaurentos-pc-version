@@ -353,7 +353,7 @@ export class LocalHostnamePublisher {
       if (isLegacyUnicast) {
         response.id = query?.id ?? 0;
         response.questions = query?.questions || [];
-        if (query?.flags !== undefined) response.flags = query.flags;
+        if (query?.flags !== undefined) response.flags = query.flags & 0x0100; // Preserve only the conventional Recursion Desired bit.
       } else if (requestsUnicast) {
         response.id = 0;
       }
