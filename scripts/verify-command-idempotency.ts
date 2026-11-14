@@ -107,6 +107,24 @@ try {
   const savedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
   assert.ok(savedItem, 'server persisted the stable client-generated item ID');
 
+  // A current phone may safely merge into the exact row it saw as PENDING.
+  const mergeBaseId = randomUUID();
+  const mergeAttemptId = randomUUID();
+  await processCommand({
+    actionId: randomUUID(),
+    type: 'ADD_ITEM',
+    payload: { tableId, menuItemId, clientItemId: mergeBaseId }
+  } as any, user as any);
+  await processCommand({
+    actionId: randomUUID(),
+    type: 'ADD_ITEM',
+    payload: { tableId, menuItemId, clientItemId: mergeAttemptId, mergeIntoItemId: mergeBaseId }
+  } as any, user as any);
+  const mergedBase = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, mergeBaseId)).get();
+  const unusedMergeId = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, mergeAttemptId)).get();
+  assert.equal(mergedBase.quantity, 2, 'ADD_ITEM merges into the exact PENDING target row');
+  assert.equal(unusedMergeId, undefined, 'successful merge does not persist the unused client row ID');
+
   await db.update(schema.tables).set({ status: 'EMPTY' }).where(eq(schema.tables.id, tableId));
   await assert.rejects(
     () => processCommand({
