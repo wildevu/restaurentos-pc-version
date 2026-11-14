@@ -116,6 +116,15 @@ try {
   const incrementedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
   assert.equal(incrementedItem.quantity, 2, 'replayed increment did not apply twice to item quantity');
 
+  const concurrentIncrements = Array.from({ length: 5 }, () => ({
+    actionId: randomUUID(),
+    type: 'INCREMENT_ITEM',
+    payload: { tableId, orderItemId: itemId }
+  }));
+  await Promise.all(concurrentIncrements.map(command => processCommand(command as any, user as any)));
+  const concurrentItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
+  assert.equal(concurrentItem.quantity, 7, 'concurrent increments are serialized without losing updates');
+
   const note = {
     actionId: randomUUID(),
     type: 'SET_ITEM_NOTE',
@@ -131,7 +140,7 @@ try {
   const decrementReplay = await processCommand(decrement as any, user as any);
   assert.equal(decrementReplay.duplicate, true, 'replayed DECREMENT_ITEM is idempotent');
   const decrementedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
-  assert.equal(decrementedItem.quantity, 1, 'DECREMENT_ITEM decrements exactly once');
+  assert.equal(decrementedItem.quantity, 6, 'DECREMENT_ITEM decrements exactly once after concurrent increments');
 
   // Kitchen can prepare and mark items ready; waiter can only serve ready items.
   const kitchenUserId = randomUUID();
