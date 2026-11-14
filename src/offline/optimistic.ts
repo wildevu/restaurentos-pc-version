@@ -225,6 +225,31 @@ export function remapOrderItemReferences(payload: any, fromId: string, toId: str
 }
 
 /**
+ * Rewrites item references inside queued command payloads when a stale ADD_ITEM
+ * is persisted as a new canonical row instead of merging into its expected row.
+ */
+export function remapOrderItemReferences(payload: any, fromId: string, toId: string): any {
+  if (!payload || typeof payload !== 'object' || !fromId || !toId || fromId === toId) return payload;
+  const next = { ...payload };
+  let changed = false;
+
+  if (next.orderItemId === fromId) {
+    next.orderItemId = toId;
+    changed = true;
+  }
+  if (next.mergeIntoItemId === fromId) {
+    next.mergeIntoItemId = toId;
+    changed = true;
+  }
+  if (Array.isArray(next.orderItemIds) && next.orderItemIds.includes(fromId)) {
+    next.orderItemIds = next.orderItemIds.map((id: string) => id === fromId ? toId : id);
+    changed = true;
+  }
+
+  return changed ? next : payload;
+}
+
+/**
  * Rebuild the local view from an authoritative hub snapshot plus commands that
  * remain pending on this device. A command known to have committed is excluded
  * because its effect is already present in the snapshot.
