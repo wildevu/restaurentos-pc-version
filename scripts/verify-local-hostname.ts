@@ -100,7 +100,8 @@ async function run(): Promise<void> {
   assert.equal(publisher.status.legacyUnicastResponseCount, 1, 'legacy unicast response count is tracked');
 
   // A compliant mDNS client can request a unicast reply with the QU class bit.
-  clients[0].emit('query', { id: 0, questions: [{ name: 'restos.local.', type: 'A', class: 0x8001 }] }, { address: '192.168.1.88', port: 5353 });
+  // dns-packet 5.6.1 decodes the IN|QU class as UNKNOWN_32769.
+  clients[0].emit('query', { id: 0, questions: [{ name: 'restos.local.', type: 'A', class: 'UNKNOWN_32769' }] }, { address: '192.168.1.88', port: 5353 });
   const quResponse = clients[0].responses[3];
   assert.deepEqual(clients[0].destinations[3], { address: '192.168.1.88', port: 5353 }, 'QU query receives a unicast response');
   assert.equal(quResponse.id, 0, 'QU mDNS response uses query ID zero');

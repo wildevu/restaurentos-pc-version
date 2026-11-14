@@ -339,8 +339,16 @@ export class LocalHostnamePublisher {
       // and question, TTL <= 10 seconds, and no cache-flush bit.
       const isLegacyUnicast = Number.isInteger(remoteInfo?.port) && remoteInfo!.port !== MDNS_PORT;
       const requestsUnicast = !isLegacyUnicast && Boolean(query?.questions?.some((question) => {
-        const questionClass = typeof question.class === 'number' ? question.class : Number(question.class);
-        return Number.isFinite(questionClass) && (questionClass & 0x8000) !== 0;
+        // dns-packet 5.6.1 converts unknown DNS class values to "UNKNOWN_<n>".
+        // A QU request therefore arrives as "UNKNOWN_32769" (IN | 0x8000),
+        // not as a numeric class. Parse both the normal numeric and decoded forms.
+        const rawClass = question.class;
+        const numericClass = typeof rawClass === 'number'
+          ? rawClass
+          : /^UNKNOWN_(\d+)$/i.test(String(rawClass))
+            ? Number(String(rawClass).replace(/^UNKNOWN_/i, ''))
+            : Number(rawClass);
+        return Number.isFinite(numericClass) && (numericClass & 0x8000) !== 0;
       }));
       const responseMode: MdnsResponseMode = isLegacyUnicast
         ? 'legacy-unicast'
