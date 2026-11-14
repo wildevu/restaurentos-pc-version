@@ -181,7 +181,7 @@ async function drainQueue(): Promise<void> {
         await db.commands.update(command.actionId, {
           status: 'PENDING',
           lastError: attempts >= MAX_ATTEMPTS
-            ? 'Acknowledgement unavailable; the server may already have committed this action. It will retry with the same action ID when the hub reconnects.'
+            ? `Acknowledgement unavailable after repeated attempts. The server may already have committed this action; it will retry with the same action ID when the hub reconnects. Last transport error: ${message}`
             : message
         });
         notifyListeners();
@@ -254,7 +254,7 @@ async function drainQueue(): Promise<void> {
       await db.commands.update(command.actionId, {
         status: attempts >= MAX_ATTEMPTS ? 'PENDING' : 'SYNCING',
         lastError: attempts >= MAX_ATTEMPTS
-          ? 'The hub did not accept confirmation after repeated retries. This action remains queued and will be retried after reconnect.'
+          ? `The hub did not confirm this action after repeated retries. It remains queued. Last hub response: ${errorMessage}`
           : errorMessage
       });
       notifyListeners();
