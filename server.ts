@@ -643,7 +643,8 @@ async function startServer() {
         }
 
         const rawErrorMessage = err?.message || String(err);
-        const databaseUnavailable = /SQLITE_CANTOPEN|unable to open database file|SQLITE_READONLY|readonly database|SQLITE_FULL|database or disk is full/i.test(rawErrorMessage);
+        const rawErrorCode = String(err?.code || err?.cause?.code || '');
+        const databaseUnavailable = /SQLITE_(CANTOPEN|READONLY|FULL|IOERR|PERM)|unable to open database file|readonly database|database or disk is full|disk I\\/O error|EACCES|EPERM|ENOSPC|EROFS/i.test(`${rawErrorCode} ${rawErrorMessage}`);
         if (databaseUnavailable) {
           isRetryable = true;
           errorCode = 'DATABASE_UNAVAILABLE';
@@ -658,6 +659,8 @@ async function startServer() {
           commandType: payload?.type,
           errorCode,
           retryable: isRetryable,
+          errorCode: rawErrorCode || errorCode,
+          databasePath: databaseUnavailable ? DB_PATH : undefined,
           error: rawErrorMessage
         });
         if (callback) callback({

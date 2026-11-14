@@ -43,6 +43,7 @@ check(app.includes('syncSequenceRef.current') && app.includes('syncSequence !== 
 check(app.includes('lastKnownEpoch: syncEpochRef.current') && app.includes("localStorage.setItem('restaurantos_sync_epoch'"), 'client persists server epoch across reloads to avoid unnecessary full snapshots');
 
 const server = read('server.ts');
+check(server.includes('SQLITE_(CANTOPEN|READONLY|FULL|IOERR|PERM)') && server.includes('databasePath: databaseUnavailable ? DB_PATH'), 'database file, disk, and permission failures are classified and logged with the actual hub database path');
 check(server.includes('state: result.state') && server.includes('committedActionId: command.actionId'), 'command acknowledgements and room broadcasts carry committed authoritative state and action identity');
 check(server.includes("fs.openSync(LOCK_FILE, 'wx')"), 'single-instance lock uses exclusive file creation');
 check(server.includes('owner === process.pid'), 'process releases only its own PID lock');
