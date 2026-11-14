@@ -68,10 +68,12 @@ async function run(): Promise<void> {
   assert.equal(clients[0].responses[0].answers[0].ttl, 30);
   assert.equal(clients[0].responses[0].answers[0].flush, true);
 
-  clients[0].emit('query', { questions: [{ name: 'RESTOS.LOCAL.', type: 'A' }] });
+  clients[0].emit('query', { questions: [{ name: 'RESTOS.LOCAL.', type: 'A' }] }, { address: '192.168.1.99', port: 5353 });
   assert.equal(clients[0].responses.length, 2);
   assert.equal(publisher.status.queryCount, 1, 'matching hostname queries are counted');
   assert.ok(publisher.status.lastQueryAt, 'last matching query time is available');
+  assert.equal(publisher.status.lastQuerySourceAddress, '192.168.1.99', 'query source address is exposed for client diagnostics');
+  assert.equal(publisher.status.lastQuerySourcePort, 5353, 'query source port is exposed for client diagnostics');
   assert.deepEqual(publisher.status.lastQueryTypes, ['A'], 'queried DNS record types are exposed for diagnostics');
   assert.equal(publisher.status.responseCount, 1, 'successful mDNS response sends are counted');
   assert.ok(publisher.status.lastResponseAt, 'last successful response time is available');

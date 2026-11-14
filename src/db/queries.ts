@@ -520,6 +520,16 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
             ));
           }
         }
+
+        // Never silently apply a partial batch. A stale or foreign item ID must
+        // reject the entire operation so staff are not told every item changed.
+        if (orderItemIds && orderItemIds.length > 0) {
+          const requestedIds = new Set(orderItemIds);
+          if (requestedIds.size !== orderItemIds.length || candidateItems.length !== requestedIds.size) {
+            throw new CommandError('One or more selected order items are missing, duplicated, or no longer part of an active order. Refresh the kitchen display and retry.', false);
+          }
+        }
+
         // A bulk READY action must not undo an item's SERVED state.
         const targetItemIds = candidateItems
           .filter((item: any) => status !== 'READY' || item.kitchenStatus !== 'SERVED')

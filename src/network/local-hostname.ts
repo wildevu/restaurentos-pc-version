@@ -13,6 +13,8 @@ export interface LocalHostnameStatus {
   queryCount: number;
   lastQueryAt: string | null;
   lastQueryTypes: string[];
+  lastQuerySourceAddress: string | null;
+  lastQuerySourcePort: number | null;
   responseCount: number;
   lastResponseAt: string | null;
   lastResponseError: string | null;
@@ -27,6 +29,11 @@ interface MdnsQuery {
   questions?: MdnsQuestion[];
 }
 
+interface MdnsRemoteInfo {
+  address?: string;
+  port?: number;
+}
+
 interface MdnsRecord {
   name: string;
   type: 'A';
@@ -38,7 +45,7 @@ interface MdnsRecord {
 
 interface MdnsClient {
   on(event: 'ready', listener: () => void): this;
-  on(event: 'query', listener: (query: MdnsQuery) => void): this;
+  on(event: 'query', listener: (query: MdnsQuery, remoteInfo?: MdnsRemoteInfo) => void): this;
   on(event: 'error' | 'warning', listener: (error: Error) => void): this;
   respond(packet: { answers: MdnsRecord[] }, callback?: (error?: Error | null) => void): void;
   destroy(callback?: () => void): void;
@@ -89,6 +96,8 @@ export class LocalHostnamePublisher {
   private queryCount = 0;
   private lastQueryAt: string | null = null;
   private lastQueryTypes: string[] = [];
+  private lastQuerySourceAddress: string | null = null;
+  private lastQuerySourcePort: number | null = null;
   private responseCount = 0;
   private lastResponseAt: string | null = null;
   private lastResponseError: string | null = null;
@@ -111,6 +120,8 @@ export class LocalHostnamePublisher {
       queryCount: this.queryCount,
       lastQueryAt: this.lastQueryAt,
       lastQueryTypes: [...this.lastQueryTypes],
+      lastQuerySourceAddress: this.lastQuerySourceAddress,
+      lastQuerySourcePort: this.lastQuerySourcePort,
       responseCount: this.responseCount,
       lastResponseAt: this.lastResponseAt,
       lastResponseError: this.lastResponseError,
@@ -223,9 +234,11 @@ export class LocalHostnamePublisher {
       }
     });
 
-    client.on('query', (query) => {
+    client.on('query', (query, remoteInfo) => {
       if (this.client !== client || !query.questions?.some(isLocalHostnameQuestion)) return;
       this.queryCount++;
+      this.lastQuerySourceAddress = remoteInfo?.address || null;
+      this.lastQuerySourcePort = Number.isInteger(remoteInfo?.port) ? remoteInfo!.port! : null;
       this.lastQueryAt = new Date().toISOString();
       this.lastQueryTypes = [...new Set(query.questions?.map(question => String(question.type).toUpperCase()) || [])];
       this.respond(client, address, RECORD_TTL_SECONDS, (error) => {
