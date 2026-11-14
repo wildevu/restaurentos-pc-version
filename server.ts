@@ -663,11 +663,32 @@ async function startServer() {
           databasePath: databaseUnavailable ? DB_PATH : undefined,
           error: rawErrorMessage
         });
+        // Business-rule and permission rejections should also return the
+        // current authoritative state. The client uses it to roll back the
+        // rejected optimistic action while preserving later pending actions.
+        let rejectionState: any = undefined;
+        if (!isRetryable) {
+          try {
+            rejectionState = await db.transaction(async (tx: any) => {
+              const versionRow = await tx.select().from(hubState)
+                .where(eq(hubState.restaurantId, user.restaurantId)).get();
+              return getFrontendStateTx(tx, versionRow?.version || 0);
+            });
+          } catch (stateError: any) {
+            logger.warn('Could not load authoritative state after command rejection.', {
+              actionId: payload?.actionId,
+              error: stateError?.message || String(stateError)
+            });
+          }
+        }
+
         if (callback) callback({
           success: false,
           retryable: isRetryable,
           code: errorCode,
           actionId: payload?.actionId,
+          state: rejectionState,
+          syncEpoch,
           error: clientErrorMessage || 'The hub could not confirm this action.'
         });
       } finally {

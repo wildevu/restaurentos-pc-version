@@ -232,6 +232,15 @@ async function drainQueue(): Promise<void> {
       }
 
       if (response.retryable === false) {
+        if (response.state && Array.isArray(response.state.tables) && Array.isArray(response.state.orders)) {
+          try {
+            // The rejected action is not part of the hub snapshot. Exclude it
+            // while replaying later pending work so optimistic UI is rolled back.
+            await publishAuthoritativeState(response.state as HubAuthoritativeState, command.actionId);
+          } catch (reconcileError) {
+            console.error('Could not reconcile state after command rejection.', reconcileError);
+          }
+        }
         await db.commands.update(command.actionId, {
           status: 'REJECTED',
           lastError: response.error || response.message || 'The server rejected this command.'
