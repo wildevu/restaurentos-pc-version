@@ -644,7 +644,7 @@ async function startServer() {
 
         const rawErrorMessage = err?.message || String(err);
         const rawErrorCode = String(err?.code || err?.cause?.code || '');
-        const databaseUnavailable = /SQLITE_(CANTOPEN|READONLY|FULL|IOERR|PERM)|unable to open database file|readonly database|database or disk is full|disk I\\/O error|EACCES|EPERM|ENOSPC|EROFS/i.test(`${rawErrorCode} ${rawErrorMessage}`);
+        const databaseUnavailable = /SQLITE_(CANTOPEN|READONLY|FULL|IOERR|PERM)|unable to open database file|readonly database|database or disk is full|disk I\/O error|EACCES|EPERM|ENOSPC|EROFS/i.test(`${rawErrorCode} ${rawErrorMessage}`);
         if (databaseUnavailable) {
           isRetryable = true;
           errorCode = 'DATABASE_UNAVAILABLE';
