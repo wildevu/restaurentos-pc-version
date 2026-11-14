@@ -6,7 +6,7 @@ import fs from 'fs';
 import { uuidv4 } from './src/utils/uuid';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { runMigrations, seedDb, db } from './src/db/index';
+import { runMigrations, seedDb, db, client } from './src/db/index';
 
 import { config } from './src/config';
 import { logger, cleanOldLogs } from './src/logger';
@@ -177,7 +177,7 @@ async function startServer() {
     dbPath: DB_PATH
   });
   
-  ensureDirectories();
+  ensureDirectories({ strict: true, verifyWritable: true });
   if (!acquireInstanceLock()) {
     logger.error('RestaurantOS Local Hub is already running or its lock could not be acquired. Exiting without touching the active instance.');
     process.exit(1);
@@ -374,7 +374,9 @@ async function startServer() {
     }
 
     try {
-      await db.run(sql.raw('SELECT 1 as alive;'));
+      await client.execute('SELECT 1 as alive;');
+      fs.accessSync(DB_PATH, fs.constants.R_OK | fs.constants.W_OK);
+      if (!fs.statSync(DB_PATH).isFile()) throw new Error('Configured database path is not a regular file.');
       const hub = await db.select().from(hubState).limit(1);
       const currentLanIps = getLocalLanIps();
       app.set('lanIps', currentLanIps);
@@ -588,7 +590,16 @@ async function startServer() {
 
         const command = CommandPayloadSchema.parse(payload);
         const result = await processCommand(command, user, socket.handshake.auth?.clientInstallationId);
-        if (callback) callback({ success: true, duplicate: result.duplicate, stateVersion: result.stateVersion });
+        // Return the committed state inside the acknowledgement. The origin device
+        // must not depend on separately receiving a STATE_UPDATE broadcast.
+        if (callback) callback({
+          success: true,
+          duplicate: result.duplicate,
+          actionId: command.actionId,
+          stateVersion: result.stateVersion,
+          syncEpoch,
+          state: result.state
+        });
         if (result.state) io.to(restaurantRoom).emit('STATE_UPDATE', result.state);
       } catch (err: any) {
         let isRetryable = true;
@@ -600,20 +611,31 @@ async function startServer() {
           isRetryable = false;
           errorCode = 'VALIDATION';
         }
+
+        const rawErrorMessage = err?.message || String(err);
+        const databaseUnavailable = /SQLITE_CANTOPEN|unable to open database file|SQLITE_READONLY|readonly database|SQLITE_FULL|database or disk is full/i.test(rawErrorMessage);
+        if (databaseUnavailable) {
+          isRetryable = true;
+          errorCode = 'DATABASE_UNAVAILABLE';
+        }
+        const clientErrorMessage = databaseUnavailable
+          ? 'The Local Hub cannot access its restaurant database. This action remains queued for retry. Ask the manager to check database-folder permissions and available disk space.'
+          : rawErrorMessage;
+
         logger.error('Command failed', {
           userId: user.id,
           actionId: payload?.actionId,
           commandType: payload?.type,
           errorCode,
           retryable: isRetryable,
-          error: err?.message || String(err)
+          error: rawErrorMessage
         });
         if (callback) callback({
           success: false,
           retryable: isRetryable,
           code: errorCode,
           actionId: payload?.actionId,
-          error: err?.message || 'The hub could not confirm this action.'
+          error: clientErrorMessage || 'The hub could not confirm this action.'
         });
       } finally {
         activeSocketOperations = Math.max(0, activeSocketOperations - 1);

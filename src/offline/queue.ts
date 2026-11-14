@@ -1,4 +1,4 @@
-import { db } from './db';
+import { db, ensureOfflineStorageReady } from './db';
 import { socket } from '../socket';
 import { uuidv4 } from '../utils/uuid';
 
@@ -21,6 +21,30 @@ function notifyListeners(reason: QueueChangeReason = 'changed') {
 
 export type OptimisticCommandCallback = (type: string, payload: any) => void;
 let optimisticListeners: OptimisticCommandCallback[] = [];
+
+export interface HubAuthoritativeState {
+  stateVersion?: number;
+  tables: any[];
+  orders: any[];
+  menu?: any[];
+  restaurant?: any;
+}
+
+export type AuthoritativeStateCallback = (state: HubAuthoritativeState) => void;
+let authoritativeStateListeners: AuthoritativeStateCallback[] = [];
+
+export function subscribeToAuthoritativeState(callback: AuthoritativeStateCallback) {
+  authoritativeStateListeners.push(callback);
+  return () => {
+    authoritativeStateListeners = authoritativeStateListeners.filter(listener => listener !== callback);
+  };
+}
+
+function publishAuthoritativeState(state: HubAuthoritativeState): void {
+  for (const listener of authoritativeStateListeners) {
+    try { listener(state); } catch (error) { console.error('Authoritative state listener failed', error); }
+  }
+}
 
 export function subscribeToOptimistic(callback: OptimisticCommandCallback) {
   optimisticListeners.push(callback);
@@ -87,6 +111,8 @@ function sendCommand(command: { actionId: string; type: string; payload: any }):
 }
 
 export async function executeCommand(type: string, payload: any): Promise<{ actionId: string, status: string }> {
+  // Never optimistically change the POS until durable local command storage works.
+  await ensureOfflineStorageReady();
   const actionId = uuidv4();
   const stablePayload = { ...(payload || {}) };
 
@@ -167,8 +193,24 @@ async function drainQueue(): Promise<void> {
       }
 
       if (response.success === true || (response.duplicate === true && response.success !== false)) {
-        await db.commands.delete(command.actionId);
+        if (response.state && Array.isArray(response.state.tables) && Array.isArray(response.state.orders)) {
+          // Reconcile the authoritative commit before retiring its durable command.
+          publishAuthoritativeState(response.state as HubAuthoritativeState);
+          await db.commands.delete(command.actionId);
+          notifyListeners();
+          break;
+        }
+
+        // A positive acknowledgement without a snapshot is not enough to make
+        // the local view authoritative. Retry the same idempotency key; the hub
+        // will answer with the committed snapshot if the transaction already ran.
+        await db.commands.update(command.actionId, {
+          status: 'PENDING',
+          lastError: 'The hub acknowledged this action but omitted its committed state. The same action ID will be retried safely to reconcile it.'
+        });
         notifyListeners();
+        scheduleFlushRetry();
+        stopDrain = true;
         break;
       }
 
@@ -205,6 +247,13 @@ async function drainQueue(): Promise<void> {
 
 export async function flushQueue(): Promise<void> {
   if (!socket.connected) return;
+  try {
+    await ensureOfflineStorageReady();
+  } catch (error) {
+    console.error('Cannot flush commands because device storage is unavailable; queued actions were not discarded.', error);
+    notifyListeners();
+    return;
+  }
   // A concurrent caller asks for a follow-up drain but must not cancel the
   // retry cooldown that protects against a busy/unresponsive hub.
   if (flushPromise) {
@@ -237,10 +286,12 @@ export async function flushQueue(): Promise<void> {
 }
 
 export async function getPendingCount(): Promise<number> {
+  await ensureOfflineStorageReady();
   return db.commands.where('status').anyOf('PENDING', 'SYNCING').count();
 }
 
 export async function getRejectedCommands() {
+  await ensureOfflineStorageReady();
   return db.commands.where('status').equals('REJECTED').toArray();
 }
 
@@ -249,6 +300,7 @@ export async function getRejectedCommands() {
  * reconnect SYNC when a previous COMMAND acknowledgement may have been lost.
  */
 export async function removeAcknowledgedCommands(actionIds: string[]): Promise<void> {
+  await ensureOfflineStorageReady();
   const uniqueIds = [...new Set(actionIds.filter(id => typeof id === 'string' && id.length > 0))];
   if (uniqueIds.length === 0) return;
   await db.commands.bulkDelete(uniqueIds);
@@ -256,17 +308,20 @@ export async function removeAcknowledgedCommands(actionIds: string[]): Promise<v
 }
 
 export async function retryCommand(actionId: string) {
+  await ensureOfflineStorageReady();
   await db.commands.update(actionId, { status: 'PENDING', lastError: undefined });
   notifyListeners();
   if (socket.connected) void flushQueue();
 }
 
 export async function dismissCommand(actionId: string) {
+  await ensureOfflineStorageReady();
   await db.commands.delete(actionId);
   notifyListeners('rejected');
 }
 
 export async function clearRejectedCommands() {
+  await ensureOfflineStorageReady();
   const rejected = await getRejectedCommands();
   await db.commands.bulkDelete(rejected.map(command => command.actionId));
   notifyListeners('rejected');
