@@ -119,6 +119,13 @@ export async function getFrontendStateTx(tx: any, stateVersion?: number) {
   };
 }
 
+function isSqliteLockContention(error: any): boolean {
+  const code = String(error?.code || error?.cause?.code || '').toUpperCase();
+  const message = String(error?.message || error?.cause?.message || error || '');
+  return /SQLITE_(BUSY|LOCKED)/.test(code) ||
+    /SQLITE_(BUSY|LOCKED)|database is locked|database table is locked/i.test(message);
+}
+
 async function runTransactionWithRetry<T>(
   fn: (tx: any) => Promise<T>,
   retries = 5
@@ -127,7 +134,7 @@ async function runTransactionWithRetry<T>(
     try {
       return await db.transaction(fn, { behavior: 'immediate' });
     } catch (err: any) {
-      if (err.message && err.message.includes('SQLITE_BUSY')) {
+      if (isSqliteLockContention(err)) {
         await new Promise(r => setTimeout(r, 50 * Math.pow(2, i)));
         continue;
       }

@@ -84,6 +84,8 @@ check(read('windows/installer/uninstall.ps1').includes('run-hub-supervisor.ps1')
 
 const dbPaths = read('src/paths.ts');
 check(dbPaths.includes('verifyWritable') && dbPaths.includes('fs.fsyncSync'), 'required data directories are created and verified with a real write probe');
+const commandQueries = read('src/db/queries.ts');
+check(commandQueries.includes('isSqliteLockContention') && commandQueries.includes('SQLITE_(BUSY|LOCKED)'), 'command transactions retry SQLite BUSY and LOCKED variants without treating business errors as transient');
 const dbRuntime = read('src/db/index.ts');
 check(dbRuntime.includes('verifyDatabaseFileWritable') && dbRuntime.includes('ensureDirectories({ strict: true, verifyWritable: true })'), 'database startup fails early when the configured database file cannot be opened');
 check(dbRuntime.includes('fs.openSync(DB_PATH, \'a+\')'), 'database path is explicitly opened before migrations');
