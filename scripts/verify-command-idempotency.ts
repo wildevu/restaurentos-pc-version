@@ -180,6 +180,20 @@ try {
     /only mark ready items as served/i,
     'waiter cannot perform kitchen preparation status changes'
   );
+  await assert.rejects(
+    () => processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'PREPARING' } } as any, kitchenUser as any),
+    /served items cannot be returned/i,
+    'kitchen cannot move a served item back into active preparation'
+  );
+  await assert.rejects(
+    () => processCommand({
+      actionId: randomUUID(),
+      type: 'BATCH_UPDATE_KITCHEN_STATUS',
+      payload: { orderId, orderItemIds: [itemId], status: 'PREPARING' }
+    } as any, kitchenUser as any),
+    /served items cannot be returned/i,
+    'kitchen batch updates cannot reopen served items'
+  );
 
   const batchItemId = randomUUID();
   await processCommand({
@@ -265,56 +279,6 @@ try {
   assert.equal(raceResults.filter(result => result.status === 'rejected').length, 1, 'the competing OPEN_TABLE must be rejected');
   const raceOrders = await db.select().from(schema.orders).where(eq(schema.orders.tableId, raceTableId));
   assert.equal(raceOrders.filter((order: any) => order.status === 'OPEN').length, 1, 'concurrent opening leaves exactly one OPEN order');
-
-  // Kitchen lifecycle and waiter serving permissions are checked against active orders.
-  const kitchenUserId = randomUUID();
-  await db.insert(schema.users).values({
-    id: kitchenUserId,
-    restaurantId,
-    name: 'Kitchen Test User',
-    username: 'kitchen_' + randomUUID().replace(/-/g, ''),
-    passwordHash: 'not-a-real-login-hash',
-    role: 'KITCHEN',
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const kitchenUser = { id: kitchenUserId, restaurantId, username: 'kitchen-test' };
-  await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'PREPARING' } } as any, kitchenUser as any);
-  await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'READY' } } as any, kitchenUser as any);
-
-  const waiterUserId = randomUUID();
-  await db.insert(schema.users).values({
-    id: waiterUserId,
-    restaurantId,
-    name: 'Waiter Test User',
-    username: 'waiter_' + randomUUID().replace(/-/g, ''),
-    passwordHash: 'not-a-real-login-hash',
-    role: 'WAITER',
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const waiterUser = { id: waiterUserId, restaurantId, username: 'waiter-test' };
-  await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'SERVED' } } as any, waiterUser as any);
-  const servedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
-  assert.equal(servedItem.kitchenStatus, 'SERVED', 'waiter may mark a READY item as SERVED');
-  await assert.rejects(
-    () => processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'READY' } } as any, waiterUser as any),
-    /only mark ready items as served/i,
-    'waiter cannot perform kitchen preparation status changes'
-  );
-
-  const invalidBatch = {
-    actionId: randomUUID(),
-    type: 'BATCH_UPDATE_KITCHEN_STATUS',
-    payload: { orderId, orderItemIds: [itemId, randomUUID()], status: 'PREPARING' }
-  };
-  await assert.rejects(
-    () => processCommand(invalidBatch as any, kitchenUser as any),
-    /selected order items are missing/i,
-    'batch update cannot silently apply only a subset of requested item IDs'
-  );
 
   const otherUserId = randomUUID();
   await db.insert(schema.users).values({
