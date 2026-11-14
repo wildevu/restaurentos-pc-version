@@ -553,17 +553,30 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
             kitchenStatus: orderItems.kitchenStatus
           }).from(orderItems).where(conditions);
         } else if (orderItemIds && orderItemIds.length > 0) {
-          const activeOrders = await tx.select({ id: orders.id }).from(orders)
+          const activeOrders = await tx.select({ id: orders.id, tableId: orders.tableId }).from(orders)
             .where(eq(orders.status, 'OPEN'));
           const activeOrderIds = activeOrders.map((order: any) => order.id);
           if (activeOrderIds.length > 0) {
             candidateItems = await tx.select({
               id: orderItems.id,
+              orderId: orderItems.orderId,
               kitchenStatus: orderItems.kitchenStatus
             }).from(orderItems).where(and(
               inArray(orderItems.id, orderItemIds),
               inArray(orderItems.orderId, activeOrderIds)
             ));
+
+            // A batch without an explicit order can span multiple tickets, but
+            // every target still must belong to the unique active order of an ACTIVE table.
+            const targetOrderIds = [...new Set(candidateItems.map((item: any) => item.orderId))];
+            for (const targetOrderId of targetOrderIds) {
+              const targetOrder = activeOrders.find((order: any) => order.id === targetOrderId);
+              if (!targetOrder) throw new CommandError('One or more kitchen targets are not active.', false);
+              const uniqueActiveOrder = await getUniqueActiveOrderForTable(tx, targetOrder.tableId);
+              if (!uniqueActiveOrder || uniqueActiveOrder.id !== targetOrderId) {
+                throw new CommandError('Kitchen target is not associated with its table\'s unique active order.', false);
+              }
+            }
           }
         }
 

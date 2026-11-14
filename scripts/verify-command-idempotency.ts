@@ -117,6 +117,15 @@ try {
     /table state is inconsistent with its active order/i,
     'order mutations are blocked when the table is marked EMPTY'
   );
+  await assert.rejects(
+    () => processCommand({
+      actionId: randomUUID(),
+      type: 'BATCH_UPDATE_KITCHEN_STATUS',
+      payload: { orderItemIds: [itemId], status: 'PREPARING' }
+    } as any, user as any),
+    /table state is inconsistent with its active order/i,
+    'batch kitchen updates without an explicit order ID still enforce table/order consistency'
+  );
   await db.update(schema.tables).set({ status: 'ACTIVE' }).where(eq(schema.tables.id, tableId));
   assert.equal(savedItem.quantity, 1, 'replaying ADD_ITEM did not create a second item');
   assert.equal(savedItem.notes, 'offline note', 'initial item notes survive server persistence');
