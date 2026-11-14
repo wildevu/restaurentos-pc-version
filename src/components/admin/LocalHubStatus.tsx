@@ -147,6 +147,9 @@ export function LocalHubStatus({ authToken }: { authToken?: string }) {
                       ? `Stable hostname is advertised at ${status.mdnsAddress || 'the current LAN address'}; phones must be able to reach mDNS on this Wi-Fi.`
                       : `Stable hostname is not currently advertised (status: ${status.mdnsStatus || 'unknown'}). The QR remains stable; check mDNS discovery before onboarding phones.`}
                   </div>
+                  <div className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2 mb-2">
+                    Android diagnostics: keep the phone on this Wi-Fi and temporarily turn off any VPN and mobile data while testing the .local address. Some Android resolver paths do not send mDNS when VPN or mobile-data routing is active.
+                  </div>
                   <div className="text-xs text-gray-500 mb-2">
                     mDNS queries received: <strong>{status.mdnsQueriesReceived ?? 0}</strong>
                     {status.mdnsLastQueryAt ? ` • Last query ${new Date(status.mdnsLastQueryAt).toLocaleTimeString()}` : ' • No matching device query has reached the hub'}
