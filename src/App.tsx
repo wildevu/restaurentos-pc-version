@@ -671,10 +671,12 @@ export function App() {
         // command may have happened while this HTTP/IndexedDB work was pending.
         if (reconcileSequence !== stateApplySequenceRef.current) return;
         const snapshotStillCurrent = stateVersionRef.current === snapshotVersion;
-        let reconciled = snapshotStillCurrent
-          ? { tables: authoritative.tables || [], orders: authoritative.orders || [] }
+        const reconciled = snapshotStillCurrent
+          ? rebasePendingCommands({
+              tables: authoritative.tables || [],
+              orders: authoritative.orders || []
+            }, pending)
           : { tables: tablesRef.current, orders: ordersRef.current };
-        for (const command of pending) reconciled = applyOptimisticCommand(reconciled, command.type, command.payload);
         setRestaurantState(reconciled.tables, reconciled.orders);
         if (snapshotStillCurrent && authoritative.menu) setMenu(authoritative.menu);
         if (snapshotStillCurrent && authoritative.restaurant) setRestaurant(authoritative.restaurant);
@@ -894,6 +896,10 @@ export function App() {
             setIsConnected(false);
             return;
           }
+          if (res.upToDate === false && res.state) {
+            const responseVersion = Number(res.state.stateVersion || 0);
+            if (responseVersion < stateVersionRef.current && !res.forceResync) return;
+          }
           const reconcileSequence = ++stateApplySequenceRef.current;
           let latestTables: any[] = tablesRef.current;
           let latestOrders: any[] = ordersRef.current;
@@ -907,9 +913,9 @@ export function App() {
           // pending IndexedDB queue below is asynchronous, so another device may
           // publish a newer STATE_UPDATE while that read is in progress.
           let syncBaseVersion = stateVersionRef.current;
-          if (res.upToDate === false && res.state) {
+          const hasAuthoritativeSnapshot = res.upToDate === false && Boolean(res.state);
+          if (hasAuthoritativeSnapshot && res.state) {
             const incomingVersion = Number(res.state.stateVersion || 0);
-            if (incomingVersion < stateVersionRef.current && !res.forceResync) return;
             stateVersionRef.current = incomingVersion;
             syncBaseVersion = incomingVersion;
             latestTables = res.state.tables || [];
@@ -931,16 +937,15 @@ export function App() {
             // build on that newer state instead of replacing it with this older
             // SYNC snapshot. This prevents a slow sync callback from rolling
             // tables/orders backwards on phones and the hub PC.
-            const syncSnapshotIsCurrent = stateVersionRef.current === syncBaseVersion;
-            const baseState = syncSnapshotIsCurrent
-              ? { tables: latestTables, orders: latestOrders }
-              : { tables: tablesRef.current, orders: ordersRef.current };
+            const syncSnapshotIsCurrent = hasAuthoritativeSnapshot && stateVersionRef.current === syncBaseVersion;
             if (reconcileSequence !== stateApplySequenceRef.current) return;
-            const state = rebasePendingCommands(baseState, pending);
+            const state = syncSnapshotIsCurrent
+              ? rebasePendingCommands({ tables: latestTables, orders: latestOrders }, pending)
+              : { tables: tablesRef.current, orders: ordersRef.current };
             setRestaurantState(state.tables, state.orders);
           } catch (error) {
             console.error('Optimistic re-apply failed', error);
-            if (reconcileSequence === stateApplySequenceRef.current && stateVersionRef.current === syncBaseVersion) {
+            if (reconcileSequence === stateApplySequenceRef.current && hasAuthoritativeSnapshot && stateVersionRef.current === syncBaseVersion) {
               setRestaurantState(latestTables, latestOrders);
             }
           }

@@ -42,6 +42,8 @@ check(app.includes('rebasePendingCommands') && read('src/offline/optimistic.ts')
 check(app.includes('const state = rebasePendingCommands(baseState, pending)') && app.includes('rebasePendingCommands'), 'reconnect synchronization rebases pending offline commands over the latest server snapshot');
 check(app.includes('syncSequenceRef.current') && app.includes('syncSequence !== syncSequenceRef.current'), 'late SYNC callbacks cannot overwrite more recent recovery results');
 check(app.includes('stateApplySequenceRef') && app.includes('reconcileSequence !== stateApplySequenceRef.current'), 'async state reconciliation is fenced across broadcasts, acknowledgements, SYNC, rejection recovery, and optimistic writes');
+check(app.includes('hasAuthoritativeSnapshot') && app.includes('hasAuthoritativeSnapshot && stateVersionRef.current === syncBaseVersion'), 'SYNC replays queued actions only over an authoritative server snapshot, never over an already-optimistic local view');
+check(app.includes(': { tables: tablesRef.current, orders: ordersRef.current };') && app.includes('const reconciled = snapshotStillCurrent'), 'stale rejection recovery preserves the already-rebased current view instead of applying pending actions twice');
 check(app.includes('stateVersionRef.current = incomingVersion;') && app.includes('stateApplySequenceRef.current++'), 'accepted server versions are reserved before async queue reads and local optimistic writes invalidate older snapshots');
 check(app.includes('lastKnownEpoch: syncEpochRef.current') && app.includes("localStorage.setItem('restaurantos_sync_epoch'"), 'client persists server epoch across reloads to avoid unnecessary full snapshots');
 
