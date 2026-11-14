@@ -80,11 +80,17 @@ export function TableDetail({ table, order, menu, onBack, currency = 'USD' }: Pr
   };
 
   const handleAddItem = (menuItem: any) => {
+    const mergeTarget = order?.items.find(item =>
+      item.menuItemId === menuItem.id &&
+      !(item.notes || '').trim() &&
+      item.kitchenStatus === 'PENDING'
+    );
     void dispatchCommand('ADD_ITEM', {
       tableId: table.id,
       menuItemId: menuItem.id,
       name: menuItem.name,
-      price: menuItem.price
+      price: menuItem.price,
+      mergeIntoItemId: mergeTarget?.id
     }).catch(() => undefined);
   };
 

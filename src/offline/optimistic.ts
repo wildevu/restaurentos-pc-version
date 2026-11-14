@@ -52,8 +52,16 @@ export function applyOptimisticCommand(
           const newOrder = { ...orders[orderIdx], items: [...(orders[orderIdx].items || [])] };
           const notes = payload.notes ? payload.notes.trim() : null;
           
-          // Try to find if already exists with exact same notes
-          const existingItemIdx = newOrder.items.findIndex(i => i.menuItemId === payload.menuItemId && (i.notes || null) === notes);
+          // Mirror the hub: merge only into the exact PENDING line item the
+          // waiter saw. A stale client creates a stable new row instead.
+          const existingItemIdx = payload.mergeIntoItemId
+            ? newOrder.items.findIndex(i =>
+                i.id === payload.mergeIntoItemId &&
+                i.menuItemId === payload.menuItemId &&
+                (i.notes || null) === notes &&
+                i.kitchenStatus === 'PENDING'
+              )
+            : -1;
           if (existingItemIdx > -1 && !notes) {
              newOrder.items[existingItemIdx] = { 
                ...newOrder.items[existingItemIdx], 
@@ -190,6 +198,31 @@ export function applyOptimisticCommand(
   return { tables, orders };
 }
 
+
+/**
+ * Rewrites item references in a queued command after an ADD_ITEM could not merge
+ * into the client's expected PENDING row and the hub created its stable client ID.
+ */
+export function remapOrderItemReferences(payload: any, fromId: string, toId: string): any {
+  if (!payload || typeof payload !== 'object' || !fromId || !toId || fromId === toId) return payload;
+  const next = { ...payload };
+  let changed = false;
+
+  if (next.orderItemId === fromId) {
+    next.orderItemId = toId;
+    changed = true;
+  }
+  if (next.mergeIntoItemId === fromId) {
+    next.mergeIntoItemId = toId;
+    changed = true;
+  }
+  if (Array.isArray(next.orderItemIds) && next.orderItemIds.includes(fromId)) {
+    next.orderItemIds = next.orderItemIds.map((id: string) => id === fromId ? toId : id);
+    changed = true;
+  }
+
+  return changed ? next : payload;
+}
 
 /**
  * Rebuild the local view from an authoritative hub snapshot plus commands that
