@@ -929,7 +929,10 @@ export function App() {
 
           try {
             if (Array.isArray(res.acknowledgedActionIds) && res.acknowledgedActionIds.length > 0) {
-              await removeAcknowledgedCommands(res.acknowledgedActionIds);
+              await removeAcknowledgedCommands(
+                res.acknowledgedActionIds,
+                res.state || { tables: tablesRef.current, orders: ordersRef.current }
+              );
             }
             const pending = await offlineDb.commands.where('status').anyOf('PENDING', 'SYNCING').sortBy('createdAt');
 
@@ -994,7 +997,7 @@ export function App() {
         let pending: any[] = [];
         try {
           if (data.committedActionId) {
-            await removeAcknowledgedCommands([data.committedActionId]);
+            await removeAcknowledgedCommands([data.committedActionId], data);
           }
           pending = await offlineDb.commands
             .where('status').anyOf('PENDING', 'SYNCING')
