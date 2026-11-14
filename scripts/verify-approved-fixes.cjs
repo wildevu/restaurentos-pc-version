@@ -17,7 +17,7 @@ assert.match(waiterGuard, /command.type === 'UPDATE_ITEM_KITCHEN_STATUS'/);
 assert.doesNotMatch(waiterGuard, /command.type !== 'UPDATE_ITEM_KITCHEN_STATUS'/);
 assert.match(waiterGuard, /waiterStatusPayload.status !== 'SERVED'/);
 assert.match(q, /prevStatus !== 'READY' \\|\\| status !== 'SERVED'/);
-assert.match(q, /status !== 'READY' \|\| item\.kitchenStatus !== 'SERVED'/);
+assert.match(q, /item\.kitchenStatus !== 'SERVED' \|\| status === 'SERVED'/);
 assert.match(k, /order\.items\.filter\(item => item\.kitchenStatus !== 'SERVED'\)/);
 const staffReport = a.slice(a.indexOf('// 5. Staff Performance'), a.indexOf('// 6. Hourly Sales'));
 assert.match(staffReport, /item\.addedByUserId \|\| ord\.openedByUserId \|\| 'system'/);
