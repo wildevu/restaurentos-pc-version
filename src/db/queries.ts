@@ -498,6 +498,9 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         if (!parentOrder) throw new CommandError('Order item is not part of an active order');
 
         const prevStatus = item.kitchenStatus;
+        if (prevStatus === 'SERVED' && status !== 'SERVED') {
+          throw new CommandError('Served items cannot be returned to the kitchen queue.', false);
+        }
         if (dbUser.role === 'WAITER' && (prevStatus !== 'READY' || status !== 'SERVED')) {
           throw new CommandError('Waiters can only mark READY items as SERVED', false);
         }
@@ -557,9 +560,14 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
           }
         }
 
-        // A bulk READY action must not undo an item's SERVED state.
+        // Served is terminal. Explicitly targeting one for a backward transition
+        // is rejected; broad batches skip served items so they never reappear in KDS.
+        if (status !== 'SERVED' && orderItemIds && orderItemIds.length > 0 &&
+            candidateItems.some((item: any) => item.kitchenStatus === 'SERVED')) {
+          throw new CommandError('Served items cannot be returned to the kitchen queue.', false);
+        }
         const targetItemIds = candidateItems
-          .filter((item: any) => status !== 'READY' || item.kitchenStatus !== 'SERVED')
+          .filter((item: any) => item.kitchenStatus !== 'SERVED' || status === 'SERVED')
           .map((item: any) => item.id);
 
         if (targetItemIds.length > 0) {
