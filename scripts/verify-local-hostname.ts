@@ -72,6 +72,10 @@ async function run(): Promise<void> {
   assert.equal(clients[0].responses.length, 2);
   assert.equal(publisher.status.queryCount, 1, 'matching hostname queries are counted');
   assert.ok(publisher.status.lastQueryAt, 'last matching query time is available');
+  assert.deepEqual(publisher.status.lastQueryTypes, ['A'], 'queried DNS record types are exposed for diagnostics');
+  assert.equal(publisher.status.responseCount, 1, 'successful mDNS response sends are counted');
+  assert.ok(publisher.status.lastResponseAt, 'last successful response time is available');
+  assert.equal(publisher.status.lastResponseError, null, 'successful response clears prior response errors');
 
   clients[0].emit('query', { questions: [{ name: 'restos.local.', type: 1 }] });
   assert.equal(clients[0].responses.length, 3, 'numeric A record questions are answered');
