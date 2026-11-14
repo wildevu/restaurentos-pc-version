@@ -126,8 +126,105 @@ try {
   const notedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
   assert.equal(notedItem.notes, 'verified note update', 'note update targeted the stable client item ID');
 
+  const decrement = { actionId: randomUUID(), type: 'DECREMENT_ITEM', payload: { tableId, orderItemId: itemId } };
+  const decrementFirst = await processCommand(decrement as any, user as any);
+  const decrementReplay = await processCommand(decrement as any, user as any);
+  assert.equal(decrementReplay.duplicate, true, 'replayed DECREMENT_ITEM is idempotent');
+  const decrementedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
+  assert.equal(decrementedItem.quantity, 1, 'DECREMENT_ITEM decrements exactly once');
+
+  // Kitchen can prepare and mark items ready; waiter can only serve ready items.
+  const kitchenUserId = randomUUID();
+  await db.insert(schema.users).values({
+    id: kitchenUserId,
+    restaurantId,
+    name: 'Kitchen Test User',
+    username: 'kitchen_' + randomUUID().replace(/-/g, ''),
+    passwordHash: 'not-a-real-login-hash',
+    role: 'KITCHEN',
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const kitchenUser = { id: kitchenUserId, restaurantId, username: 'kitchen-test' };
+  await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'PREPARING' } } as any, kitchenUser as any);
+  await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'READY' } } as any, kitchenUser as any);
+
+  const waiterUserId = randomUUID();
+  await db.insert(schema.users).values({
+    id: waiterUserId,
+    restaurantId,
+    name: 'Waiter Test User',
+    username: 'waiter_' + randomUUID().replace(/-/g, ''),
+    passwordHash: 'not-a-real-login-hash',
+    role: 'WAITER',
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const waiterUser = { id: waiterUserId, restaurantId, username: 'waiter-test' };
+  await processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'SERVED' } } as any, waiterUser as any);
+  const servedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
+  assert.equal(servedItem.kitchenStatus, 'SERVED', 'waiter may mark a READY item as SERVED');
+  await assert.rejects(
+    () => processCommand({ actionId: randomUUID(), type: 'UPDATE_ITEM_KITCHEN_STATUS', payload: { orderItemId: itemId, status: 'READY' } } as any, waiterUser as any),
+    /only mark ready items as served/i,
+    'waiter cannot perform kitchen preparation status changes'
+  );
+
+  const batchItemId = randomUUID();
+  await processCommand({
+    actionId: randomUUID(),
+    type: 'ADD_ITEM',
+    payload: { tableId, menuItemId, clientItemId: batchItemId }
+  } as any, user as any);
+  const validBatch = {
+    actionId: randomUUID(),
+    type: 'BATCH_UPDATE_KITCHEN_STATUS',
+    payload: { orderId, orderItemIds: [batchItemId], status: 'PREPARING' }
+  };
+  const validBatchResult = await processCommand(validBatch as any, kitchenUser as any);
+  assert.equal(validBatchResult.success, true, 'kitchen batch update applies to the exact active-order item set');
+
+  const invalidBatch = {
+    actionId: randomUUID(),
+    type: 'BATCH_UPDATE_KITCHEN_STATUS',
+    payload: { orderId, orderItemIds: [batchItemId, randomUUID()], status: 'READY' }
+  };
+  await assert.rejects(
+    () => processCommand(invalidBatch as any, kitchenUser as any),
+    /selected order items are missing/i,
+    'batch update cannot silently apply only a subset of requested item IDs'
+  );
+
+  const remove = { actionId: randomUUID(), type: 'REMOVE_ITEM', payload: { tableId, orderItemId: itemId } };
+  const removeFirst = await processCommand(remove as any, waiterUser as any);
+  const removeReplay = await processCommand(remove as any, waiterUser as any);
+  assert.equal(removeReplay.duplicate, true, 'replayed REMOVE_ITEM is idempotent');
+  const removedItem = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, itemId)).get();
+  assert.equal(removedItem, undefined, 'REMOVE_ITEM removes the targeted active-order item');
+
+  const cashierUserId = randomUUID();
+  await db.insert(schema.users).values({
+    id: cashierUserId,
+    restaurantId,
+    name: 'Cashier Test User',
+    username: 'cashier_' + randomUUID().replace(/-/g, ''),
+    passwordHash: 'not-a-real-login-hash',
+    role: 'CASHIER',
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const cashierUser = { id: cashierUserId, restaurantId, username: 'cashier-test' };
+  await assert.rejects(
+    () => processCommand({ actionId: randomUUID(), type: 'ADD_ITEM', payload: { tableId, menuItemId } } as any, cashierUser as any),
+    /cashiers are only permitted/i,
+    'cashier cannot mutate waiter order items'
+  );
+
   const close = { actionId: randomUUID(), type: 'CLOSE_TABLE', payload: { tableId } };
-  await processCommand(close as any, user as any);
+  await processCommand(close as any, cashierUser as any);
   const closedOrder = await db.select().from(schema.orders).where(eq(schema.orders.id, orderId)).get();
   const closedTable = await db.select().from(schema.tables).where(eq(schema.tables.id, tableId)).get();
   assert.equal(closedOrder.status, 'CLOSED', 'CLOSE_TABLE closes the active order');
