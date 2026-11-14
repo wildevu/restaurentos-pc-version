@@ -391,6 +391,10 @@ async function startServer() {
         mdnsError: localHostnamePublisher.status.lastError,
         mdnsQueriesReceived: localHostnamePublisher.status.queryCount,
         mdnsLastQueryAt: localHostnamePublisher.status.lastQueryAt,
+        mdnsLastQueryTypes: localHostnamePublisher.status.lastQueryTypes,
+        mdnsResponsesSent: localHostnamePublisher.status.responseCount,
+        mdnsLastResponseAt: localHostnamePublisher.status.lastResponseAt,
+        mdnsLastResponseError: localHostnamePublisher.status.lastResponseError,
         uptimeSeconds: Math.floor(process.uptime()),
         timestamp: new Date().toISOString()
       });
@@ -438,6 +442,10 @@ async function startServer() {
         mdnsError: localHostnamePublisher.status.lastError,
         mdnsQueriesReceived: localHostnamePublisher.status.queryCount,
         mdnsLastQueryAt: localHostnamePublisher.status.lastQueryAt,
+        mdnsLastQueryTypes: localHostnamePublisher.status.lastQueryTypes,
+        mdnsResponsesSent: localHostnamePublisher.status.responseCount,
+        mdnsLastResponseAt: localHostnamePublisher.status.lastResponseAt,
+        mdnsLastResponseError: localHostnamePublisher.status.lastResponseError,
         connectedDevices: connectedSockets,
         database: {
           status: 'HEALTHY',
