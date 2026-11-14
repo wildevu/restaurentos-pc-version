@@ -1,6 +1,6 @@
 import { db } from './index';
 import { tables, menuCategories, menuItems, orders, orderItems, auditEvents, idempotencyKeys, hubState, users, restaurants } from './schema';
-import { eq, and, asc, sql, inArray, isNull } from 'drizzle-orm';
+import { eq, and, asc, sql, inArray, isNull, ne } from 'drizzle-orm';
 import { uuidv4 } from '../utils/uuid';
 import { z } from 'zod';
 import { 
@@ -21,6 +21,16 @@ export class CommandError extends Error {
     this.name = 'CommandError';
     this.isRetryable = isRetryable;
   }
+}
+
+async function getUniqueActiveOrderForTable(tx: any, tableId: string): Promise<any | null> {
+  const matches = await tx.select().from(orders)
+    .where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN')))
+    .limit(2);
+  if (matches.length > 1) {
+    throw new CommandError('This table has multiple active orders. Ask a manager to repair the table state before continuing.', false);
+  }
+  return matches[0] || null;
 }
 
 export async function getFrontendStateTx(tx: any, stateVersion?: number) {
@@ -228,7 +238,13 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         const t = await tx.select().from(tables).where(eq(tables.id, tableId)).get();
         if (!t) throw new CommandError('Table not found');
         if (t.status !== 'EMPTY') throw new CommandError('Table is already active');
-        
+        const orphanedActiveOrders = await tx.select({ id: orders.id }).from(orders)
+          .where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN')))
+          .limit(1);
+        if (orphanedActiveOrders.length > 0) {
+          throw new CommandError('This table already has an active order in the database. Refresh the POS and ask a manager to review the table state.', false);
+        }
+
         await tx.update(tables).set({ status: 'ACTIVE', updatedAt: now }).where(eq(tables.id, tableId));
         const rest = await tx.select().from(restaurants).get();
         const orderId = parsedPayload.clientOrderId || uuidv4();
@@ -259,9 +275,19 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       
       case 'CLOSE_TABLE': {
         const { tableId } = CloseTablePayload.parse(command.payload);
-        const activeOrder = await tx.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN'))).get();
+        const activeOrder = await getUniqueActiveOrderForTable(tx, tableId);
         if (!activeOrder) throw new CommandError('No active order for this table');
-        
+        const activeTable = await tx.select().from(tables).where(eq(tables.id, tableId)).get();
+        if (!activeTable || activeTable.status !== 'ACTIVE') {
+          throw new CommandError('Table state is inconsistent with its active order. Refresh the POS and ask a manager to review it.', false);
+        }
+        const unservedItems = await tx.select({ id: orderItems.id }).from(orderItems)
+          .where(and(eq(orderItems.orderId, activeOrder.id), ne(orderItems.kitchenStatus, 'SERVED')))
+          .limit(1);
+        if (unservedItems.length > 0) {
+          throw new CommandError('This table cannot be closed while kitchen items remain unserved. Mark ready items as served or remove cancelled items first.', false);
+        }
+
         await tx.update(orders).set({ status: 'CLOSED', closedByUserId: user.id, updatedAt: now }).where(eq(orders.id, activeOrder.id));
         await tx.update(tables).set({ status: 'EMPTY', updatedAt: now }).where(eq(tables.id, tableId));
         
@@ -281,7 +307,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       
       case 'ADD_ITEM': {
         const { tableId, menuItemId, notes, clientItemId } = AddItemPayload.parse(command.payload);
-        const activeOrder = await tx.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN'))).get();
+        const activeOrder = await getUniqueActiveOrderForTable(tx, tableId);
         if (!activeOrder) throw new CommandError('No active order for this table');
         
         const menuItem = await tx.select().from(menuItems).where(eq(menuItems.id, menuItemId)).get();
@@ -355,7 +381,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       
       case 'INCREMENT_ITEM': {
         const { tableId, orderItemId } = UpdateItemPayload.parse(command.payload);
-        const activeOrder = await tx.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN'))).get();
+        const activeOrder = await getUniqueActiveOrderForTable(tx, tableId);
         if (!activeOrder) throw new CommandError('No active open order for this table');
 
         const item = await tx.select().from(orderItems).where(and(eq(orderItems.id, orderItemId), eq(orderItems.orderId, activeOrder.id))).get();
@@ -381,7 +407,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       
       case 'DECREMENT_ITEM': {
         const { tableId, orderItemId } = UpdateItemPayload.parse(command.payload);
-        const activeOrder = await tx.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN'))).get();
+        const activeOrder = await getUniqueActiveOrderForTable(tx, tableId);
         if (!activeOrder) throw new CommandError('No active open order for this table');
 
         const item = await tx.select().from(orderItems).where(and(eq(orderItems.id, orderItemId), eq(orderItems.orderId, activeOrder.id))).get();
@@ -421,7 +447,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       
       case 'REMOVE_ITEM': {
         const { tableId, orderItemId } = UpdateItemPayload.parse(command.payload);
-        const activeOrder = await tx.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN'))).get();
+        const activeOrder = await getUniqueActiveOrderForTable(tx, tableId);
         if (!activeOrder) throw new CommandError('No active open order for this table');
 
         const item = await tx.select().from(orderItems).where(and(eq(orderItems.id, orderItemId), eq(orderItems.orderId, activeOrder.id))).get();
@@ -444,7 +470,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
       
       case 'SET_ITEM_NOTE': {
         const { tableId, orderItemId, notes } = NoteItemPayload.parse(command.payload);
-        const activeOrder = await tx.select().from(orders).where(and(eq(orders.tableId, tableId), eq(orders.status, 'OPEN'))).get();
+        const activeOrder = await getUniqueActiveOrderForTable(tx, tableId);
         if (!activeOrder) throw new CommandError('No active open order for this table');
 
         const item = await tx.select().from(orderItems).where(and(eq(orderItems.id, orderItemId), eq(orderItems.orderId, activeOrder.id))).get();

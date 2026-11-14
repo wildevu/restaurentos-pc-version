@@ -87,6 +87,8 @@ const dbPaths = read('src/paths.ts');
 check(dbPaths.includes('verifyWritable') && dbPaths.includes('fs.fsyncSync'), 'required data directories are created and verified with a real write probe');
 const commandQueries = read('src/db/queries.ts');
 check(commandQueries.includes('isSqliteLockContention') && commandQueries.includes('SQLITE_(BUSY|LOCKED)'), 'command transactions retry SQLite BUSY and LOCKED variants without treating business errors as transient');
+check(commandQueries.includes('getUniqueActiveOrderForTable') && commandQueries.includes('multiple active orders'), 'table commands refuse ambiguous multiple active orders instead of mutating an arbitrary order');
+check(commandQueries.includes('kitchen items remain unserved') && commandQueries.includes('ne(orderItems.kitchenStatus, \'SERVED\')'), 'cashier cannot close a table while unserved kitchen items remain');
 const dbRuntime = read('src/db/index.ts');
 check(dbRuntime.includes('verifyDatabaseFileWritable') && dbRuntime.includes('ensureDirectories({ strict: true, verifyWritable: true })'), 'database startup fails early when the configured database file cannot be opened');
 check(dbRuntime.includes('fs.openSync(DB_PATH, \'a+\')'), 'database path is explicitly opened before migrations');
