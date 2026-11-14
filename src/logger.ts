@@ -3,7 +3,7 @@ import path from 'path';
 import { LOG_DIR, ensureDirectories } from './paths';
 
 // Ensure the log directory exists
-ensureDirectories();
+ensureDirectories({ strict: false });
 
 // A detached Windows launcher or a closed terminal can invalidate stdout/stderr.
 // File logging below is the durable record, so console stream errors must be non-fatal.

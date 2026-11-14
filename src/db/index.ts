@@ -21,9 +21,7 @@ const getCurrentDirname = () => {
   }
 };
 
-// Ensure data and database directories exist before initializing LibSQL client
-ensureDirectories();
-
+// Database directory and file access are verified before migrations.
 export let client = createClient({
   url: `file:${DB_PATH}`,
 });
@@ -51,7 +49,27 @@ export function getMigrationsFolder(): string {
 }
 
 // Proper versioned migrations using Drizzle
+function verifyDatabaseFileWritable(): void {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(DB_PATH, 'a+');
+    fs.fsyncSync(fd);
+  } catch (error: any) {
+    const code = error?.code ? ` (${error.code})` : '';
+    const failure: any = new Error(
+      `RestaurantOS cannot open its database file at "${DB_PATH}"${code}: ${error?.message || String(error)}. Check the ProgramData\\RestaurantOS\\data permissions and available disk space.`
+    );
+    failure.code = error?.code || 'RESTAURANTOS_DATABASE_UNAVAILABLE';
+    failure.path = DB_PATH;
+    throw failure;
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch {} }
+  }
+}
+
 export async function runMigrations() {
+  ensureDirectories({ strict: true, verifyWritable: true });
+  verifyDatabaseFileWritable();
   const migrationsFolder = getMigrationsFolder();
   logger.info(`Running database migrations from ${migrationsFolder}...`, { dbPath: DB_PATH });
   
