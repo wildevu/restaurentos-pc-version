@@ -1,59 +1,37 @@
-# RestaurantOS Local Hub - Firewall Rule Helper
-# Must be executed as Administrator during Windows Installation
-
-param (
-    [string]$RuleName = "RestaurantOS Local Hub (Inbound TCP 8989)",
+# RestaurantOS Local Hub - LAN and mDNS Firewall Rules
+# Must be executed as Administrator during installation.
+param(
+    [string]$RuleName = "RestaurantOS Local Hub",
     [int]$Port = 8989
 )
 
-# Test Administrator Privilege
+$ErrorActionPreference = "Stop"
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Warning "This script requires Administrator privileges to configure Windows Firewall!"
+    Write-Error "Administrator privileges are required to configure Windows Firewall."
     exit 1
 }
 
 try {
-    # Check if rule already exists
-    $existingRule = Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue
-
-    if ($existingRule) {
-        Write-Host "Updating existing Windows Firewall rule '$RuleName' for port $Port..."
-        Set-NetFirewallRule -DisplayName $RuleName `
-                            -Direction Inbound `
-                            -Action Allow `
-                            -Protocol TCP `
-                            -LocalPort $Port `
-                            -Profile Private,Domain,Public `
-                            -Enabled True
-    } else {
-        Write-Host "Creating new Windows Firewall rule '$RuleName' for port $Port..."
-        New-NetFirewallRule -DisplayName $RuleName `
-                            -Direction Inbound `
-                            -Action Allow `
-                            -Protocol TCP `
-                            -LocalPort $Port `
-                            -Profile Private,Domain `
-                            -Enabled True `
-                            -Description "Allows local LAN waiter tablets and kitchen displays to connect to RestaurantOS Local Hub."
-    }
-
     $mdnsRuleName = "RestaurantOS Local Discovery (Inbound UDP 5353)"
+    Get-NetFirewallRule -DisplayName $RuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     Get-NetFirewallRule -DisplayName $mdnsRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 
-    New-NetFirewallRule -DisplayName $mdnsRuleName `
-                        -Direction Inbound `
-                        -Action Allow `
-                        -Protocol UDP `
-                        -LocalPort 5353 `
-                        -RemoteAddress LocalSubnet `
-                        -Profile Private,Domain `
-                        -Enabled True `
-                        -Description "Allows mDNS discovery requests from devices on the restaurant's local network."
+    # Profile Any is needed because Windows can classify a restaurant Wi-Fi as Public.
+    # RemoteAddress LocalSubnet keeps both rules restricted to the directly connected LAN.
+    New-NetFirewallRule -DisplayName $RuleName `
+        -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port `
+        -RemoteAddress LocalSubnet -Profile Any -Enabled True `
+        -Description "Allows RestaurantOS devices on the local subnet to connect to the Local Hub."
 
-    Write-Host "Windows Firewall rules successfully configured (TCP 8989 and local-subnet UDP 5353)."
+    New-NetFirewallRule -DisplayName $mdnsRuleName `
+        -Direction Inbound -Action Allow -Protocol UDP -LocalPort 5353 `
+        -RemoteAddress LocalSubnet -Profile Any -Enabled True `
+        -Description "Allows local-subnet devices to discover the RestaurantOS mDNS hostname."
+
+    Write-Host "Windows Firewall configured for local-subnet TCP $Port and UDP 5353."
     exit 0
 } catch {
-    Write-Error "Failed to configure Windows Firewall rule: $_"
+    Write-Error "Failed to configure RestaurantOS firewall rules: $($_.Exception.Message)"
     exit 1
 }
