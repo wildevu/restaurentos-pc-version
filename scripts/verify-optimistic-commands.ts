@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { applyOptimisticCommand, rebasePendingCommands } from '../src/offline/optimistic';
+import { applyOptimisticCommand, rebasePendingCommands, remapOrderItemReferences } from '../src/offline/optimistic';
 
 const table: any = {
   id: 'table-1',
@@ -33,6 +33,33 @@ state = applyOptimisticCommand(state, 'ADD_ITEM', {
 assert.equal(state.orders[0].items.length, 1, 'ADD_ITEM must append an item to the active order');
 assert.equal(state.orders[0].items[0].id, 'item-client-1', 'optimistic item ID must be stable');
 assert.equal(state.tables[0].itemCount, 1, 'table item count must follow the order');
+
+const pendingMerge = applyOptimisticCommand(state, 'ADD_ITEM', {
+  tableId: 'table-1',
+  menuItemId: 'menu-1',
+  clientItemId: 'unused-client-id',
+  mergeIntoItemId: 'item-client-1',
+  name: 'Coffee',
+  price: 250
+});
+assert.equal(pendingMerge.orders[0].items.length, 1, 'explicit merge into the selected pending item does not create another row');
+assert.equal(pendingMerge.orders[0].items[0].quantity, 2, 'explicit pending merge increments the selected row');
+
+const servedBase = {
+  tables: [{ ...table, status: 'ACTIVE', orderId: 'order-served', itemCount: 1 }],
+  orders: [{
+    id: 'order-served', tableId: 'table-1', tableNumber: 1, covers: 2, status: 'OPEN',
+    items: [{ id: 'served-item', orderId: 'order-served', menuItemId: 'menu-1', quantity: 1, notes: null, kitchenStatus: 'SERVED' }]
+  } as any]
+};
+const afterServedAdd = applyOptimisticCommand(servedBase as any, 'ADD_ITEM', {
+  tableId: 'table-1', menuItemId: 'menu-1', clientItemId: 'new-after-served',
+  name: 'Coffee', price: 250
+});
+assert.equal(afterServedAdd.orders[0].items.length, 2, 'new order after served line creates a separate row');
+assert.equal(afterServedAdd.orders[0].items[0].quantity, 1, 'served item quantity is not incremented');
+assert.equal(afterServedAdd.orders[0].items[1].id, 'new-after-served', 'new item retains stable client ID');
+assert.equal(afterServedAdd.orders[0].items[1].kitchenStatus, 'PENDING', 'new item is sent to kitchen as PENDING');
 
 state = applyOptimisticCommand(state, 'INCREMENT_ITEM', {
   tableId: 'table-1',
@@ -86,4 +113,24 @@ const rolledBack = rebasePendingCommands(
 assert.equal(rolledBack.tables[0].status, 'EMPTY', 'rejected optimistic OPEN_TABLE is rolled back to the authoritative empty table');
 assert.equal(rolledBack.orders.length, 0, 'rejected optimistic order is removed from the local view');
 
-console.log('Optimistic command workflow and acknowledgement/rejection rebase checks passed.');
+const remappedIncrement = remapOrderItemReferences(
+  { tableId: 'table-1', orderItemId: 'stale-item' }, 'stale-item', 'canonical-item'
+);
+assert.equal(remappedIncrement.orderItemId, 'canonical-item', 'later increment follows the canonical item ID');
+
+const remappedNote = remapOrderItemReferences(
+  { tableId: 'table-1', orderItemId: 'stale-item', notes: 'no onions' }, 'stale-item', 'canonical-item'
+);
+assert.equal(remappedNote.orderItemId, 'canonical-item', 'later note edits follow the canonical item ID');
+
+const remappedBatch = remapOrderItemReferences(
+  { orderItemIds: ['keep', 'stale-item'] }, 'stale-item', 'canonical-item'
+);
+assert.deepEqual(remappedBatch.orderItemIds, ['keep', 'canonical-item'], 'batch kitchen targets follow the canonical item ID');
+
+const remappedAdd = remapOrderItemReferences(
+  { mergeIntoItemId: 'stale-item', clientItemId: 'newer-client-item' }, 'stale-item', 'canonical-item'
+);
+assert.equal(remappedAdd.mergeIntoItemId, 'canonical-item', 'later ADD_ITEM merge target follows the canonical item ID');
+
+console.log('Optimistic command workflow, served-line behavior, and item-alias rebase checks passed.');

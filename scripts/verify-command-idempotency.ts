@@ -220,13 +220,16 @@ try {
   await processCommand({
     actionId: randomUUID(),
     type: 'ADD_ITEM',
-    payload: { tableId, menuItemId, clientItemId: batchItemId }
+    payload: { tableId, menuItemId, clientItemId: batchItemId, mergeIntoItemId: itemId }
   } as any, user as any);
   const validBatch = {
     actionId: randomUUID(),
     type: 'BATCH_UPDATE_KITCHEN_STATUS',
     payload: { orderId, orderItemIds: [batchItemId], status: 'PREPARING' }
   };
+  const itemAddedAfterServed = await db.select().from(schema.orderItems).where(eq(schema.orderItems.id, batchItemId)).get();
+  assert.ok(itemAddedAfterServed, 'a new same-menu item after a served line receives its own stable row');
+  assert.equal(itemAddedAfterServed.kitchenStatus, 'PENDING', 'new post-service row is returned to the kitchen as PENDING');
   const validBatchResult = await processCommand(validBatch as any, kitchenUser as any);
   assert.equal(validBatchResult.success, true, 'kitchen batch update applies to the exact active-order item set');
 
