@@ -40,6 +40,6 @@ assert.match(pwa, /start_url: '\/'/);
 assert.match(pwa, /scope: '\/'/);
 assert.match(app, /previousOrderStatusesRef/);
 assert.match(app, /soundEffects\.playReadyChime\(\)/);
-assert.match(app, /readyNotifications\\.map/);
+assert.match(app, /readyNotifications\.map/);
 assert.match(app, /restaurantos_ready_sound_enabled/);
 console.log('Approved-fix regression checks passed.');
