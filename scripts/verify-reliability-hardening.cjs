@@ -13,7 +13,7 @@ function check(condition, message) {
   }
 }
 function read(file) {
-  return fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+  return fs.readFileSync(path.join(process.cwd(), file), 'utf8').replace(/\r\n/g, '\n');
 }
 
 console.log('RestaurantOS reliability regression guardrails');
@@ -38,7 +38,10 @@ const staleStateUpdateGuard = 'data.stateVersion !== undefined && incomingVersio
 check(app.split(staleStateUpdateGuard).length === 3, 'out-of-order state events are guarded before and after async reconciliation, with a restore override');
 check(app.includes('committedActionId') && app.includes('removeAcknowledgedCommands([data.committedActionId], data)'), 'room broadcasts retire the committed local action and provide authoritative state for item-ID reconciliation');
 check(app.includes('rebasePendingCommands') && read('src/offline/optimistic.ts').includes('committedActionId'), 'acknowledgement, broadcast and reconnect synchronization share a tested pending-command rebase helper');
-check(app.includes('const state = rebasePendingCommands(baseState, pending)') && app.includes('rebasePendingCommands'), 'reconnect synchronization rebases pending offline commands over the latest server snapshot');
+check(
+  /const state = syncSnapshotIsCurrent\s*\?\s*rebasePendingCommands\(\s*\{\s*tables:\s*latestTables,\s*orders:\s*latestOrders\s*\},\s*pending\s*\)\s*:\s*\{\s*tables:\s*tablesRef\.current,\s*orders:\s*ordersRef\.current\s*\}/s.test(app),
+  'reconnect synchronization rebases pending offline commands only over the latest authoritative server snapshot'
+);
 check(app.includes('syncSequenceRef.current') && app.includes('syncSequence !== syncSequenceRef.current'), 'late SYNC callbacks cannot overwrite more recent recovery results');
 check(app.includes('stateApplySequenceRef') && app.includes('reconcileSequence !== stateApplySequenceRef.current'), 'async state reconciliation is fenced across broadcasts, acknowledgements, SYNC, rejection recovery, and optimistic writes');
 check(app.includes('hasAuthoritativeSnapshot') && app.includes('hasAuthoritativeSnapshot && stateVersionRef.current === syncBaseVersion'), 'SYNC replays queued actions only over an authoritative server snapshot, never over an already-optimistic local view');
@@ -52,9 +55,8 @@ check(server.includes('state: result.state') && server.includes('committedAction
 const licenseRejection = server.slice(server.indexOf('if (!licenseCheck.canOperate)'), server.indexOf('const command = CommandPayloadSchema.parse', server.indexOf('if (!licenseCheck.canOperate)')));
 check(licenseRejection.includes('state: rejectionState') && licenseRejection.includes('actionId: payload?.actionId'), 'license rejections return authoritative state to roll back optimistic commands');
 const tableDetail = read('src/components/TableDetail.tsx');
-const activeTableStart = tableDetail.indexOf('return (\n    <div className="h-full flex flex-col pb-24 lg:pb-6 relative space-y-4">');
-const activeTableView = activeTableStart >= 0 ? tableDetail.slice(activeTableStart, activeTableStart + 700) : '';
-check(activeTableView.includes('commandError &&') && activeTableView.includes('role="alert"'), 'waiter storage errors remain visible while editing an active table');
+const activeTableErrorBanner = /return \(\s*<div className="h-full flex flex-col pb-24 lg:pb-6 relative space-y-4">\s*\{commandError && \(\s*<div role="alert"/s.test(tableDetail);
+check(activeTableErrorBanner, 'waiter storage errors remain visible while editing an active table');
 check(server.includes("fs.openSync(LOCK_FILE, 'wx')"), 'single-instance lock uses exclusive file creation');
 check(server.includes('owner === process.pid'), 'process releases only its own PID lock');
 check(server.includes('return getFrontendStateTx(tx, versionRow?.version || 0)'), 'REST snapshot includes a state version');
@@ -105,7 +107,10 @@ check(queue.includes('committedAddItemAlias') && queue.includes('rewritePendingI
 check(queue.includes('await reconcileCommittedAddItemAlias(command, response.state as HubAuthoritativeState)'), 'direct command acknowledgements reconcile canonical item IDs before publishing state');
 check(queue.includes('reconcileCommittedAddItemAlias(command, authoritativeState, excludedIds)'), 'SYNC acknowledgement recovery remaps pending item references before retiring acknowledged queue rows');
 check(queue.includes('authoritativeState?: HubAuthoritativeState') && app.includes('removeAcknowledgedCommands([data.committedActionId], data)'), 'state broadcasts provide the authoritative snapshot needed for item alias recovery');
-check(app.includes('removeAcknowledgedCommands(res.acknowledgedActionIds') && app.includes('res.state || { tables: tablesRef.current, orders: ordersRef.current }'), 'reconnect SYNC passes server state into item alias recovery');
+check(
+  /removeAcknowledgedCommands\(\s*res\.acknowledgedActionIds,\s*res\.state\s*\|\|\s*\{\s*tables:\s*tablesRef\.current,\s*orders:\s*ordersRef\.current\s*\}\s*\)/s.test(app),
+  'reconnect SYNC passes the authoritative response state into item alias recovery'
+);
 check(commandQueries.includes('mergeIntoItemId') && commandQueries.includes("eq(orderItems.kitchenStatus, 'PENDING')"), 'ADD_ITEM merges only into an explicitly selected PENDING line');
 const optimisticItems = read('src/offline/optimistic.ts');
 check(optimisticItems.includes('payload.mergeIntoItemId') && optimisticItems.includes('remapOrderItemReferences'), 'optimistic item merging and stale ID recovery use the same item identity contract');
