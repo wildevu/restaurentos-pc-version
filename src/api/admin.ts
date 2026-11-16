@@ -13,6 +13,8 @@ import { getFrontendStateTx } from '../db/queries';
 import { BACKUP_DIR, DB_PATH, ensureDirectories, LOG_DIR } from '../paths';
 import { LicensingService } from '../licensing/service';
 import { logger } from '../logger';
+import { buildDailyHourlySales, calculateLineFinancials, getKitchenPrepMinutes, getZonedDateHour, summarizeTableSessions } from '../reports/ros-analytics';
+import { collectTechnicalDiagnostics } from '../reports/ros-diagnostics';
 
 function normalizeCostPrice(value: any): number | null {
   if (value === undefined || value === null || value === '') return null;
@@ -1605,378 +1607,361 @@ adminRouter.post('/backups/restore', async (req: any, res) => {
 adminRouter.get('/reports/export-ros', async (req: any, res) => {
   try {
     const isPremium = await LicensingService.hasPremiumAccess();
-    if (!isPremium) {
-      return res.status(403).json({
-        error: 'A Premium License is required to generate and export AI Consultant .ros reports. Please upgrade your subscription.'
-      });
-    }
+    if (!isPremium) return res.status(403).json({
+      error: 'A Premium License is required to generate and export AI Consultant .ros reports. Please upgrade your subscription.'
+    });
 
-    const days = parseInt(req.query.days as string || '30', 10);
-    const validDays = isNaN(days) || days <= 0 ? 30 : days;
-
+    const parsedDays = Number.parseInt(String(req.query.days || '30'), 10);
+    const validDays = Number.isFinite(parsedDays) && parsedDays > 0 ? Math.min(parsedDays, 365) : 30;
     const now = new Date();
-    const startDate = new Date(now.getTime() - validDays * 24 * 60 * 60 * 1000);
+    const startDate = new Date(now.getTime() - validDays * 86400000);
 
-    const inst = await LicensingService.getOrCreateInstallation();
-    const rest = await db.select().from(restaurants).limit(1);
-    const restaurantName = rest[0]?.name || 'RestaurantOS Hub';
-    const currency = rest[0]?.currency || 'EUR';
-    const seatingCapacity = rest[0]?.seatingCapacity || 30;
+    const installation = await LicensingService.getOrCreateInstallation();
+    const restaurant = await db.select().from(restaurants)
+      .where(eq(restaurants.id, req.user.restaurantId)).get();
+    if (!restaurant) return res.status(404).json({ error: 'Restaurant configuration not found.' });
+    const timeZone = restaurant.timezone || 'UTC';
+    try { new Intl.DateTimeFormat('en', { timeZone }).format(now); }
+    catch { return res.status(500).json({ error: 'The restaurant timezone is invalid. Correct it in Settings before exporting.' }); }
 
-    // Fetch menu items with category and cost price
-    const allMenuItems = await db.select({
-      id: menuItems.id,
-      name: menuItems.name,
-      costPrice: menuItems.costPrice,
-      categoryName: menuCategories.name
-    })
-    .from(menuItems)
-    .leftJoin(menuCategories, eq(menuItems.categoryId, menuCategories.id));
+    const menu = await db.select({
+      id: menuItems.id, name: menuItems.name, categoryId: menuItems.categoryId,
+      categoryName: menuCategories.name, costPrice: menuItems.costPrice,
+      isAvailable: menuItems.isAvailable, archivedAt: menuItems.archivedAt
+    }).from(menuItems)
+      .leftJoin(menuCategories, eq(menuItems.categoryId, menuCategories.id))
+      .where(eq(menuItems.categoryId, menuItems.categoryId));
+    const menuById = new Map(menu.map(item => [item.id, item]));
 
-    const menuItemMap = new Map(allMenuItems.map(m => [m.id, m]));
-    const hasCostData = allMenuItems.some(m => m.costPrice !== null && m.costPrice !== undefined);
-
-    // 1. Fetch completed orders within period
-    const allOrders = await db.select()
-      .from(orders)
+    // The report period is based on completed sessions (closedAt), not an arbitrary
+    // update timestamp. Sessions opened before the period are included if closed in it.
+    const closedRows = await db.select({
+      id: orders.id, tableId: orders.tableId, covers: orders.covers,
+      openedByUserId: orders.openedByUserId, closedByUserId: orders.closedByUserId,
+      createdAt: orders.createdAt, closedAt: orders.closedAt,
+      legacyUpdatedAt: orders.updatedAt, currencySnapshot: orders.currencySnapshot
+    }).from(orders)
+      .innerJoin(tables, eq(orders.tableId, tables.id))
       .where(and(
+        eq(tables.restaurantId, req.user.restaurantId),
         eq(orders.status, 'CLOSED'),
-        gte(orders.createdAt, startDate)
+        gte(orders.closedAt, startDate),
+        lte(orders.closedAt, now)
       ));
 
-    const totalOrders = allOrders.length;
-    let totalGrossRevenue = 0;
-    let totalCovers = 0;
+    const allOrders = closedRows.map(row => ({
+      ...row,
+      // Migration seeds closedAt for existing CLOSED orders. Keep a null rather than
+      // pretending updatedAt is a verified close event if an exceptional row lacks it.
+      closedAt: row.closedAt || null
+    }));
+    const orderIds = allOrders.map(order => order.id);
+    const allOrderItems = orderIds.length
+      ? await db.select().from(orderItems).where(inArray(orderItems.orderId, orderIds))
+      : [];
 
-    const coversByDateMap: Record<string, number> = {};
-
-    for (const ord of allOrders) {
-      const coversVal = ord.covers || 1;
-      totalCovers += coversVal;
-
-      const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
-      if (!coversByDateMap[dateStr]) coversByDateMap[dateStr] = 0;
-      coversByDateMap[dateStr] += coversVal;
+    const itemIds = allOrderItems.map(item => item.id);
+    const readinessEvents = itemIds.length
+      ? await db.select({
+          entityId: auditEvents.entityId, metadata: auditEvents.metadata,
+          createdAt: auditEvents.createdAt
+        }).from(auditEvents)
+          .where(and(
+            eq(auditEvents.restaurantId, req.user.restaurantId),
+            eq(auditEvents.entityType, 'ORDER_ITEM'),
+            eq(auditEvents.action, 'KITCHEN_STATUS_UPDATED'),
+            inArray(auditEvents.entityId, itemIds)
+          )).orderBy(asc(auditEvents.createdAt))
+      : [];
+    const firstReadyByItem = new Map<string, Date>();
+    for (const event of readinessEvents) {
+      if (!event.entityId || firstReadyByItem.has(event.entityId)) continue;
+      try {
+        const metadata = JSON.parse(event.metadata || '{}');
+        if (metadata.newStatus === 'READY') firstReadyByItem.set(event.entityId, event.createdAt);
+      } catch {}
     }
 
-    const coversByDate = Object.entries(coversByDateMap)
-      .map(([date, covers]) => ({ date, covers }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    const orderIds = allOrders.map(o => o.id);
-
-    // 2. Fetch order items for these orders
-    let allOrderItems: any[] = [];
-    if (orderIds.length > 0) {
-      allOrderItems = await db.select()
-        .from(orderItems)
-        .where(inArray(orderItems.orderId, orderIds));
+    const menuIds = menu.map(item => item.id);
+    const costHistoryRows = menuIds.length
+      ? await db.select().from(menuItemCostHistory)
+          .where(inArray(menuItemCostHistory.menuItemId, menuIds))
+          .orderBy(asc(menuItemCostHistory.effectiveFrom))
+      : [];
+    const costHistoryByMenuItem = new Map<string, any[]>();
+    for (const revision of costHistoryRows) {
+      const list = costHistoryByMenuItem.get(revision.menuItemId) || [];
+      list.push(revision);
+      costHistoryByMenuItem.set(revision.menuItemId, list);
     }
-
-    for (const item of allOrderItems) {
-      totalGrossRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
-    }
-
-    const averageOrderValue = totalOrders > 0 ? parseFloat((totalGrossRevenue / totalOrders).toFixed(2)) : 0;
-
-    // Calculate Kitchen Preparation Time across completed orders
-    let totalKitchenPrepMinutesSum = 0;
-    let totalKitchenItemsCount = 0;
-
-    for (const item of allOrderItems) {
-      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
-        const start = new Date(item.createdAt).getTime();
-        const end = item.kitchenStatusUpdatedAt
-          ? new Date(item.kitchenStatusUpdatedAt).getTime()
-          : new Date(item.updatedAt).getTime();
-        const prepMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
-        totalKitchenPrepMinutesSum += prepMin;
-        totalKitchenItemsCount += 1;
-      }
-    }
-
-    const averageKitchenPrepTimeMinutes = totalKitchenItemsCount > 0
-      ? parseFloat((totalKitchenPrepMinutesSum / totalKitchenItemsCount).toFixed(1))
-      : 12;
-
-    // 3. Granular itemSalesByDate with Category & Cost Price & Kitchen Prep Metrics
-    const itemSalesByDateMap: Record<string, any> = {};
-    for (const item of allOrderItems) {
-      const ord = allOrders.find(o => o.id === item.orderId);
-      if (ord) {
-        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
-        const name = item.productNameSnapshot || 'Item';
-        const key = `${dateStr}_${name}`;
-
-        const menuMeta = menuItemMap.get(item.menuItemId);
-        const categoryName = menuMeta?.categoryName || 'OTHER';
-        const costPrice = menuMeta?.costPrice ?? null;
-
-        let prepDurationMin = 10;
-        if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
-          const start = new Date(item.createdAt).getTime();
-          const end = item.kitchenStatusUpdatedAt
-            ? new Date(item.kitchenStatusUpdatedAt).getTime()
-            : new Date(item.updatedAt).getTime();
-          prepDurationMin = Math.max(1, Math.round((end - start) / (1000 * 60)));
-        }
-
-        if (!itemSalesByDateMap[key]) {
-          itemSalesByDateMap[key] = {
-            date: dateStr,
-            itemName: name,
-            category: categoryName,
-            quantitySold: 0,
-            unitPrice: item.unitPriceSnapshot || 0,
-            costPrice,
-            kitchenPrepTimeMinutes: prepDurationMin,
-            revenue: 0
-          };
-        }
-        itemSalesByDateMap[key].quantitySold += item.quantity || 1;
-        itemSalesByDateMap[key].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
-      }
-    }
-
-    // Rule 3: Exclude zero-quantity rows to eliminate noise & token waste
-    const itemSalesByDate = Object.values(itemSalesByDateMap)
-      .filter(i => i.quantitySold > 0)
-      .map(i => ({
-        ...i,
-        revenue: parseFloat(i.revenue.toFixed(2))
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-
-    // 4. Table Turn Metrics calculation
-    let totalTurnMinutesSum = 0;
-    let totalTurnCount = 0;
-    const dailyTurnMap: Record<string, number[]> = {};
-
-    for (const ord of allOrders) {
-      if (ord.createdAt && ord.updatedAt) {
-        const openTime = new Date(ord.createdAt).getTime();
-        const closeTime = new Date(ord.updatedAt).getTime();
-        const durationMin = Math.max(1, Math.round((closeTime - openTime) / (1000 * 60)));
-
-        totalTurnMinutesSum += durationMin;
-        totalTurnCount += 1;
-
-        const dateStr = new Date(ord.createdAt).toISOString().slice(0, 10);
-        if (!dailyTurnMap[dateStr]) dailyTurnMap[dateStr] = [];
-        dailyTurnMap[dateStr].push(durationMin);
-      }
-    }
-
-    const averageTurnTimeMinutes = totalTurnCount > 0 ? parseFloat((totalTurnMinutesSum / totalTurnCount).toFixed(1)) : 45;
-
-    const tableTurnMetrics = Object.entries(dailyTurnMap).map(([dateStr, durations]) => {
-      const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
-      const longTurns = durations.filter(d => d > (avg * 2)).length;
-      return {
-        date: dateStr,
-        averageTurnTimeMinutes: parseFloat(avg.toFixed(1)),
-        tablesWithLongTurns: longTurns,
-        peakHourAvgTurnTime: parseFloat((avg * 1.15).toFixed(1))
-      };
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    // 5. Staff Performance
-    type StaffReportStats = {
-      userId: string;
-      userName: string;
-      role: string;
-      tablesManaged: number;
-      ordersClosed: number;
-      totalRevenue: number;
-      contributedOrderIds: Set<string>;
+    const recordedUnitCost = (item: any): number | null => {
+      if (item.unitCostSnapshot !== null && item.unitCostSnapshot !== undefined) return Number(item.unitCostSnapshot);
+      const revisions = costHistoryByMenuItem.get(item.menuItemId) || [];
+      const created = new Date(item.createdAt).getTime();
+      const applicable = revisions.find(revision => {
+        const from = new Date(revision.effectiveFrom).getTime();
+        const to = revision.effectiveTo ? new Date(revision.effectiveTo).getTime() : Infinity;
+        return created >= from && created < to;
+      });
+      return applicable && applicable.unitCost !== null && applicable.unitCost !== undefined
+        ? Number(applicable.unitCost) : null;
     };
-    // Include active staff even with zero activity, plus inactive historical staff
-    // only when they appear in activity during the selected report period.
-    const allUsers = await db.select({
+
+    const ordersById = new Map(allOrders.map(order => [order.id, order]));
+    const linesByDateItem = new Map<string, any>();
+    const itemTotals = new Map<string, any>();
+    const staffRows = await db.select({
       id: users.id, name: users.name, role: users.role, isActive: users.isActive
     }).from(users).where(eq(users.restaurantId, req.user.restaurantId));
-    const userById = new Map(allUsers.map(staff => [staff.id, staff]));
-    const staffStatsMap = new Map<string, StaffReportStats>();
-    const ensureStaffStats = (staffId: string): StaffReportStats => {
-      const existing = staffStatsMap.get(staffId);
-      if (existing) return existing;
-      const record = userById.get(staffId);
-      const created: StaffReportStats = {
-        userId: staffId,
-        userName: record?.name || (staffId === 'system' ? 'Unassigned / Legacy' : 'Staff'),
-        role: record?.role || (staffId === 'system' ? 'SYSTEM' : 'UNKNOWN'),
-        tablesManaged: 0,
-        ordersClosed: 0,
-        totalRevenue: 0,
-        contributedOrderIds: new Set<string>()
-      };
-      staffStatsMap.set(staffId, created);
-      return created;
-    };
-    for (const staff of allUsers) {
-      if (staff.isActive) ensureStaffStats(staff.id);
-    }
-    const ordersById = new Map(allOrders.map(order => [order.id, order]));
-    for (const ord of allOrders) {
-      if (ord.openedByUserId) ensureStaffStats(ord.openedByUserId).tablesManaged += 1;
-      if (ord.closedByUserId) ensureStaffStats(ord.closedByUserId).ordersClosed += 1;
-    }
-    // Credit sales to the staff member who added each item. Legacy items without
-    // item-level attribution fall back to the order opener, not the closer.
-    for (const item of allOrderItems) {
-      const ord = ordersById.get(item.orderId);
-      if (!ord) continue;
-      const staffId = item.addedByUserId || ord.openedByUserId || 'system';
-      const stats = ensureStaffStats(staffId);
-      stats.totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
-      stats.contributedOrderIds.add(ord.id);
-    }
-    const staffPerformance = Array.from(staffStatsMap.values())
-      .map(staff => ({
-        userId: staff.userId,
-        userName: staff.userName,
-        role: staff.role,
-        tablesManaged: staff.tablesManaged,
-        ordersClosed: staff.ordersClosed,
-        ordersContributedTo: staff.contributedOrderIds.size,
-        totalRevenue: parseFloat(staff.totalRevenue.toFixed(2)),
-        averageOrderValue: staff.contributedOrderIds.size > 0
-          ? parseFloat((staff.totalRevenue / staff.contributedOrderIds.size).toFixed(2))
-          : 0
-      }))
-      .sort((a, b) => b.tablesManaged - a.tablesManaged || b.totalRevenue - a.totalRevenue);
-
-    // 6. Hourly Sales
-    const hourlyMap: Record<number, { hour: number, revenue: number, orderCount: number, covers: number }> = {};
-    for (let h = 0; h < 24; h++) {
-      hourlyMap[h] = { hour: h, revenue: 0, orderCount: 0, covers: 0 };
-    }
-
-    for (const ord of allOrders) {
-      const h = new Date(ord.createdAt).getHours();
-      hourlyMap[h].orderCount += 1;
-      hourlyMap[h].covers += ord.covers || 1;
-    }
-
-    for (const item of allOrderItems) {
-      const ord = allOrders.find(o => o.id === item.orderId);
-      if (ord) {
-        const h = new Date(ord.createdAt).getHours();
-        hourlyMap[h].revenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+    const staffById = new Map(staffRows.map(staff => [staff.id, staff]));
+    const staffStats = new Map<string, any>();
+    const ensureStaff = (id: string) => {
+      if (!staffStats.has(id)) {
+        const person = staffById.get(id);
+        staffStats.set(id, {
+          userId: id, userName: person?.name || (id === 'system' ? 'Unassigned / Legacy' : 'Unknown staff'),
+          role: person?.role || (id === 'system' ? 'SYSTEM' : 'UNKNOWN'),
+          tablesManaged: 0, ordersClosed: 0, ordersContributedTo: new Set<string>(),
+          grossRecordedItemValue: 0, itemsSold: 0
+        });
       }
+      return staffStats.get(id);
+    };
+    for (const person of staffRows.filter(person => person.isActive)) ensureStaff(person.id);
+    for (const order of allOrders) {
+      if (order.openedByUserId) ensureStaff(order.openedByUserId).tablesManaged++;
+      if (order.closedByUserId) ensureStaff(order.closedByUserId).ordersClosed++;
     }
 
-    // Rules 1 & 2: Clamp orderCount >= 0; if orderCount == 0 then force revenue = 0
-    const dailyHourlySales = Object.values(hourlyMap).map(h => {
-      const clampedOrders = Math.max(0, h.orderCount);
-      const cleanRevenue = clampedOrders === 0 ? 0 : Math.max(0, h.revenue);
+    let totalGrossItemValue = 0;
+    let totalItemsSold = 0;
+    let totalRecordedCostValue = 0;
+    let costCoveredQuantity = 0;
+    let missingCostQuantity = 0;
+    let totalPrepMinutes = 0;
+    let prepMeasuredCount = 0;
+    let prepMissingCount = 0;
+
+    for (const item of allOrderItems) {
+      const order = ordersById.get(item.orderId);
+      if (!order) continue;
+      const qty = Number(item.quantity);
+      const price = Number(item.unitPriceSnapshot);
+      const unitCost = recordedUnitCost(item);
+      const financials = calculateLineFinancials(price, unitCost, qty);
+      if (!financials) continue;
+      totalGrossItemValue += financials.grossItemValue;
+      totalItemsSold += qty;
+      if (financials.recordedCostValue !== null) {
+        totalRecordedCostValue += financials.recordedCostValue;
+        costCoveredQuantity += qty;
+      } else missingCostQuantity += qty;
+
+      const menuItem = menuById.get(item.menuItemId);
+      const itemName = item.productNameSnapshot || 'Unknown item';
+      const category = menuItem?.categoryName || null;
+      const local = getZonedDateHour(order.closedAt, timeZone);
+      const date = local?.date || null;
+      const prepEnd = item.readyAt || firstReadyByItem.get(item.id) || null;
+      const prep = getKitchenPrepMinutes(item.createdAt, prepEnd);
+      if (prep === null) prepMissingCount++;
+      else { totalPrepMinutes += prep; prepMeasuredCount++; }
+
+      const key = item.menuItemId + ':' + itemName;
+      const total = itemTotals.get(key) || {
+        menuItemId: item.menuItemId, itemName, category,
+        quantitySold: 0, grossRecordedItemValue: 0,
+        recordedCostValue: 0, costCoveredQuantity: 0, missingCostQuantity: 0,
+        contributionMarginValue: 0, prepMinutesSum: 0, prepMeasuredCount: 0,
+        prepMissingCount: 0, salesByDate: {}
+      };
+      total.quantitySold += qty;
+      total.grossRecordedItemValue += financials.grossItemValue;
+      if (financials.recordedCostValue !== null) {
+        total.recordedCostValue += financials.recordedCostValue;
+        total.costCoveredQuantity += qty;
+        total.contributionMarginValue += financials.recordedContributionMarginValue;
+      } else total.missingCostQuantity += qty;
+      if (prep !== null) { total.prepMinutesSum += prep; total.prepMeasuredCount++; }
+      else total.prepMissingCount++;
+      if (date) {
+        total.salesByDate[date] = (total.salesByDate[date] || 0) + qty;
+        const dateKey = date + ':' + key;
+        const daily = linesByDateItem.get(dateKey) || {
+          date, menuItemId: item.menuItemId, itemName, category,
+          quantitySold: 0, grossRecordedItemValue: 0,
+          recordedCostValue: 0, costCoveredQuantity: 0,
+          contributionMarginValue: 0, prepMinutesSum: 0, prepMeasuredCount: 0
+        };
+        daily.quantitySold += qty;
+        daily.grossRecordedItemValue += financials.grossItemValue;
+        if (financials.recordedCostValue !== null) {
+          daily.recordedCostValue += financials.recordedCostValue;
+          daily.costCoveredQuantity += qty;
+          daily.contributionMarginValue += financials.recordedContributionMarginValue;
+        }
+        if (prep !== null) { daily.prepMinutesSum += prep; daily.prepMeasuredCount++; }
+        linesByDateItem.set(dateKey, daily);
+      }
+      itemTotals.set(key, total);
+
+      const staffId = item.addedByUserId || order.openedByUserId || 'system';
+      const staff = ensureStaff(staffId);
+      staff.grossRecordedItemValue += financials.grossItemValue;
+      staff.itemsSold += qty;
+      staff.ordersContributedTo.add(order.id);
+    }
+
+    const costCoverageStatus = totalItemsSold === 0 ? 'NO_SALES'
+      : costCoveredQuantity === 0 ? 'NONE'
+      : missingCostQuantity === 0 ? 'COMPLETE' : 'PARTIAL';
+    const averageOrderValue = allOrders.length
+      ? Number((totalGrossItemValue / allOrders.length).toFixed(2)) : null;
+    const tableTurn = summarizeTableSessions(allOrders.map(order => ({
+      createdAt: order.createdAt, closedAt: order.closedAt
+    })), timeZone);
+
+    const menuItemPerformance = menu.map(item => {
+      const sold = itemTotals.get(item.id + ':' + item.name);
+      const currentCost = item.costPrice === null || item.costPrice === undefined ? null : Number(item.costPrice);
       return {
-        hour: h.hour,
-        revenue: parseFloat(cleanRevenue.toFixed(2)),
-        orderCount: clampedOrders,
-        covers: clampedOrders === 0 ? 0 : Math.max(0, h.covers)
+        menuItemId: item.id,
+        itemName: item.name,
+        category: item.categoryName || null,
+        isAvailable: Boolean(item.isAvailable),
+        archived: Boolean(item.archivedAt),
+        currentUnitCost: currentCost,
+        quantitySold: sold?.quantitySold || 0,
+        grossRecordedItemValue: Number((sold?.grossRecordedItemValue || 0).toFixed(2)),
+        recordedCostValue: sold?.costCoveredQuantity
+          ? Number(sold.recordedCostValue.toFixed(2)) : null,
+        costCoveredQuantity: sold?.costCoveredQuantity || 0,
+        missingCostQuantity: sold?.missingCostQuantity || 0,
+        contributionMarginValue: sold?.costCoveredQuantity
+          ? Number(sold.contributionMarginValue.toFixed(2)) : null,
+        contributionMarginCoverage: sold?.quantitySold
+          ? Number(((sold.costCoveredQuantity / sold.quantitySold) * 100).toFixed(1)) : null,
+        averageFirstReadyPrepTimeMinutes: sold?.prepMeasuredCount
+          ? Number((sold.prepMinutesSum / sold.prepMeasuredCount).toFixed(1)) : null,
+        prepMeasuredItemLines: sold?.prepMeasuredCount || 0,
+        prepMissingItemLines: sold?.prepMissingCount || 0,
+        salesByDate: sold?.salesByDate || {}
       };
     });
 
-    // Legacy menu engineering list for back-compat
-    const itemSalesMap: Record<string, { itemName: string, quantitySold: number, unitPrice: number, totalRevenue: number, totalPrepMin: number, prepCount: number }> = {};
-    for (const item of allOrderItems) {
-      const name = item.productNameSnapshot || 'Item';
-      if (!itemSalesMap[name]) {
-        itemSalesMap[name] = { itemName: name, quantitySold: 0, unitPrice: item.unitPriceSnapshot || 0, totalRevenue: 0, totalPrepMin: 0, prepCount: 0 };
-      }
-      itemSalesMap[name].quantitySold += item.quantity || 1;
-      itemSalesMap[name].totalRevenue += (item.unitPriceSnapshot || 0) * (item.quantity || 1);
+    const itemSalesByDate = Array.from(linesByDateItem.values()).map(row => ({
+      ...row,
+      grossRecordedItemValue: Number(row.grossRecordedItemValue.toFixed(2)),
+      recordedCostValue: row.costCoveredQuantity ? Number(row.recordedCostValue.toFixed(2)) : null,
+      contributionMarginValue: row.costCoveredQuantity ? Number(row.contributionMarginValue.toFixed(2)) : null,
+      averageFirstReadyPrepTimeMinutes: row.prepMeasuredCount
+        ? Number((row.prepMinutesSum / row.prepMeasuredCount).toFixed(1)) : null
+    })).sort((a, b) => a.date.localeCompare(b.date) || a.itemName.localeCompare(b.itemName));
 
-      if (item.createdAt && (item.kitchenStatusUpdatedAt || item.updatedAt)) {
-        const start = new Date(item.createdAt).getTime();
-        const end = item.kitchenStatusUpdatedAt ? new Date(item.kitchenStatusUpdatedAt).getTime() : new Date(item.updatedAt).getTime();
-        itemSalesMap[name].totalPrepMin += Math.max(1, Math.round((end - start) / (1000 * 60)));
-        itemSalesMap[name].prepCount += 1;
+    const coversByDateMap = new Map<string, number>();
+    for (const order of allOrders) {
+      const local = getZonedDateHour(order.closedAt, timeZone);
+      if (local && Number.isInteger(Number(order.covers)) && Number(order.covers) >= 0) {
+        coversByDateMap.set(local.date, (coversByDateMap.get(local.date) || 0) + Number(order.covers));
       }
     }
+    const coversByDate = Array.from(coversByDateMap.entries())
+      .map(([date, covers]) => ({ date, covers }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
-    const itemSalesList = Object.values(itemSalesMap);
-    const totalItemsSold = itemSalesList.reduce((sum, i) => sum + i.quantitySold, 0);
-    const avgQuantityPerItem = itemSalesList.length > 0 ? totalItemsSold / itemSalesList.length : 0;
-    const avgRevenuePerItem = itemSalesList.length > 0 ? totalGrossRevenue / itemSalesList.length : 0;
+    const dailyHourlySales = buildDailyHourlySales(
+      allOrders.map(order => ({ id: order.id, closedAt: order.closedAt, covers: order.covers })),
+      allOrderItems.map(item => ({
+        orderId: item.orderId, quantity: item.quantity, unitPriceSnapshot: item.unitPriceSnapshot
+      })),
+      startDate, now, timeZone
+    );
 
-    const menuEngineering = itemSalesList.map(item => {
-      const isHighPopularity = item.quantitySold >= avgQuantityPerItem;
-      const isHighRevenue = item.totalRevenue >= avgRevenuePerItem;
+    const staffPerformance = Array.from(staffStats.values()).map(staff => ({
+      userId: staff.userId, userName: staff.userName, role: staff.role,
+      tablesManaged: staff.tablesManaged, ordersClosed: staff.ordersClosed,
+      ordersContributedTo: staff.ordersContributedTo.size,
+      itemsSold: staff.itemsSold,
+      grossRecordedItemValue: Number(staff.grossRecordedItemValue.toFixed(2))
+    })).sort((a, b) => b.grossRecordedItemValue - a.grossRecordedItemValue);
 
-      let classification: 'STAR' | 'PLOWHORSE' | 'PUZZLE' | 'DOG' = 'DOG';
-      if (isHighPopularity && isHighRevenue) classification = 'STAR';
-      else if (isHighPopularity && !isHighRevenue) classification = 'PLOWHORSE';
-      else if (!isHighPopularity && isHighRevenue) classification = 'PUZZLE';
+    const logDiagnostics = collectTechnicalDiagnostics(LOG_DIR, startDate, now, 14);
+    const technicalDiagnostics = {
+      ...logDiagnostics,
+      description: 'Technical events from local log files. These are operational diagnostics, not restaurant performance metrics.'
+    };
 
-      const avgItemPrepTimeMinutes = item.prepCount > 0
-        ? parseFloat((item.totalPrepMin / item.prepCount).toFixed(1))
-        : 10;
-
-      return {
-        itemName: item.itemName,
-        quantitySold: item.quantitySold,
-        unitPrice: item.unitPrice,
-        totalRevenue: parseFloat(item.totalRevenue.toFixed(2)),
-        averagePrepTimeMinutes: avgItemPrepTimeMinutes,
-        classification
-      };
-    }).sort((a, b) => b.totalRevenue - a.totalRevenue);
-
-    // Read Operational Diagnostic Logs for CRM Analysis
-    const operationalNotes: string[] = [];
-    try {
-      const stderrPath = path.join(LOG_DIR, 'hub-stderr.log');
-      if (fs.existsSync(stderrPath)) {
-        const lines = fs.readFileSync(stderrPath, 'utf-8').trim().split('\n');
-        const lastLines = lines.slice(-5).map(l => l.trim()).filter(Boolean);
-        if (lastLines.length > 0) {
-          operationalNotes.push(...lastLines);
-        }
-      }
-    } catch {}
-
-    // Construct JSON Payload Version 3
     const rosReport = {
       header: {
-        version: 3,
+        version: 4,
         product: 'restaurantos',
-        exportId: `exp_${crypto.randomBytes(8).toString('hex')}`,
-        installationId: inst.id,
-        restaurantName,
-        currency,
-        seatingCapacity,
-        hasCostData,
+        exportId: 'exp_' + crypto.randomBytes(8).toString('hex'),
+        installationId: installation.id,
+        restaurantName: restaurant.name,
+        currency: restaurant.currency,
+        seatingCapacity: restaurant.seatingCapacity,
+        timezone: timeZone,
+        costCoverageStatus,
         period: {
           days: validDays,
+          basis: 'rolling duration ending at generatedAt; closed sessions included by closedAt',
           startDate: startDate.toISOString(),
           endDate: now.toISOString()
         },
-        generatedAt: now.toISOString(),
-        operationalNotes
+        generatedAt: now.toISOString()
+      },
+      dataDefinitions: {
+        grossRecordedItemValue: 'Sum of recorded menu-item selling-price snapshots multiplied by quantities in completed POS table sessions. It is not verified paid or collected revenue.',
+        averageOrderValue: 'Gross recorded item value divided by completed table-session count; no payment processing is represented.',
+        closedTableSessions: 'Number of POS table sessions with a recorded close timestamp in the selected period; not a count of unique physical tables.',
+        dailyHourlySales: 'Completed-session gross recorded item value attributed to the session close hour in the restaurant timezone. Each date has 24 local-hour buckets; this is not a payment timestamp.',
+        tableTurn: 'Elapsed time from POS table-session creation to recorded close, in minutes. It is a POS session duration, not verified seated time.',
+        kitchenPrep: 'Elapsed time from order-item creation to the first READY transition, in minutes. Null means no verifiable READY timestamp.',
+        contributionMargin: 'Recorded selling-price snapshot minus recorded unit-cost snapshot. This is not net profit and excludes waste, labor, rent, utilities and other overhead.',
+        staffRevenue: 'Gross recorded item value attributed to the staff member who added each item; legacy lines fall back to the order opener when available.'
       },
       kpiSummary: {
-        totalGrossRevenue: parseFloat(totalGrossRevenue.toFixed(2)),
-        totalOrders,
-        totalTablesServed: totalOrders,
-        totalCovers,
+        grossRecordedItemValue: Number(totalGrossItemValue.toFixed(2)),
+        closedTableSessions: allOrders.length,
+        totalCovers: allOrders.reduce((sum, order) => sum + (Number.isInteger(Number(order.covers)) && Number(order.covers) >= 0 ? Number(order.covers) : 0), 0),
         averageOrderValue,
-        averageTurnTimeMinutes,
-        averageKitchenPrepTimeMinutes,
-        paymentMethod: 'CASH_ONLY'
+        totalItemsSold,
+        averageTableSessionMinutes: tableTurn.averageTurnTimeMinutes,
+        medianTableSessionMinutes: tableTurn.medianTurnTimeMinutes,
+        averageFirstReadyPrepTimeMinutes: prepMeasuredCount
+          ? Number((totalPrepMinutes / prepMeasuredCount).toFixed(1)) : null,
+        kitchenPrepMeasuredItemLines: prepMeasuredCount,
+        kitchenPrepMissingItemLines: prepMissingCount,
+        costCoverage: {
+          status: costCoverageStatus,
+          soldQuantity: totalItemsSold,
+          coveredQuantity: costCoveredQuantity,
+          missingQuantity: missingCostQuantity,
+          coveragePercent: totalItemsSold
+            ? Number(((costCoveredQuantity / totalItemsSold) * 100).toFixed(1)) : null,
+          recordedCostValue: costCoveredQuantity ? Number(totalRecordedCostValue.toFixed(2)) : null,
+          recordedContributionMarginValue: costCoveredQuantity
+            ? Number((totalGrossItemValue - totalRecordedCostValue).toFixed(2)) : null
+        },
+        tableSessionDataQuality: {
+          measuredSessionCount: tableTurn.measuredSessionCount,
+          over12HourSessionCount: tableTurn.overThresholdSessionCount,
+          invalidDurationCount: tableTurn.invalidDurationCount,
+          missingOpenTimestampCount: tableTurn.missingOpenTimestampCount
+        }
       },
       staffPerformance,
-      menuEngineering,
+      menuItemPerformance,
       dailyHourlySales,
       itemSalesByDate,
       coversByDate,
-      tableTurnMetrics
+      tableTurnMetrics: tableTurn.dailyMetrics,
+      technicalDiagnostics
     };
 
-    const filename = `restaurantos_export_${validDays}days_${now.toISOString().slice(0, 10)}.ros`;
+    const filename = 'restaurantos_export_' + validDays + 'days_' + now.toISOString().slice(0, 10) + '.ros';
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
     res.status(200).send(JSON.stringify(rosReport, null, 2));
   } catch (err: any) {
     logger.error('Failed to generate .ros report', err);
