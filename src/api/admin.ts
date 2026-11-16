@@ -1644,17 +1644,19 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       .innerJoin(tables, eq(orders.tableId, tables.id))
       .where(and(
         eq(tables.restaurantId, req.user.restaurantId),
-        eq(orders.status, 'CLOSED'),
-        gte(orders.closedAt, startDate),
-        lte(orders.closedAt, now)
+        eq(orders.status, 'CLOSED')
       ));
 
+    // Legacy orders have no immutable close event. Their last update is only an
+    // inferred reporting date; it is never used to claim a measured table-turn time.
     const allOrders = closedRows.map(row => ({
       ...row,
-      // Migration seeds closedAt for existing CLOSED orders. Keep a null rather than
-      // pretending updatedAt is a verified close event if an exceptional row lacks it.
-      closedAt: row.closedAt || null
-    }));
+      closeTime: row.closedAt || row.legacyUpdatedAt || null,
+      closeTimeSource: row.closedAt ? 'RECORDED_CLOSED_AT' : 'LEGACY_UPDATED_AT_INFERRED'
+    })).filter(row => {
+      const close = row.closeTime ? new Date(row.closeTime).getTime() : NaN;
+      return Number.isFinite(close) && close >= startDate.getTime() && close <= now.getTime();
+    });
     const orderIds = allOrders.map(order => order.id);
     const allOrderItems = orderIds.length
       ? await db.select().from(orderItems).where(inArray(orderItems.orderId, orderIds))
@@ -1736,6 +1738,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     let totalGrossItemValue = 0;
     let totalItemsSold = 0;
     let totalRecordedCostValue = 0;
+    let totalCostCoveredGrossValue = 0;
     let costCoveredQuantity = 0;
     let missingCostQuantity = 0;
     let totalPrepMinutes = 0;
@@ -1754,13 +1757,14 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       totalItemsSold += qty;
       if (financials.recordedCostValue !== null) {
         totalRecordedCostValue += financials.recordedCostValue;
+        totalCostCoveredGrossValue += financials.grossItemValue;
         costCoveredQuantity += qty;
       } else missingCostQuantity += qty;
 
       const menuItem = menuById.get(item.menuItemId);
       const itemName = item.productNameSnapshot || 'Unknown item';
       const category = menuItem?.categoryName || null;
-      const local = getZonedDateHour(order.closedAt, timeZone);
+      const local = getZonedDateHour(order.closeTime, timeZone);
       const date = local?.date || null;
       const prepEnd = item.readyAt || firstReadyByItem.get(item.id) || null;
       const prep = getKitchenPrepMinutes(item.createdAt, prepEnd);
@@ -1818,7 +1822,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     const averageOrderValue = allOrders.length
       ? Number((totalGrossItemValue / allOrders.length).toFixed(2)) : null;
     const tableTurn = summarizeTableSessions(allOrders.map(order => ({
-      createdAt: order.createdAt, closedAt: order.closedAt
+      createdAt: order.createdAt, closedAt: order.closeTimeSource === 'RECORDED_CLOSED_AT' ? order.closeTime : null
     })), timeZone);
 
     const menuItemPerformance = menu.map(item => {
@@ -1860,7 +1864,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
 
     const coversByDateMap = new Map<string, number>();
     for (const order of allOrders) {
-      const local = getZonedDateHour(order.closedAt, timeZone);
+      const local = getZonedDateHour(order.closeTime, timeZone);
       if (local && Number.isInteger(Number(order.covers)) && Number(order.covers) >= 0) {
         coversByDateMap.set(local.date, (coversByDateMap.get(local.date) || 0) + Number(order.covers));
       }
@@ -1870,7 +1874,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       .sort((a, b) => a.date.localeCompare(b.date));
 
     const dailyHourlySales = buildDailyHourlySales(
-      allOrders.map(order => ({ id: order.id, closedAt: order.closedAt, covers: order.covers })),
+      allOrders.map(order => ({ id: order.id, closedAt: order.closeTime, covers: order.covers })),
       allOrderItems.map(item => ({
         orderId: item.orderId, quantity: item.quantity, unitPriceSnapshot: item.unitPriceSnapshot
       })),
@@ -1941,8 +1945,9 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
             ? Number(((costCoveredQuantity / totalItemsSold) * 100).toFixed(1)) : null,
           recordedCostValue: costCoveredQuantity ? Number(totalRecordedCostValue.toFixed(2)) : null,
           recordedContributionMarginValue: costCoveredQuantity
-            ? Number((totalGrossItemValue - totalRecordedCostValue).toFixed(2)) : null
+            ? Number((totalCostCoveredGrossValue - totalRecordedCostValue).toFixed(2)) : null
         },
+        legacyCloseTimeInferredSessionCount: allOrders.filter(order => order.closeTimeSource === 'LEGACY_UPDATED_AT_INFERRED').length,
         tableSessionDataQuality: {
           measuredSessionCount: tableTurn.measuredSessionCount,
           over12HourSessionCount: tableTurn.overThresholdSessionCount,

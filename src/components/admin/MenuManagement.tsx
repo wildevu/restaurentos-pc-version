@@ -176,7 +176,7 @@ export function MenuManagement({ authToken }: { authToken: string }) {
           name: itemName.trim(),
           description: itemDesc.trim() || null,
           price: priceNum,
-          costPrice: itemCostPrice ? parseFloat(itemCostPrice) : null,
+          ...(canEditCostPrice ? { costPrice: itemCostPrice.trim() === '' ? null : parseFloat(itemCostPrice) } : {}),
           isAvailable: itemAvail,
           displayOrder: parseInt(itemOrder) || 0
         })
