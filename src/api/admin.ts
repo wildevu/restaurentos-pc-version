@@ -1620,9 +1620,18 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
     const restaurant = await db.select().from(restaurants)
       .where(eq(restaurants.id, req.user.restaurantId)).get();
     if (!restaurant) return res.status(404).json({ error: 'Restaurant configuration not found.' });
-    const timeZone = restaurant.timezone || 'UTC';
-    try { new Intl.DateTimeFormat('en', { timeZone }).format(now); }
-    catch { return res.status(500).json({ error: 'The restaurant timezone is invalid. Correct it in Settings before exporting.' }); }
+    let timeZone = restaurant.timezone || 'UTC';
+    const dataQualityWarnings: string[] = [];
+    try {
+      new Intl.DateTimeFormat('en', { timeZone }).format(now);
+    } catch {
+      // A bad timezone setting must never block a usable report. Use UTC and
+      // disclose the fallback so the consultant does not mistake it for local time.
+      dataQualityWarnings.push(
+        'The configured restaurant timezone was invalid. Dates and hourly buckets in this export use UTC until the setting is corrected.'
+      );
+      timeZone = 'UTC';
+    }
 
     const menu = await db.select({
       id: menuItems.id, name: menuItems.name, categoryId: menuItems.categoryId,
@@ -1914,6 +1923,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
         },
         generatedAt: now.toISOString()
       },
+      dataQualityWarnings,
       dataDefinitions: {
         grossRecordedItemValue: 'Sum of recorded menu-item selling-price snapshots multiplied by quantities in completed POS table sessions. It is not verified paid or collected revenue.',
         averageOrderValue: 'Gross recorded item value divided by completed table-session count; no payment processing is represented.',
