@@ -290,7 +290,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         if (!activeTable || activeTable.status !== 'ACTIVE') {
           throw new CommandError('Table state is inconsistent with its active order. Refresh the POS and ask a manager to review it.', false);
         }
-        await tx.update(orders).set({ status: 'CLOSED', closedByUserId: user.id, updatedAt: now }).where(eq(orders.id, activeOrder.id));
+        await tx.update(orders).set({ status: 'CLOSED', closedByUserId: user.id, closedAt: now, updatedAt: now }).where(eq(orders.id, activeOrder.id));
         await tx.update(tables).set({ status: 'EMPTY', updatedAt: now }).where(eq(tables.id, tableId));
         
         await tx.insert(auditEvents).values({
@@ -335,6 +335,11 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
           ).get();
         }
 
+        if (existingItem && (existingItem.unitCostSnapshot ?? null) !== (menuItem.costPrice ?? null)) {
+          // Do not merge a newly priced unit into an order line with a different saved cost.
+          existingItem = null;
+        }
+
         let orderItemId;
         if (existingItem) {
           orderItemId = existingItem.id;
@@ -361,6 +366,7 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
             menuItemId,
             productNameSnapshot: menuItem.name,
             unitPriceSnapshot: menuItem.price,
+            unitCostSnapshot: menuItem.costPrice ?? null,
             quantity: 1,
             notes: trimmedNotes,
             kitchenStatus: 'PENDING',
@@ -393,21 +399,54 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         const item = await tx.select().from(orderItems).where(and(eq(orderItems.id, orderItemId), eq(orderItems.orderId, activeOrder.id))).get();
         if (!item) throw new CommandError('Item not found on active order');
         
-        await tx.update(orderItems)
-          .set({ quantity: sql`${orderItems.quantity} + 1`, updatedAt: now })
-          .where(eq(orderItems.id, orderItemId));
-          
-        await tx.insert(auditEvents).values({
-          id: uuidv4(),
-          restaurantId: user.restaurantId,
-          actorUserId: user.id,
-          actorClientInstallationId: clientInstallationId || null,
-          action: 'ITEM_INCREMENTED',
-          entityType: 'ORDER_ITEM',
-          entityId: orderItemId,
-          metadata: JSON.stringify({ name: item.productNameSnapshot, newQuantity: item.quantity + 1 }),
-          createdAt: now
-        });
+        const currentMenuItem = await tx.select().from(menuItems).where(eq(menuItems.id, item.menuItemId)).get();
+        if (!currentMenuItem) throw new CommandError('Menu item no longer exists');
+
+        if ((item.unitCostSnapshot ?? null) !== (currentMenuItem.costPrice ?? null)) {
+          // Preserve old units and represent the new unit using the current cost revision.
+          const splitOrderItemId = uuidv4();
+          await tx.insert(orderItems).values({
+            id: splitOrderItemId,
+            orderId: activeOrder.id,
+            menuItemId: item.menuItemId,
+            productNameSnapshot: item.productNameSnapshot,
+            unitPriceSnapshot: item.unitPriceSnapshot,
+            unitCostSnapshot: currentMenuItem.costPrice ?? null,
+            quantity: 1,
+            notes: item.notes ?? null,
+            kitchenStatus: 'PENDING',
+            kitchenStatusUpdatedAt: now,
+            addedByUserId: user.id,
+            createdAt: now,
+            updatedAt: now
+          });
+          await tx.insert(auditEvents).values({
+            id: uuidv4(),
+            restaurantId: user.restaurantId,
+            actorUserId: user.id,
+            actorClientInstallationId: clientInstallationId || null,
+            action: 'ITEM_ADDED',
+            entityType: 'ORDER_ITEM',
+            entityId: splitOrderItemId,
+            metadata: JSON.stringify({menuItemId: item.menuItemId, name: item.productNameSnapshot, reason: 'COST_REVISION_SPLIT', previousOrderItemId: orderItemId}),
+            createdAt: now
+          });
+        } else {
+          await tx.update(orderItems)
+            .set({ quantity: sql`${orderItems.quantity} + 1`, updatedAt: now })
+            .where(eq(orderItems.id, orderItemId));
+          await tx.insert(auditEvents).values({
+            id: uuidv4(),
+            restaurantId: user.restaurantId,
+            actorUserId: user.id,
+            actorClientInstallationId: clientInstallationId || null,
+            action: 'ITEM_INCREMENTED',
+            entityType: 'ORDER_ITEM',
+            entityId: orderItemId,
+            metadata: JSON.stringify({ name: item.productNameSnapshot, newQuantity: item.quantity + 1 }),
+            createdAt: now
+          });
+        }
         break;
       }
       
@@ -520,8 +559,10 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
         if (dbUser.role === 'WAITER' && (prevStatus !== 'READY' || status !== 'SERVED')) {
           throw new CommandError('Waiters can only mark READY items as SERVED', false);
         }
+        const kitchenUpdate: any = { kitchenStatus: status, kitchenStatusUpdatedAt: now, updatedAt: now };
+        if (status === 'READY' && !item.readyAt) kitchenUpdate.readyAt = now;
         await tx.update(orderItems)
-          .set({ kitchenStatus: status, kitchenStatusUpdatedAt: now, updatedAt: now })
+          .set(kitchenUpdate)
           .where(eq(orderItems.id, orderItemId));
 
         await tx.insert(auditEvents).values({
@@ -604,8 +645,10 @@ export async function processCommand(command: z.infer<typeof CommandPayloadSchem
           .map((item: any) => item.id);
 
         if (targetItemIds.length > 0) {
+          const batchKitchenUpdate: any = { kitchenStatus: status, kitchenStatusUpdatedAt: now, updatedAt: now };
+          if (status === 'READY') batchKitchenUpdate.readyAt = sql`COALESCE(${orderItems.readyAt}, ${now})`;
           await tx.update(orderItems)
-            .set({ kitchenStatus: status, kitchenStatusUpdatedAt: now, updatedAt: now })
+            .set(batchKitchenUpdate)
             .where(inArray(orderItems.id, targetItemIds));
 
           await tx.insert(auditEvents).values({

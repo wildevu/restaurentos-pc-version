@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, restoreDatabaseFile } from '../db/index';
-import { users, restaurants, tables, auditEvents, hubState, sessions, devices, pairingTokens, menuCategories, menuItems, orders, orderItems } from '../db/schema';
+import { users, restaurants, tables, auditEvents, hubState, sessions, devices, pairingTokens, menuCategories, menuItems, menuItemCostHistory, orders, orderItems } from '../db/schema';
 import { eq, and, not, sql, isNull, asc, desc, inArray, gte, lte, like } from 'drizzle-orm';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
@@ -13,6 +13,26 @@ import { getFrontendStateTx } from '../db/queries';
 import { BACKUP_DIR, DB_PATH, ensureDirectories, LOG_DIR } from '../paths';
 import { LicensingService } from '../licensing/service';
 import { logger } from '../logger';
+
+function normalizeCostPrice(value: any): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error('Cost price must be a valid non-negative number or empty.');
+  return parsed;
+}
+
+async function recordMenuItemCostRevision(tx: any, menuItemId: string, previousCost: number | null, nextCost: number | null, actorUserId: string, now: Date): Promise<boolean> {
+  if ((previousCost ?? null) === (nextCost ?? null)) return false;
+  await tx.update(menuItemCostHistory)
+    .set({ effectiveTo: now })
+    .where(and(eq(menuItemCostHistory.menuItemId, menuItemId), isNull(menuItemCostHistory.effectiveTo)));
+  await tx.insert(menuItemCostHistory).values({
+    id: uuidv4(), menuItemId, unitCost: nextCost ?? null,
+    effectiveFrom: now, effectiveTo: null, changedByUserId: actorUserId,
+    source: 'OWNER', createdAt: now
+  });
+  return true;
+}
 
 export const adminRouter = Router();
 let restoreInProgress = false;
@@ -581,7 +601,29 @@ adminRouter.get('/menu', async (req: any, res) => {
       : db.select().from(menuItems).where(isNull(menuItems.archivedAt)).orderBy(asc(menuItems.displayOrder))
     );
     
-    res.json({ categories, items });
+    res.json({ categories, items, canEditCostPrice: req.user.role === 'OWNER' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+adminRouter.get('/menu/items/:id/cost-history', async (req: any, res) => {
+  try {
+    const item = await db.select({ id: menuItems.id }).from(menuItems).where(eq(menuItems.id, req.params.id)).get();
+    if (!item) return res.status(404).json({ error: 'Menu item not found' });
+    const history = await db.select({
+      id: menuItemCostHistory.id,
+      unitCost: menuItemCostHistory.unitCost,
+      effectiveFrom: menuItemCostHistory.effectiveFrom,
+      effectiveTo: menuItemCostHistory.effectiveTo,
+      source: menuItemCostHistory.source,
+      changedByUserId: menuItemCostHistory.changedByUserId,
+      changedByUserName: users.name
+    }).from(menuItemCostHistory)
+      .leftJoin(users, eq(menuItemCostHistory.changedByUserId, users.id))
+      .where(eq(menuItemCostHistory.menuItemId, req.params.id))
+      .orderBy(desc(menuItemCostHistory.effectiveFrom));
+    res.json({ history });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -804,33 +846,27 @@ adminRouter.post('/menu/items', async (req: any, res) => {
   try {
     const { categoryId, name, description, price, costPrice, isAvailable, displayOrder } = req.body;
     if (!categoryId || !name || price === undefined) return res.status(400).json({ error: 'Missing required fields' });
-    
+    let normalizedCost: number | null;
+    try { normalizedCost = normalizeCostPrice(costPrice); }
+    catch (err: any) { return res.status(400).json({ error: err.message }); }
+    if (normalizedCost !== null && req.user.role !== 'OWNER') return res.status(403).json({ error: 'Only the owner can set menu item cost prices.' });
+
     const id = uuidv4();
     const now = new Date();
-    await db.insert(menuItems).values({
-      id,
-      categoryId,
-      name,
-      description: description || null,
-      price: Number(price),
-      costPrice: costPrice !== undefined && costPrice !== null && costPrice !== '' ? Number(costPrice) : null,
-      isAvailable: isAvailable !== false,
-      displayOrder: displayOrder || 0,
-      createdAt: now,
-      updatedAt: now,
+    await db.transaction(async (tx) => {
+      await tx.insert(menuItems).values({
+        id, categoryId, name, description: description || null,
+        price: Number(price), costPrice: normalizedCost,
+        isAvailable: isAvailable !== false, displayOrder: displayOrder || 0,
+        createdAt: now, updatedAt: now
+      });
+      if (normalizedCost !== null) await recordMenuItemCostRevision(tx, id, null, normalizedCost, req.user.id, now);
+      await tx.insert(auditEvents).values({
+        id: uuidv4(), restaurantId: req.user.restaurantId, actorUserId: req.user.id,
+        action: 'MENU_ITEM_CREATED', entityType: 'MENU_ITEM', entityId: id,
+        metadata: JSON.stringify({ name, costPrice: normalizedCost }), createdAt: now
+      });
     });
-    
-    await db.insert(auditEvents).values({
-      id: uuidv4(),
-      restaurantId: req.user.restaurantId,
-      actorUserId: req.user.id,
-      action: 'MENU_ITEM_CREATED',
-      entityType: 'MENU_ITEM',
-      entityId: id,
-      metadata: JSON.stringify({ name }),
-      createdAt: now,
-    });
-
     await emitStateUpdate(req.app.get('io'), req.user.restaurantId);
     res.json({ success: true, id });
   } catch (err: any) {
@@ -842,35 +878,52 @@ adminRouter.put('/menu/items/:id', async (req: any, res) => {
   try {
     const { categoryId, name, description, price, costPrice, isAvailable, displayOrder, archive, restore } = req.body;
     const { id } = req.params;
-    
-    const updateData: any = { updatedAt: new Date() };
+    const existingItem = await db.select().from(menuItems).where(eq(menuItems.id, id)).get();
+    if (!existingItem) return res.status(404).json({ error: 'Menu item not found' });
+
+    const now = new Date();
+    const costWasSubmitted = Object.prototype.hasOwnProperty.call(req.body, 'costPrice');
+    let normalizedCost = existingItem.costPrice ?? null;
+    if (costWasSubmitted) {
+      try { normalizedCost = normalizeCostPrice(costPrice); }
+      catch (err: any) { return res.status(400).json({ error: err.message }); }
+      if (normalizedCost !== (existingItem.costPrice ?? null) && req.user.role !== 'OWNER') {
+        return res.status(403).json({ error: 'Only the owner can change menu item cost prices.' });
+      }
+    }
+
+    const updateData: any = { updatedAt: now };
     if (categoryId !== undefined) updateData.categoryId = categoryId;
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (price !== undefined) updateData.price = Number(price);
-    if (costPrice !== undefined) updateData.costPrice = (costPrice !== null && costPrice !== '') ? Number(costPrice) : null;
+    if (costWasSubmitted) updateData.costPrice = normalizedCost;
     if (isAvailable !== undefined) updateData.isAvailable = Boolean(isAvailable);
     if (displayOrder !== undefined) updateData.displayOrder = displayOrder;
-    
-    if (archive === true) updateData.archivedAt = new Date();
+    if (archive === true) updateData.archivedAt = now;
     if (restore === true) updateData.archivedAt = null;
 
     let action = 'MENU_ITEM_UPDATED';
     if (archive === true) action = 'MENU_ITEM_ARCHIVED';
     else if (restore === true) action = 'MENU_ITEM_RESTORED';
+    else if (costWasSubmitted && normalizedCost !== (existingItem.costPrice ?? null)) action = 'MENU_ITEM_COST_CHANGED';
     else if (isAvailable !== undefined) action = 'MENU_ITEM_AVAILABILITY_CHANGED';
 
-    await db.update(menuItems).set(updateData).where(eq(menuItems.id, id));
-    
-    await db.insert(auditEvents).values({
-      id: uuidv4(),
-      restaurantId: req.user.restaurantId,
-      actorUserId: req.user.id,
-      action,
-      entityType: 'MENU_ITEM',
-      entityId: id,
-      metadata: JSON.stringify(updateData),
-      createdAt: new Date(),
+    await db.transaction(async (tx) => {
+      await tx.update(menuItems).set(updateData).where(eq(menuItems.id, id));
+      if (costWasSubmitted && normalizedCost !== (existingItem.costPrice ?? null)) {
+        await recordMenuItemCostRevision(tx, id, existingItem.costPrice ?? null, normalizedCost, req.user.id, now);
+      }
+      await tx.insert(auditEvents).values({
+        id: uuidv4(), restaurantId: req.user.restaurantId, actorUserId: req.user.id,
+        action, entityType: 'MENU_ITEM', entityId: id,
+        metadata: JSON.stringify({
+          ...updateData,
+          previousCostPrice: costWasSubmitted ? (existingItem.costPrice ?? null) : undefined,
+          effectiveCostPrice: costWasSubmitted ? normalizedCost : undefined
+        }),
+        createdAt: now
+      });
     });
 
     await emitStateUpdate(req.app.get('io'), req.user.restaurantId);

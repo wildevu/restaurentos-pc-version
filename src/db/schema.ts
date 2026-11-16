@@ -43,6 +43,7 @@ export const orders = sqliteTable('orders', {
   closedByUserId: text('closed_by_user_id').references(() => users.id),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  closedAt: integer('closed_at', { mode: 'timestamp' }),
   archivedAt: integer('archived_at', { mode: 'timestamp' }),
 });
 
@@ -52,11 +53,13 @@ export const orderItems = sqliteTable('order_items', {
   menuItemId: text('menu_item_id').references(() => menuItems.id).notNull(),
   productNameSnapshot: text('product_name_snapshot').notNull(),
   unitPriceSnapshot: real('unit_price_snapshot').notNull(),
+  unitCostSnapshot: real('unit_cost_snapshot'),
   quantity: integer('quantity').notNull().default(1),
   addedByUserId: text('added_by_user_id').references(() => users.id),
   notes: text('notes'),
   kitchenStatus: text('kitchen_status', { enum: ['PENDING', 'PREPARING', 'READY', 'SERVED'] }).notNull().default('PENDING'),
   kitchenStatusUpdatedAt: integer('kitchen_status_updated_at', { mode: 'timestamp' }),
+  readyAt: integer('ready_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   archivedAt: integer('archived_at', { mode: 'timestamp' }),
@@ -89,6 +92,17 @@ export const users = sqliteTable('users', {
   lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),
   disabledAt: integer('disabled_at', { mode: 'timestamp' }),
   disabledByUserId: text('disabled_by_user_id'),
+});
+
+export const menuItemCostHistory = sqliteTable('menu_item_cost_history', {
+  id: text('id').primaryKey(),
+  menuItemId: text('menu_item_id').references(() => menuItems.id, { onDelete: 'cascade' }).notNull(),
+  unitCost: real('unit_cost'),
+  effectiveFrom: integer('effective_from', { mode: 'timestamp' }).notNull(),
+  effectiveTo: integer('effective_to', { mode: 'timestamp' }),
+  changedByUserId: text('changed_by_user_id').references(() => users.id),
+  source: text('source').notNull().default('OWNER'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
 export const devices = sqliteTable('devices', {

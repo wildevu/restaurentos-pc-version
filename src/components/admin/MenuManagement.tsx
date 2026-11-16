@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Check, X, Upload, Download, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Upload, Download, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, History } from 'lucide-react';
 import { useI18n } from '../../i18n';
 
 export function MenuManagement({ authToken }: { authToken: string }) {
@@ -40,6 +40,12 @@ export function MenuManagement({ authToken }: { authToken: string }) {
   const [itemCostPrice, setItemCostPrice] = useState('');
   const [itemAvail, setItemAvail] = useState(true);
   const [itemOrder, setItemOrder] = useState('0');
+  const [canEditCostPrice, setCanEditCostPrice] = useState(false);
+  const [showCostHistory, setShowCostHistory] = useState(false);
+  const [costHistory, setCostHistory] = useState<any[]>([]);
+  const [costHistoryLoading, setCostHistoryLoading] = useState(false);
+  const [costHistoryLoaded, setCostHistoryLoaded] = useState(false);
+  const [costHistoryError, setCostHistoryError] = useState('');
 
   // Import state
   const [csvRaw, setCsvRaw] = useState('');
@@ -67,6 +73,7 @@ export function MenuManagement({ authToken }: { authToken: string }) {
         else {
           setCategories(data.categories || []);
           setItems(data.items || []);
+          setCanEditCostPrice(data.canEditCostPrice === true);
         }
         setLoading(false);
       })
@@ -240,7 +247,7 @@ export function MenuManagement({ authToken }: { authToken: string }) {
       setItemName(item.name);
       setItemDesc(item.description || '');
       setItemPrice(item.price.toFixed(2));
-      setItemCostPrice(item.costPrice ? item.costPrice.toFixed(2) : '');
+      setItemCostPrice(item.costPrice !== null && item.costPrice !== undefined ? Number(item.costPrice).toFixed(2) : '');
       setItemAvail(item.isAvailable);
       setItemOrder(item.displayOrder.toString());
     } else {
@@ -252,7 +259,32 @@ export function MenuManagement({ authToken }: { authToken: string }) {
       setItemAvail(true);
       setItemOrder('0');
     }
+    setShowCostHistory(false);
+    setCostHistory([]);
+    setCostHistoryLoaded(false);
+    setCostHistoryError('');
     setShowItemModal(true);
+  };
+
+  const toggleCostHistory = async () => {
+    const opening = !showCostHistory;
+    setShowCostHistory(opening);
+    if (!opening || !editingItem || costHistoryLoaded || costHistoryLoading) return;
+    setCostHistoryLoading(true);
+    setCostHistoryError('');
+    try {
+      const res = await fetch(`/api/admin/menu/items/${editingItem.id}/cost-history`, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load cost history.');
+      setCostHistory(data.history || []);
+      setCostHistoryLoaded(true);
+    } catch (err: any) {
+      setCostHistoryError(err.message || 'Unable to load cost history.');
+    } finally {
+      setCostHistoryLoading(false);
+    }
   };
 
   const downloadTemplate = () => {
@@ -785,8 +817,36 @@ export function MenuManagement({ authToken }: { authToken: string }) {
                     value={itemCostPrice}
                     onChange={e => setItemCostPrice(e.target.value)}
                     placeholder="e.g. 3.20"
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    disabled={!canEditCostPrice}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                   />
+                  {!canEditCostPrice && <p className="text-[11px] text-gray-500 mt-1">Only the owner can change item costs.</p>}
+                  {editingItem && (
+                    <div className="mt-2 rounded-xl border border-gray-200 overflow-hidden">
+                      <button type="button" onClick={toggleCostHistory} aria-expanded={showCostHistory}
+                        className="w-full px-3 py-2.5 flex items-center justify-between gap-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 cursor-pointer">
+                        <span className="flex items-center gap-2"><History size={14} /> Cost history</span>
+                        {showCostHistory ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                      </button>
+                      {showCostHistory && (
+                        <div className="border-t border-gray-100 p-3 space-y-2 bg-gray-50">
+                          {costHistoryLoading && <p className="text-xs text-gray-500">Loading cost history…</p>}
+                          {costHistoryError && <p className="text-xs text-red-600">{costHistoryError}</p>}
+                          {!costHistoryLoading && !costHistoryError && costHistory.length === 0 && <p className="text-xs text-gray-500">No recorded cost changes yet.</p>}
+                          {costHistory.map((entry: any) => (
+                            <div key={entry.id} className="flex items-start justify-between gap-3 text-xs">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-800">{entry.unitCost === null ? 'Cost removed' : formatCurrency(Number(entry.unitCost))}</p>
+                                <p className="text-[11px] text-gray-500">{new Date(entry.effectiveFrom).toLocaleString()} · {entry.changedByUserName || (entry.source === 'BASELINE' ? 'Existing cost at setup' : 'Owner')}</p>
+                                {entry.effectiveTo && <p className="text-[11px] text-gray-400">Until {new Date(entry.effectiveTo).toLocaleString()}</p>}
+                              </div>
+                              {entry.source === 'BASELINE' && <span className="shrink-0 text-[10px] text-gray-500">Baseline</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div>
