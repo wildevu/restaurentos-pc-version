@@ -1638,8 +1638,7 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       categoryName: menuCategories.name, costPrice: menuItems.costPrice,
       isAvailable: menuItems.isAvailable, archivedAt: menuItems.archivedAt
     }).from(menuItems)
-      .leftJoin(menuCategories, eq(menuItems.categoryId, menuCategories.id))
-      .where(eq(menuItems.categoryId, menuItems.categoryId));
+      .leftJoin(menuCategories, eq(menuItems.categoryId, menuCategories.id));
     const menuById = new Map(menu.map(item => [item.id, item]));
 
     // The report period is based on completed sessions (closedAt), not an arbitrary
@@ -1650,11 +1649,10 @@ adminRouter.get('/reports/export-ros', async (req: any, res) => {
       createdAt: orders.createdAt, closedAt: orders.closedAt,
       legacyUpdatedAt: orders.updatedAt, currencySnapshot: orders.currencySnapshot
     }).from(orders)
-      .innerJoin(tables, eq(orders.tableId, tables.id))
-      .where(and(
-        eq(tables.restaurantId, req.user.restaurantId),
-        eq(orders.status, 'CLOSED')
-      ));
+      // RestaurantOS uses one local database per restaurant. The tables and orders
+      // tables intentionally have no restaurantId column, so scope this query to
+      // the local installation and select only completed sessions.
+      .where(eq(orders.status, 'CLOSED'));
 
     // Legacy orders have no immutable close event. Their last update is only an
     // inferred reporting date; it is never used to claim a measured table-turn time.
