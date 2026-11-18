@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Check, X, Upload, Download, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, History } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, X, Upload, Download, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, History, Search, Filter } from 'lucide-react';
 import { useI18n } from '../../i18n';
+
+const normalizeMenuSearchValue = (value: unknown): string =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '')
+    .toLocaleLowerCase()
+    .trim();
 
 export function MenuManagement({ authToken }: { authToken: string }) {
   const { t, formatCurrency, currency } = useI18n();
@@ -11,6 +18,8 @@ export function MenuManagement({ authToken }: { authToken: string }) {
   const [successMsg, setSuccessMsg] = useState('');
   const [actionErrorMsg, setActionErrorMsg] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [itemSearch, setItemSearch] = useState('');
 
   // Modals state
   const [showCatModal, setShowCatModal] = useState(false);
@@ -136,6 +145,7 @@ export function MenuManagement({ authToken }: { authToken: string }) {
       
       // Optimistically remove category from state
       setCategories(prev => prev.filter(c => c.id !== catId));
+      setSelectedCategoryId(current => current === catId ? '' : current);
       if (actionOnItems === 'ARCHIVE_ITEMS') {
         setItems(prev => prev.filter(i => i.categoryId !== catId));
       } else if (targetCatId) {
@@ -251,7 +261,7 @@ export function MenuManagement({ authToken }: { authToken: string }) {
       setItemAvail(item.isAvailable);
       setItemOrder(item.displayOrder.toString());
     } else {
-      setItemCategoryId(categories[0]?.id || '');
+      setItemCategoryId(selectedCategoryId || categories[0]?.id || '');
       setItemName('');
       setItemDesc('');
       setItemPrice('');
@@ -461,6 +471,22 @@ export function MenuManagement({ authToken }: { authToken: string }) {
     );
   }
 
+  const categoryNameById = new Map(categories.map(category => [category.id, category.name]));
+  const normalizedSearch = normalizeMenuSearchValue(itemSearch);
+  const filteredItems = items.filter(item => {
+    if (selectedCategoryId && item.categoryId !== selectedCategoryId) return false;
+    if (!normalizedSearch) return true;
+
+    const searchableValues = [
+      item.name,
+      item.description,
+      categoryNameById.get(item.categoryId)
+    ];
+    return searchableValues.some(value =>
+      normalizeMenuSearchValue(value).includes(normalizedSearch)
+    );
+  });
+
   return (
     <div className="max-w-5xl mx-auto pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -594,20 +620,91 @@ export function MenuManagement({ authToken }: { authToken: string }) {
       </div>
 
       {/* Menu Items Section */}
-      <div className="flex items-center justify-between mb-4 mt-8">
+      <div className="flex items-center justify-between mb-4 mt-8 gap-3">
         <div>
           <h3 className="text-lg font-black text-gray-900">
             {t('menu.itemsSection', `Menu Items (${items.length})`).replace('{count}', String(items.length))}
           </h3>
           <p className="text-xs text-gray-500 font-medium">{t('menu.itemsDesc', 'Active dishes and drinks available to waiters.')}</p>
         </div>
-        <button 
-          onClick={() => openItemModal()} 
-          className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl shadow-xs transition-colors"
+        <button
+          onClick={() => openItemModal()}
+          className="shrink-0 flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl shadow-xs transition-colors"
         >
           <Plus size={15} /> {t('menu.addItemBtn', 'Add Item')}
         </button>
       </div>
+
+      {items.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-xs border border-gray-200 p-3 sm:p-4 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="menu-category-filter" className="block text-xs font-bold text-gray-600 mb-1.5">
+                {t('menu.filterByCategory', 'Filter by category')}
+              </label>
+              <div className="relative">
+                <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <select
+                  id="menu-category-filter"
+                  value={selectedCategoryId}
+                  onChange={e => setSelectedCategoryId(e.target.value)}
+                  className="w-full appearance-none pl-9 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+                >
+                  <option value="">{t('menu.allCategories', 'All categories')}</option>
+                  {categories.map(category => (
+                    <option key={category.id} value={category.id}>{category.name}</option>
+                  ))}
+                </select>
+                <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="menu-item-search" className="block text-xs font-bold text-gray-600 mb-1.5">
+                {t('menu.searchItemsLabel', 'Search menu items')}
+              </label>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  id="menu-item-search"
+                  type="search"
+                  value={itemSearch}
+                  onChange={e => setItemSearch(e.target.value)}
+                  placeholder={t('menu.searchItemsPlaceholder', 'Search by item, description or category...')}
+                  className="w-full pl-9 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-800 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+                />
+                {itemSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setItemSearch('')}
+                    aria-label={t('menu.clearSearch', 'Clear search')}
+                    title={t('menu.clearSearch', 'Clear search')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 rounded-lg cursor-pointer"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-3">
+            <p className="text-xs text-gray-500" aria-live="polite">
+              {t('menu.showingItems', 'Showing {visible} of {total} items')
+                .replace('{visible}', String(filteredItems.length))
+                .replace('{total}', String(items.length))}
+            </p>
+            {(selectedCategoryId || itemSearch) && (
+              <button
+                type="button"
+                onClick={() => { setSelectedCategoryId(''); setItemSearch(''); }}
+                className="self-start sm:self-auto text-xs font-bold text-blue-700 hover:text-blue-900 cursor-pointer"
+              >
+                {t('menu.clearFilters', 'Clear filters')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl shadow-xs border border-gray-200 overflow-hidden">
         <table className="w-full text-left border-collapse">
@@ -627,8 +724,14 @@ export function MenuManagement({ authToken }: { authToken: string }) {
                   {t('menu.noItemsYet', 'No active menu items found. Click \'Add Item\' or import a menu CSV.')}
                 </td>
               </tr>
+            ) : filteredItems.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-10 text-center text-gray-400 text-sm font-medium">
+                  {t('menu.noItemsMatchFilters', 'No menu items match your search or selected category.')}
+                </td>
+              </tr>
             ) : (
-              items.map(item => {
+              filteredItems.map(item => {
                 const cat = categories.find(c => c.id === item.categoryId);
                 return (
                   <tr key={item.id} className="hover:bg-gray-50/80 transition-colors">
@@ -651,16 +754,16 @@ export function MenuManagement({ authToken }: { authToken: string }) {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button 
-                          onClick={() => openItemModal(item)} 
-                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer" 
+                        <button
+                          onClick={() => openItemModal(item)}
+                          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
                           title={t('menu.editItemBtn', 'Edit Item')}
                         >
                           <Edit2 size={16} />
                         </button>
-                        <button 
-                          onClick={() => handleDeleteItem(item)} 
-                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors cursor-pointer" 
+                        <button
+                          onClick={() => handleDeleteItem(item)}
+                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
                           title={t('menu.deleteItemBtn', 'Delete Item')}
                         >
                           <Trash2 size={16} />
