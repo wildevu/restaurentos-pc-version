@@ -12,7 +12,6 @@ import {
   AlertCircle,
   ChevronDown,
   Activity,
-  Clock
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
