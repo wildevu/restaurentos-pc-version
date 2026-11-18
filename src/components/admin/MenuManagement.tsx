@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n';
 const normalizeMenuSearchValue = (value: unknown): string =>
   String(value ?? '')
     .normalize('NFD')
-    .replace(/[\\u0300-\\u036f]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase()
     .trim();
 
@@ -667,7 +667,9 @@ export function MenuManagement({ authToken }: { authToken: string }) {
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                   id="menu-item-search"
-                  type="search"
+                  type="text"
+                  role="searchbox"
+                  inputMode="search"
                   value={itemSearch}
                   onChange={e => setItemSearch(e.target.value)}
                   placeholder={t('menu.searchItemsPlaceholder', 'Search by item, description or category...')}
