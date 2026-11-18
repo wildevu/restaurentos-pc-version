@@ -19,7 +19,15 @@ assert.match(waiterGuard, /waiterStatusPayload.status !== 'SERVED'/);
 assert.match(q, /prevStatus !== 'READY' \|\| status !== 'SERVED'/);
 assert.match(q, /item\.kitchenStatus !== 'SERVED' \|\| status === 'SERVED'/);
 assert.match(k, /order\.items\.filter\(item => item\.kitchenStatus !== 'SERVED'\)/);
-const staffReport = a.slice(a.indexOf('// 5. Staff Performance'), a.indexOf('// 6. Hourly Sales'));
+// Extract the staff-performance computation using stable code anchors rather than
+// optional section-heading comments. This keeps the regression check valid if the
+// report route is reorganized without changing its attribution behavior.
+const staffStart = a.indexOf('const staffRows = await db.select({');
+const staffEnd = a.indexOf('const costCoverageStatus =', staffStart);
+assert.notEqual(staffStart, -1, 'Could not locate staff-performance aggregation start.');
+assert.notEqual(staffEnd, -1, 'Could not locate staff-performance aggregation end.');
+assert.ok(staffEnd > staffStart, 'Staff-performance aggregation boundaries are invalid.');
+const staffReport = a.slice(staffStart, staffEnd);
 assert.match(staffReport, /item\.addedByUserId \|\| ord\.openedByUserId \|\| 'system'/);
 assert.match(staffReport, /ordersClosed/);
 assert.match(staffReport, /ordersContributedTo/);
