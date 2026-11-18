@@ -17,6 +17,20 @@ function read(file) {
 }
 
 console.log('RestaurantOS reliability regression guardrails');
+const migrationsDirectory = path.join(process.cwd(), 'src', 'db', 'migrations');
+const migrationFiles = fs.readdirSync(migrationsDirectory)
+  .filter(file => /^\\d+.*\\.sql$/i.test(file))
+  .sort();
+check(migrationFiles.length > 0, 'versioned SQLite migration files are present');
+const migrationJournal = JSON.parse(read('src/db/migrations/meta/_journal.json'));
+const journalFiles = migrationJournal.entries.map(entry => entry.tag + '.sql');
+for (const file of migrationFiles) {
+  check(journalFiles.includes(file), `migration ${file} is registered in the Drizzle journal`);
+  check(!read(path.join('src/db/migrations', file)).includes('\\\\`'), `migration ${file} uses valid SQLite identifier quoting`);
+}
+for (const file of journalFiles) {
+  check(migrationFiles.includes(file), `Drizzle journal entry ${file} has a matching SQL migration`);
+}
 const queue = read('src/offline/queue.ts');
 check(queue.includes('socket.timeout(ACK_TIMEOUT_MS).emit'), 'Socket.IO owns ACK timeout cleanup and removes expired callbacks');
 check(queue.includes('ACK_TIMEOUT') && queue.includes('same action ID'), 'uncertain acknowledgement preserves idempotent action identity');
