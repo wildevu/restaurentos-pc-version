@@ -28,10 +28,13 @@ assert.notEqual(staffStart, -1, 'Could not locate staff-performance aggregation 
 assert.notEqual(staffEnd, -1, 'Could not locate staff-performance aggregation end.');
 assert.ok(staffEnd > staffStart, 'Staff-performance aggregation boundaries are invalid.');
 const staffReport = a.slice(staffStart, staffEnd);
-assert.match(staffReport, /item\.addedByUserId \|\| ord\.openedByUserId \|\| 'system'/);
-assert.match(staffReport, /ordersClosed/);
-assert.match(staffReport, /ordersContributedTo/);
-assert.doesNotMatch(staffReport, /ord\.closedByUserId \|\| ord\.openedByUserId/);
+// Match the actual report implementation: item attribution uses the variable
+// named "order", while the person closing the table is counted separately.
+assert.match(staffReport, /const staffId = item\.addedByUserId \|\| order\.openedByUserId \|\| 'system'/);
+assert.match(staffReport, /if \(order\.closedByUserId\) ensureStaff\(order\.closedByUserId\)\.ordersClosed\+\+;/);
+assert.match(staffReport, /staff\.ordersContributedTo\.add\(order\.id\)/);
+// Closing a table must not incorrectly attribute every sold item to the cashier.
+assert.doesNotMatch(staffReport, /const staffId = item\.addedByUserId \|\| order\.closedByUserId/);
 const nav = n.slice(n.indexOf('const navItems = ['), n.indexOf('];', n.indexOf('const navItems = [')));
 const expected = ['/admin/hub','/admin/consultant','/admin/orders','/admin/staff','/admin/menu','/admin/tables','/admin/licensing','/admin/settings','/admin/audit','/admin/backups','/admin/health','/admin/devices'];
 assert.deepEqual(Array.from(nav.matchAll(/path: '([^']+)'/g), x => x[1]), expected);
