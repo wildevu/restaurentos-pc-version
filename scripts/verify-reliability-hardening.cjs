@@ -135,7 +135,11 @@ check(read('src/components/KitchenDisplay.tsx').includes('The kitchen update cou
 const hubStatus = read('server.ts');
 check(hubStatus.includes('databaseHealth') && hubStatus.includes("await client.execute('SELECT 1 as alive;')"), 'hub status probes the actual database instead of hard-coding HEALTHY');
 const statusUi = read('src/components/admin/LocalHubStatus.tsx');
-check(statusUi.includes("status.database?.status === 'HEALTHY'") && !statusUi.includes('● Healthy (WAL)</span>'), 'Local Hub status screen displays real database health');
+check(
+  statusUi.includes("const databaseIsHealthy = status?.database?.status === 'HEALTHY';") &&
+  statusUi.includes("{databaseIsHealthy ? 'Healthy' : 'Unavailable'}"),
+  'Local Hub status screen displays the live database probe result'
+);
 const hostnamePublisher = read('src/network/local-hostname.ts');
 check(hostnamePublisher.includes("questionType === '1'"), 'mDNS answers numeric A-record questions');
 check(hostnamePublisher.includes('queryCount') && hostnamePublisher.includes('lastQueryAt'), 'mDNS exposes received-query diagnostics');
@@ -145,7 +149,15 @@ check(hostnamePublisher.includes('}, query, remoteInfo);') && hostnamePublisher.
 check(hostnamePublisher.includes('requestsUnicast') && hostnamePublisher.includes('UNKNOWN_') && hostnamePublisher.includes('0x8000'), 'mDNS recognizes the QU class representation emitted by locked dns-packet 5.6.1');
 const hubStatusUi = read('src/components/admin/LocalHubStatus.tsx');
 check(hubStatusUi.includes("status?.primaryLanUrl || 'http://restos.local:8989'"), 'QR onboarding defaults to the stable restos.local address');
-check(hubStatusUi.includes('Temporary direct-IP diagnostic fallback'), 'direct IP is diagnostic only, not the QR origin');
+check(
+  hubStatusUi.includes("const lanFallbackUrl: string | null = status?.lanFallbackUrl || null;") &&
+  hubStatusUi.includes('{lanFallbackUrl && (') &&
+  hubStatusUi.includes('Temporary alternative address') &&
+  hubStatusUi.includes('This IP can change when the router renews its address.') &&
+  hubStatusUi.includes("onClick={() => handleCopyUrl(lanFallbackUrl, 'fallback')}") &&
+  !hubStatusUi.includes('<QRCodeSVG value={lanFallbackUrl}'),
+  'temporary direct-IP fallback is labeled, conditional, and kept separate from the QR origin'
+);
 check(hubStatusUi.includes('<QRCodeSVG value={primaryUrl}'), 'QR uses the canonical stable hostname');
 check(!hubStatusUi.includes("'http://localhost:8989'"), 'QR never points to phone-local localhost');
 const supervisor = read('windows/service/run-hub-supervisor.ps1');
