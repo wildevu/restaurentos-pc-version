@@ -19,14 +19,14 @@ function read(file) {
 console.log('RestaurantOS reliability regression guardrails');
 const migrationsDirectory = path.join(process.cwd(), 'src', 'db', 'migrations');
 const migrationFiles = fs.readdirSync(migrationsDirectory)
-  .filter(file => /^\\d+.*\\.sql$/i.test(file))
+  .filter(file => file.endsWith('.sql') && /^[0-9]/.test(file))
   .sort();
 check(migrationFiles.length > 0, 'versioned SQLite migration files are present');
 const migrationJournal = JSON.parse(read('src/db/migrations/meta/_journal.json'));
 const journalFiles = migrationJournal.entries.map(entry => entry.tag + '.sql');
 for (const file of migrationFiles) {
   check(journalFiles.includes(file), `migration ${file} is registered in the Drizzle journal`);
-  check(!read(path.join('src/db/migrations', file)).includes('\\\\`'), `migration ${file} uses valid SQLite identifier quoting`);
+  check(!read(path.join('src/db/migrations', file)).includes(String.fromCharCode(92) + '`'), `migration ${file} uses valid SQLite identifier quoting`);
 }
 for (const file of journalFiles) {
   check(migrationFiles.includes(file), `Drizzle journal entry ${file} has a matching SQL migration`);
