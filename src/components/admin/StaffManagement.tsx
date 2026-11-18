@@ -246,21 +246,21 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
 
       
       {pairingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-sm w-full p-6 text-center">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:items-center sm:p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="pair-device-title" className="my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-4 text-center shadow-lg sm:p-6">
+            <h3 id="pair-device-title" className="mb-2 text-xl font-bold text-gray-900">
               Pair Device
             </h3>
-            <p className="text-sm text-gray-600 mb-6">
+            <p className="mx-auto mb-4 max-w-md text-sm text-gray-600">
               Scan this QR code with {pairingUser.name}'s phone to log them in automatically.
             </p>
             
-            <div className="flex justify-center mb-6 min-h-[200px] items-center">
+            <div className="mb-4 flex min-h-[180px] items-center justify-center">
               {generatingQR ? (
                 <div className="text-gray-500">Generating secure token...</div>
               ) : pairingData ? (
                 <div className="p-4 bg-white border border-gray-100 rounded-xl shadow-sm inline-block">
-                  <QRCodeSVG value={pairingData.url} size={200} />
+                  <QRCodeSVG value={pairingData.url} size={180} />
                 </div>
               ) : (
                 <div className="text-red-500">Failed to generate QR</div>
@@ -298,21 +298,21 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
                 : 'Local hostname discovery is not currently available. This QR code uses the current LAN address, so if the router changes the hub IP, generate a fresh QR code until discovery is restored.'}
             </p>
             
-            <div className="flex gap-3 justify-center border-t border-gray-100 pt-4">
+            <div className="sticky bottom-0 flex flex-col-reverse justify-center gap-2 border-t border-gray-100 bg-white pt-4 pb-1 sm:flex-row sm:gap-3">
               <button
                 type="button"
                 onClick={() => {
                   handleInvalidatePairing();
                   setPairingUser(null);
                 }}
-                className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-50 rounded-lg transition-colors"
+                className="w-full rounded-lg px-4 py-2 font-medium text-gray-600 transition-colors hover:bg-gray-50 sm:w-auto"
               >
                 Close & Invalidate
               </button>
               <button
                 type="button"
                 onClick={() => handleGeneratePairing(pairingUser)}
-                className="px-4 py-2 bg-blue-100 text-blue-700 font-medium hover:bg-blue-200 rounded-lg transition-colors"
+                className="w-full rounded-lg bg-blue-100 px-4 py-2 font-medium text-blue-700 transition-colors hover:bg-blue-200 sm:w-auto"
               >
                 Regenerate
               </button>
@@ -322,8 +322,8 @@ export function StaffManagement({ authToken, currentUser }: { authToken: string,
       )}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:items-center sm:p-4">
+          <div role="dialog" aria-modal="true" className="my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-xl bg-white p-4 shadow-lg sm:p-6">
             <h3 className="text-xl font-bold text-gray-900 mb-4">
               {editingUser ? 'Edit Staff Member' : 'Add New Staff'}
             </h3>
